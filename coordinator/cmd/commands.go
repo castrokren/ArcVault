@@ -6,6 +6,7 @@ import (
 "fmt"
 "log"
 "os"
+"path/filepath"
 "strconv"
 "strings"
 
@@ -17,7 +18,6 @@ import (
 func InitCommand() error {
 fmt.Println("ArcVault Coordinator - Initialization")
 fmt.Println("=====================================\n")
-
 reader := bufio.NewReader(os.Stdin)
 
 // Get port
@@ -34,12 +34,13 @@ port = p
 }
 
 // Get database path
-fmt.Print("Enter database path (default %USERPROFILE%\.arcvault\arcvault.db): ")
+homeDir, _ := os.UserHomeDir()
+defaultDB := filepath.Join(homeDir, ".arcvault", "arcvault.db")
+fmt.Printf("Enter database path (default %s): ", defaultDB)
 dbPath, _ := reader.ReadString('\n')
 dbPath = strings.TrimSpace(dbPath)
 if dbPath == "" {
-homeDir, _ := os.UserHomeDir()
-dbPath = homeDir + "\\.arcvault\\arcvault.db"
+dbPath = defaultDB
 }
 
 // Generate admin token
@@ -61,11 +62,10 @@ return err
 }
 
 configPath, _ := config.GetConfigPath()
-fmt.Printf("\n✓ Configuration saved to: %s\n", configPath)
-fmt.Printf("✓ Database will be initialized at: %s\n", dbPath)
-fmt.Printf("✓ Admin token (save this): %s\n\n", token)
+fmt.Printf("\nConfiguration saved to: %s\n", configPath)
+fmt.Printf("Database will be initialized at: %s\n", dbPath)
+fmt.Printf("Admin token (save this): %s\n\n", token)
 fmt.Println("Next step: Run 'coordinator start'")
-
 return nil
 }
 
@@ -79,7 +79,7 @@ return fmt.Errorf("failed to initialize database: %v", err)
 }
 defer database.Close()
 
-log.Println("✓ Database initialized")
+log.Println("Database initialized")
 
 // Start HTTP server
 srv := server.New(cfg, database)
@@ -91,7 +91,6 @@ bytes := make([]byte, length)
 if _, err := rand.Read(bytes); err != nil {
 return "", err
 }
-
 hexStr := ""
 for _, b := range bytes {
 hexStr += fmt.Sprintf("%02x", b)
