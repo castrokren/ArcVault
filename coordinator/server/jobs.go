@@ -11,12 +11,14 @@ import (
 
 // Job is the domain type returned by all job endpoints.
 type Job struct {
-	ID        string  `json:"id"`
-	AgentID   string  `json:"agent_id"`
-	Name      string  `json:"name"`
-	Schedule  *string `json:"schedule,omitempty"`
-	Status    string  `json:"status"`
-	CreatedAt string  `json:"created_at"`
+	ID         string  `json:"id"`
+	AgentID    string  `json:"agent_id"`
+	Name       string  `json:"name"`
+	SourcePath string  `json:"source_path"`
+	DestPath   string  `json:"dest_path"`
+	Schedule   *string `json:"schedule,omitempty"`
+	Status     string  `json:"status"`
+	CreatedAt  string  `json:"created_at"`
 }
 
 func newJobID() string {
@@ -28,9 +30,11 @@ func newJobID() string {
 // handleCreateJob handles POST /api/jobs
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		AgentID  string  `json:"agent_id"`
-		Name     string  `json:"name"`
-		Schedule *string `json:"schedule"`
+		AgentID    string  `json:"agent_id"`
+		Name       string  `json:"name"`
+		SourcePath string  `json:"source_path"`
+		DestPath   string  `json:"dest_path"`
+		Schedule   *string `json:"schedule"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -44,20 +48,30 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "name is required", http.StatusBadRequest)
 		return
 	}
+	if input.SourcePath == "" {
+		http.Error(w, "source_path is required", http.StatusBadRequest)
+		return
+	}
+	if input.DestPath == "" {
+		http.Error(w, "dest_path is required", http.StatusBadRequest)
+		return
+	}
 
 	job := Job{
-		ID:        newJobID(),
-		AgentID:   input.AgentID,
-		Name:      input.Name,
-		Schedule:  input.Schedule,
-		Status:    "pending",
-		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		ID:         newJobID(),
+		AgentID:    input.AgentID,
+		Name:       input.Name,
+		SourcePath: input.SourcePath,
+		DestPath:   input.DestPath,
+		Schedule:   input.Schedule,
+		Status:     "pending",
+		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
 	}
 
 	_, err := s.db.Conn().Exec(
-		`INSERT INTO jobs (id, agent_id, name, schedule, status, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		job.ID, job.AgentID, job.Name, job.Schedule, job.Status, job.CreatedAt,
+		`INSERT INTO jobs (id, agent_id, name, source_path, dest_path, schedule, status, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		job.ID, job.AgentID, job.Name, job.SourcePath, job.DestPath, job.Schedule, job.Status, job.CreatedAt,
 	)
 	if err != nil {
 		http.Error(w, "failed to create job", http.StatusInternalServerError)
@@ -70,10 +84,26 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleListJobs handles GET /api/jobs
+// Optional query param: ?agent_id=<id> to filter by agent
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Conn().Query(
-		`SELECT id, agent_id, name, schedule, status, created_at FROM jobs ORDER BY created_at DESC`,
+	agentID := r.URL.Query().Get("agent_id")
+
+	var (
+		rows *sql.Rows
+		err  error
 	)
+	if agentID != "" {
+		rows, err = s.db.Conn().Query(
+			`SELECT id, agent_id, name, source_path, dest_path, schedule, status, created_at
+			 FROM jobs WHERE agent_id = ? ORDER BY created_at DESC`,
+			agentID,
+		)
+	} else {
+		rows, err = s.db.Conn().Query(
+			`SELECT id, agent_id, name, source_path, dest_path, schedule, status, created_at
+			 FROM jobs ORDER BY created_at DESC`,
+		)
+	}
 	if err != nil {
 		http.Error(w, "failed to query jobs", http.StatusInternalServerError)
 		return
@@ -84,7 +114,7 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var j Job
 		var schedule sql.NullString
-		if err := rows.Scan(&j.ID, &j.AgentID, &j.Name, &schedule, &j.Status, &j.CreatedAt); err != nil {
+		if err := rows.Scan(&j.ID, &j.AgentID, &j.Name, &j.SourcePath, &j.DestPath, &schedule, &j.Status, &j.CreatedAt); err != nil {
 			http.Error(w, "failed to scan job", http.StatusInternalServerError)
 			return
 		}
@@ -105,8 +135,9 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	var j Job
 	var schedule sql.NullString
 	err := s.db.Conn().QueryRow(
-		`SELECT id, agent_id, name, schedule, status, created_at FROM jobs WHERE id = ?`, id,
-	).Scan(&j.ID, &j.AgentID, &j.Name, &schedule, &j.Status, &j.CreatedAt)
+		`SELECT id, agent_id, name, source_path, dest_path, schedule, status, created_at
+		 FROM jobs WHERE id = ?`, id,
+	).Scan(&j.ID, &j.AgentID, &j.Name, &j.SourcePath, &j.DestPath, &schedule, &j.Status, &j.CreatedAt)
 
 	if err == sql.ErrNoRows {
 		http.Error(w, "job not found", http.StatusNotFound)
