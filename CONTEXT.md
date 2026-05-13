@@ -1,22 +1,20 @@
-# ArcVault2.0 — Project Status
-
+# ArcVault2.0 -- Project Status
 **Last updated:** May 13, 2026
 
 ## Current Phase
-
-Phase 1 complete. Phase 2 in progress.
+Phase 2 complete. Phase 3 not yet started.
 
 ## What works
-
-- `coordinator.exe init` — prompts for port/db path, generates admin token
-- `agent.exe` stub compiles and runs
-- Project structure and Go module established
+- `coordinator.exe init` -- prompts for port/db path, generates admin token, saves to ~/.arcvault/config.json
+- `coordinator.exe start` -- loads config, initializes SQLite, starts HTTP server
+- `agent.exe` -- loads agent-config.yaml, registers with coordinator, sends heartbeat every 30s
+- All API endpoints tested and working (health, register, heartbeat, list agents)
 
 ## Open items
-
-- `coordinator/config/`, `coordinator/db/`, `coordinator/server/` — imported in commands.go but empty; coordinator won't compile until these are implemented
-- No HTTP server, no agent registration, no heartbeat, no SQLite, no dashboard
+- No job scheduling yet
+- No job runner on agent
+- No Vue dashboard
+- No WebSocket
 
 ## Next step
-
-Implement `coordinator/config/` first — it's the first dependency that unblocks everything else.
+Phase 3 -- start with job CRUD endpoints (POST/GET/DELETE /api/jobs)
