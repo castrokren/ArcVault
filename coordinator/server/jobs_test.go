@@ -37,7 +37,7 @@ func authHeader() string {
 func TestCreateJob_returnsCreatedWithJobJSON(t *testing.T) {
 	s := newTestServer(t)
 
-	body := `{"agent_id":"agent-01","name":"nightly-backup","schedule":"0 2 * * *"}`
+	body := `{"agent_id":"agent-01","name":"nightly-backup","source_path":"C:\\src","dest_path":"D:\\backup","schedule":"0 2 * * *"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
 	req.Header.Set("Authorization", authHeader())
 	req.Header.Set("Content-Type", "application/json")
@@ -62,6 +62,12 @@ func TestCreateJob_returnsCreatedWithJobJSON(t *testing.T) {
 	if job.AgentID != "agent-01" {
 		t.Errorf("expected agent_id 'agent-01', got %q", job.AgentID)
 	}
+	if job.SourcePath != "C:\\src" {
+		t.Errorf("expected source_path 'C:\\src', got %q", job.SourcePath)
+	}
+	if job.DestPath != "D:\\backup" {
+		t.Errorf("expected dest_path 'D:\\backup', got %q", job.DestPath)
+	}
 	if job.Status != "pending" {
 		t.Errorf("expected status 'pending', got %q", job.Status)
 	}
@@ -70,7 +76,7 @@ func TestCreateJob_returnsCreatedWithJobJSON(t *testing.T) {
 func TestCreateJob_missingNameReturnsBadRequest(t *testing.T) {
 	s := newTestServer(t)
 
-	body := `{"agent_id":"agent-01"}`
+	body := `{"agent_id":"agent-01","source_path":"C:\\src","dest_path":"D:\\backup"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
 	req.Header.Set("Authorization", authHeader())
 	req.Header.Set("Content-Type", "application/json")
@@ -86,7 +92,39 @@ func TestCreateJob_missingNameReturnsBadRequest(t *testing.T) {
 func TestCreateJob_missingAgentIDReturnsBadRequest(t *testing.T) {
 	s := newTestServer(t)
 
-	body := `{"name":"nightly-backup"}`
+	body := `{"name":"nightly-backup","source_path":"C:\\src","dest_path":"D:\\backup"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestCreateJob_missingSourcePathReturnsBadRequest(t *testing.T) {
+	s := newTestServer(t)
+
+	body := `{"agent_id":"agent-01","name":"nightly-backup","dest_path":"D:\\backup"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestCreateJob_missingDestPathReturnsBadRequest(t *testing.T) {
+	s := newTestServer(t)
+
+	body := `{"agent_id":"agent-01","name":"nightly-backup","source_path":"C:\\src"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
 	req.Header.Set("Authorization", authHeader())
 	req.Header.Set("Content-Type", "application/json")
@@ -102,7 +140,7 @@ func TestCreateJob_missingAgentIDReturnsBadRequest(t *testing.T) {
 func TestCreateJob_unauthenticatedReturns401(t *testing.T) {
 	s := newTestServer(t)
 
-	body := `{"agent_id":"agent-01","name":"nightly-backup"}`
+	body := `{"agent_id":"agent-01","name":"nightly-backup","source_path":"C:\\src","dest_path":"D:\\backup"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
 	rr := httptest.NewRecorder()
 
@@ -140,9 +178,8 @@ func TestListJobs_returnsEmptyArrayWhenNoJobs(t *testing.T) {
 func TestListJobs_returnsCreatedJobs(t *testing.T) {
 	s := newTestServer(t)
 
-	// create two jobs
 	for _, name := range []string{"job-alpha", "job-beta"} {
-		body := `{"agent_id":"agent-01","name":"` + name + `"}`
+		body := `{"agent_id":"agent-01","name":"` + name + `","source_path":"C:\\src","dest_path":"D:\\backup"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
 		req.Header.Set("Authorization", authHeader())
 		req.Header.Set("Content-Type", "application/json")
@@ -164,13 +201,38 @@ func TestListJobs_returnsCreatedJobs(t *testing.T) {
 	}
 }
 
+func TestListJobs_filtersByAgentID(t *testing.T) {
+	s := newTestServer(t)
+
+	// two jobs for agent-01, one for agent-02
+	for _, agentID := range []string{"agent-01", "agent-01", "agent-02"} {
+		body := `{"agent_id":"` + agentID + `","name":"backup","source_path":"C:\\src","dest_path":"D:\\backup"}`
+		req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+		req.Header.Set("Authorization", authHeader())
+		req.Header.Set("Content-Type", "application/json")
+		s.router.ServeHTTP(httptest.NewRecorder(), req)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/jobs?agent_id=agent-01", nil)
+	req.Header.Set("Authorization", authHeader())
+	rr := httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+
+	var jobs []Job
+	if err := json.NewDecoder(rr.Body).Decode(&jobs); err != nil {
+		t.Fatalf("response is not valid JSON: %v", err)
+	}
+	if len(jobs) != 2 {
+		t.Errorf("expected 2 jobs for agent-01, got %d", len(jobs))
+	}
+}
+
 // --- GET /api/jobs/{id} ---
 
 func TestGetJob_returnsJobByID(t *testing.T) {
 	s := newTestServer(t)
 
-	// create a job first
-	body := `{"agent_id":"agent-01","name":"find-me"}`
+	body := `{"agent_id":"agent-01","name":"find-me","source_path":"C:\\src","dest_path":"D:\\backup"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
 	req.Header.Set("Authorization", authHeader())
 	req.Header.Set("Content-Type", "application/json")
@@ -180,7 +242,6 @@ func TestGetJob_returnsJobByID(t *testing.T) {
 	var created Job
 	json.NewDecoder(rr.Body).Decode(&created)
 
-	// now fetch it
 	req2 := httptest.NewRequest(http.MethodGet, "/api/jobs/"+created.ID, nil)
 	req2.Header.Set("Authorization", authHeader())
 	rr2 := httptest.NewRecorder()
@@ -196,6 +257,12 @@ func TestGetJob_returnsJobByID(t *testing.T) {
 	}
 	if fetched.ID != created.ID {
 		t.Errorf("expected ID %q, got %q", created.ID, fetched.ID)
+	}
+	if fetched.SourcePath != "C:\\src" {
+		t.Errorf("expected source_path 'C:\\src', got %q", fetched.SourcePath)
+	}
+	if fetched.DestPath != "D:\\backup" {
+		t.Errorf("expected dest_path 'D:\\backup', got %q", fetched.DestPath)
 	}
 }
 
@@ -218,8 +285,7 @@ func TestGetJob_unknownIDReturns404(t *testing.T) {
 func TestDeleteJob_returns204AndJobIsGone(t *testing.T) {
 	s := newTestServer(t)
 
-	// create
-	body := `{"agent_id":"agent-01","name":"delete-me"}`
+	body := `{"agent_id":"agent-01","name":"delete-me","source_path":"C:\\src","dest_path":"D:\\backup"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
 	req.Header.Set("Authorization", authHeader())
 	req.Header.Set("Content-Type", "application/json")
@@ -229,7 +295,6 @@ func TestDeleteJob_returns204AndJobIsGone(t *testing.T) {
 	var created Job
 	json.NewDecoder(rr.Body).Decode(&created)
 
-	// delete
 	req2 := httptest.NewRequest(http.MethodDelete, "/api/jobs/"+created.ID, nil)
 	req2.Header.Set("Authorization", authHeader())
 	rr2 := httptest.NewRecorder()
@@ -239,7 +304,6 @@ func TestDeleteJob_returns204AndJobIsGone(t *testing.T) {
 		t.Fatalf("expected 204, got %d", rr2.Code)
 	}
 
-	// confirm gone
 	req3 := httptest.NewRequest(http.MethodGet, "/api/jobs/"+created.ID, nil)
 	req3.Header.Set("Authorization", authHeader())
 	rr3 := httptest.NewRecorder()
