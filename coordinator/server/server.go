@@ -40,11 +40,15 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /api/agents/{id}/heartbeat", s.authMiddleware(s.handleHeartbeat))
 	s.router.HandleFunc("GET /api/agents", s.authMiddleware(s.handleListAgents))
 
-	// jobs
+	// jobs - CRUD
 	s.router.HandleFunc("POST /api/jobs", s.authMiddleware(s.handleCreateJob))
 	s.router.HandleFunc("GET /api/jobs", s.authMiddleware(s.handleListJobs))
 	s.router.HandleFunc("GET /api/jobs/{id}", s.authMiddleware(s.handleGetJob))
 	s.router.HandleFunc("DELETE /api/jobs/{id}", s.authMiddleware(s.handleDeleteJob))
+
+	// jobs - lifecycle
+	s.router.HandleFunc("PATCH /api/jobs/{id}/status", s.authMiddleware(s.handleUpdateJobStatus))
+	s.router.HandleFunc("POST /api/jobs/{id}/results", s.authMiddleware(s.handlePostJobResults))
 }
 
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
