@@ -1,12 +1,12 @@
 package main
 
 import (
-"bufio"
-"crypto/rand"
 "fmt"
+"log"
 "os"
-"strconv"
-"strings"
+
+"arcvault/coordinator/cmd"
+"arcvault/coordinator/config"
 )
 
 func main() {
@@ -17,51 +17,25 @@ os.Exit(1)
 
 switch os.Args[1] {
 case "init":
-doInit()
+if err := cmd.InitCommand(); err != nil {
+log.Fatalf("init failed: %v", err)
+}
 case "start":
-fmt.Println("Server would start on :8080")
+cfg, err := config.Load()
+if err != nil {
+log.Fatalf("failed to load config: %v", err)
+}
+if err := cmd.StartCommand(cfg); err != nil {
+log.Fatalf("server error: %v", err)
+}
 case "help":
-fmt.Println("ArcVault Coordinator - init|start|help")
+fmt.Println("ArcVault Coordinator")
+fmt.Println("  init   - Initialize coordinator and generate admin token")
+fmt.Println("  start  - Start the coordinator server")
+fmt.Println("  help   - Show this help message")
+default:
+fmt.Printf("Unknown command: %s\n", os.Args[1])
+fmt.Println("Usage: coordinator init|start|help")
+os.Exit(1)
 }
-}
-
-func doInit() {
-fmt.Println("ArcVault Coordinator - Initialization")
-fmt.Println("=====================================")
-fmt.Println()
-
-reader := bufio.NewReader(os.Stdin)
-
-fmt.Print("Enter port (default 8080): ")
-portStr, _ := reader.ReadString('\n')
-portStr = strings.TrimSpace(portStr)
-port := 8080
-if p, err := strconv.Atoi(portStr); err == nil {
-port = p
-}
-
-fmt.Print("Enter database path (default ~/.arcvault/arcvault.db): ")
-dbPath, _ := reader.ReadString('\n')
-dbPath = strings.TrimSpace(dbPath)
-if dbPath == "" {
-homeDir, _ := os.UserHomeDir()
-dbPath = homeDir + "\\.arcvault\\arcvault.db"
-}
-
-token := generateToken(32)
-
-fmt.Printf("\nPort: %d\n", port)
-fmt.Printf("Database: %s\n", dbPath)
-fmt.Printf("Admin token (save this): %s\n\n", token)
-fmt.Println("Next step: Run 'coordinator start'")
-}
-
-func generateToken(length int) string {
-bytes := make([]byte, length)
-rand.Read(bytes)
-hexStr := ""
-for _, b := range bytes {
-hexStr += fmt.Sprintf("%02x", b)
-}
-return hexStr
 }

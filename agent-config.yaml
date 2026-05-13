@@ -2,5 +2,5 @@ agent_id: agent-01
 hostname: my-machine
 os: windows
 coordinator_url: http://localhost:443
-auth_token: f0552fd7095c30b2829b73a1f97b7bb91e0435e2ccebc5126cc8f33637b59f78
+auth_token: 78a715f1fede7c93d4e35c7e1dee166e204f7b703375e361833df3d3d89238bc
 version: 0.1.0
