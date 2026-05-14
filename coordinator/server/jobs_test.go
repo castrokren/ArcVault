@@ -25,7 +25,8 @@ func newTestServer(t *testing.T) *Server {
 		Port:       8080,
 		AdminToken: "test-token",
 	}
-	return New(cfg, database)
+	// pass empty staticDir so tests don't try to serve files from disk
+	return NewWithStatic(cfg, database, "")
 }
 
 func authHeader() string {
@@ -204,7 +205,6 @@ func TestListJobs_returnsCreatedJobs(t *testing.T) {
 func TestListJobs_filtersByAgentID(t *testing.T) {
 	s := newTestServer(t)
 
-	// two jobs for agent-01, one for agent-02
 	for _, agentID := range []string{"agent-01", "agent-01", "agent-02"} {
 		body := `{"agent_id":"` + agentID + `","name":"backup","source_path":"C:\\src","dest_path":"D:\\backup"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
