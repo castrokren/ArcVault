@@ -1,7 +1,7 @@
 # ArcVault Project Memory
 **Project Name:** ArcVault
 **Type:** OS-agnostic Backup Orchestrator
-**Status:** Phase 3 In Progress
+**Status:** Phase 3 — Tasks 1-4 Complete
 **Last Updated:** May 13, 2026
 
 ---
@@ -21,32 +21,43 @@ ArcVault solves key limitations in RoboBackup:
 - Go binaries compile on Windows
 - coordinator.exe init -- prompts for port/db path, generates token
 - agent.exe -- reads YAML config
-- Project structure established (coordinator/, agent/, dashboard/)
+- Project structure established
 - Code pushed to GitHub (https://github.com/castrokren/ArcVault)
 
 ### Phase 2: COMPLETE
-**What Works:**
 - coordinator.exe start -- initializes SQLite, starts HTTP server
-- GET  /health -- unauthenticated health check
-- POST /api/agents/register -- agent registration with token auth
-- POST /api/agents/{id}/heartbeat -- agent heartbeat with token auth
-- GET  /api/agents -- list all agents with token auth
-- agent.exe -- registers with coordinator on startup, sends heartbeat every 30s
+- agent.exe -- registers, sends heartbeat every 30s
 - SQLite schema: agents, tokens, jobs, job_runs tables
 
-### Phase 3: IN PROGRESS
-**Coordinator: COMPLETE (21 tests passing)**
-- POST   /api/jobs -- create job (requires agent_id, name, source_path, dest_path)
-- GET    /api/jobs -- list jobs, supports ?agent_id= filter
-- GET    /api/jobs/{id} -- get single job
-- DELETE /api/jobs/{id} -- delete job
-- PATCH  /api/jobs/{id}/status -- update status (pending/running/completed/failed)
-- POST   /api/jobs/{id}/results -- store job run result (exit_code, output)
+### Phase 3: IN PROGRESS (Tasks 1-4 done)
 
-**Agent Runner: NOT STARTED**
-- Will live at agent/runner/runner.go
-- Polls coordinator for pending jobs every 30s
-- Claims job (sets status=running), executes, posts results
+**Task 1 -- Job CRUD: COMPLETE**
+- POST/GET/DELETE/GET /api/jobs with source_path, dest_path fields
+- GET /api/jobs supports ?agent_id= filter
+- jobs table: id, agent_id, name, source_path, dest_path, schedule, status, created_at
+
+**Task 2 -- Job Runner: COMPLETE**
+- agent/runner/runner.go -- polls coordinator every 30s
+- Fetches pending jobs for this agent via GET /api/jobs?agent_id=...&status=pending
+- Claims job (PATCH status=running), executes robocopy/rsync, posts results
+- agent/runner/executor.go -- RealExecutor: robocopy (Windows, exit codes 1-7 normalized to 0), rsync (Unix)
+- agent/main.go -- heartbeat + runner both run as goroutines, blocks on SIGINT/SIGTERM
+
+**Task 3 -- Job Results endpoint: COMPLETE**
+- POST /api/jobs/{id}/results -- stores exit_code + output in job_runs table
+- PATCH /api/jobs/{id}/status -- updates job status (pending/running/completed/failed)
+
+**Task 4 -- WebSocket: COMPLETE**
+- coordinator/server/hub.go -- Hub struct, gorilla/websocket, broadcasts to all clients
+- GET /ws -- WebSocket upgrade endpoint (Bearer auth required)
+- Events: job.updated (on PATCH status), job.result (on POST results)
+- Event shape: {"type": "job.updated", "payload": {"id": "...", "status": "..."}}
+
+**Task 5 -- Vue Dashboard: NOT STARTED**
+- Will live in dashboard/
+- Vue 3 + Vite
+- Agent status panel, job list, job history
+- Real-time updates via WebSocket
 
 ---
 
@@ -58,11 +69,13 @@ ArcVault solves key limitations in RoboBackup:
 - **Database:** SQLite via modernc.org/sqlite (pure Go, no CGO)
 - **Authentication:** Token-based (crypto/rand generated, stored in config.json)
 - **Sync Tools:** Robocopy (Windows), Rsync (Unix/Mac)
-- **Module:** single monorepo, module name: `arcvault`
+- **WebSocket:** github.com/gorilla/websocket v1.5.3
+- **Module:** single monorepo at repo root, module name: `arcvault`
 
 ### Dependencies
 - modernc.org/sqlite -- SQLite driver (pure Go)
 - gopkg.in/yaml.v3 -- agent YAML config parsing
+- github.com/gorilla/websocket v1.5.3 -- WebSocket
 - github.com/robfig/cron/v3 -- available for job scheduling (future)
 - golang.org/x/crypto
 
@@ -76,23 +89,35 @@ coordinator/
   server/
     server.go
     agents.go
+    hub.go
     jobs.go
     job_status.go
     job_results.go
+    hub_test.go
     jobs_test.go
     jobs_status_results_test.go
 agent/
   main.go
   config/config.go
   heartbeat/heartbeat.go
-  runner/          <-- NEXT
-dashboard/         <-- future
+  runner/
+    runner.go
+    runner_test.go
+    executor.go
+dashboard/         <-- Task 5, not started
+go.mod
 ```
+
+### Test Count
+- 31 tests total, all passing
+- coordinator/server: 26 tests
+- agent/runner: 5 tests
 
 ### API Endpoints
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET    | /health | No | Health check |
+| GET    | /ws | Bearer | WebSocket |
 | POST   | /api/agents/register | Bearer | Register agent |
 | POST   | /api/agents/{id}/heartbeat | Bearer | Agent heartbeat |
 | GET    | /api/agents | Bearer | List all agents |
@@ -102,6 +127,12 @@ dashboard/         <-- future
 | DELETE | /api/jobs/{id} | Bearer | Delete job |
 | PATCH  | /api/jobs/{id}/status | Bearer | Update job status |
 | POST   | /api/jobs/{id}/results | Bearer | Store job run result |
+
+### WebSocket Events
+| Type | Trigger | Payload |
+|------|---------|---------|
+| job.updated | PATCH /api/jobs/{id}/status | {id, status} |
+| job.result | POST /api/jobs/{id}/results | {job_id, exit_code} |
 
 ### Job Schema
 ```
@@ -141,14 +172,8 @@ version: 0.1.0
 
 ### PowerShell File Creation (No BOM)
 ```powershell
-# RIGHT (no BOM)
 $utf8 = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText("C:\full\path\file.go", $content, $utf8)
-```
-
-### Always Use Full Paths
-```powershell
-[System.IO.File]::WriteAllText("C:\Projects\ArcVault2.0\file.go", $content, $utf8)
 ```
 
 ### Run tests from repo root
@@ -158,22 +183,23 @@ go test ./coordinator/server/... -v
 go test ./... -v
 ```
 
+### Watch out for duplicate files
+Stray numbered files (e.g. server_2.go, job_results_3.go) cause redeclaration errors.
+Always check with Get-ChildItem and delete duplicates before running tests.
+
 ---
 
 ## Phase 3 Roadmap
-**Goal:** Job scheduling and Vue dashboard
-
-### Tasks (in order):
-1. **Job CRUD** ✅ -- POST/GET/DELETE /api/jobs
-2. **Job Runner** -- Execute robocopy/rsync jobs on agent (NEXT)
-3. **Job Results** ✅ -- POST /api/jobs/{id}/results endpoint
-4. **WebSocket** -- Real-time dashboard updates
-5. **Vue Dashboard** -- Agent status, job list, job history
+1. Job CRUD ✅
+2. Job Runner ✅
+3. Job Results endpoint ✅
+4. WebSocket ✅
+5. Vue Dashboard ⬜ -- NEXT
 
 ---
 
 ## Git Status
-**Latest commit:** Phase 3 Task 1c complete
+**Latest commit:** Phase 3 Task 4 complete -- WebSocket hub
 **Remote:** https://github.com/castrokren/ArcVault
 **Branch:** main
 
