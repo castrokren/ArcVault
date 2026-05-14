@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"arcvault/coordinator/config"
 	"arcvault/coordinator/db"
@@ -30,6 +31,10 @@ func New(cfg *config.Config, database *db.DB) *Server {
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.cfg.Port)
 	log.Printf("ArcVault Coordinator listening on %s", addr)
+
+	// check every 60s, mark offline after 90s without heartbeat
+	s.StartOfflineDetector(60*time.Second, 90*time.Second)
+
 	return http.ListenAndServe(addr, corsMiddleware(s.router))
 }
 
