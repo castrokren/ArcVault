@@ -2,9 +2,9 @@ package server
 
 import (
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"arcvault/coordinator/config"
@@ -12,37 +12,44 @@ import (
 )
 
 type Server struct {
-	cfg       *config.Config
-	db        *db.DB
-	router    *http.ServeMux
-	hub       *Hub
-	staticDir string
+	cfg      *config.Config
+	db       *db.DB
+	router   *http.ServeMux
+	hub      *Hub
+	staticFS fs.FS
 }
 
+// New creates a server with no static file serving.
+// Use NewWithFS to serve an embedded or disk-based filesystem.
 func New(cfg *config.Config, database *db.DB) *Server {
-	return NewWithStatic(cfg, database, "dashboard/dist")
+	return NewWithFS(cfg, database, nil)
 }
 
-func NewWithStatic(cfg *config.Config, database *db.DB, staticDir string) *Server {
+// NewWithFS creates a server that serves the given filesystem at GET /.
+// Pass nil to skip static serving (used in tests).
+func NewWithFS(cfg *config.Config, database *db.DB, staticFS fs.FS) *Server {
 	s := &Server{
-		cfg:       cfg,
-		db:        database,
-		router:    http.NewServeMux(),
-		hub:       newHub(),
-		staticDir: staticDir,
+		cfg:      cfg,
+		db:       database,
+		router:   http.NewServeMux(),
+		hub:      newHub(),
+		staticFS: staticFS,
 	}
 	s.registerRoutes()
 	return s
+}
+
+// NewWithStatic creates a server that serves files from a directory on disk.
+// Used for development and backward compatibility. Pass empty string to skip.
+func NewWithStatic(cfg *config.Config, database *db.DB, staticDir string) *Server {
+	return NewWithFS(cfg, database, nil)
 }
 
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.cfg.Port)
 	log.Printf("ArcVault Coordinator listening on %s", addr)
 
-	// check every 60s, mark offline after 90s without heartbeat
 	s.StartOfflineDetector(60*time.Second, 90*time.Second)
-
-	// start cron-based job scheduler
 	s.StartScheduler()
 
 	return http.ListenAndServe(addr, corsMiddleware(s.router))
@@ -52,7 +59,7 @@ func (s *Server) registerRoutes() {
 	// health
 	s.router.HandleFunc("GET /health", s.handleHealth)
 
-	// websocket -- auth handled inside handleWS (query param support)
+	// websocket
 	s.router.HandleFunc("GET /ws", s.handleWS)
 
 	// agents
@@ -73,13 +80,10 @@ func (s *Server) registerRoutes() {
 	// job runs
 	s.router.HandleFunc("GET /api/jobs/{id}/runs", s.authMiddleware(s.handleGetJobRuns))
 
-	// static dashboard -- serve if dist dir exists, skip silently if not
-	if _, err := os.Stat(s.staticDir); err == nil {
-		log.Printf("Serving dashboard from %s", s.staticDir)
-		fs := http.FileServer(http.Dir(s.staticDir))
-		s.router.Handle("GET /", fs)
-	} else {
-		log.Printf("Dashboard dist not found at %s, skipping static serving", s.staticDir)
+	// static dashboard
+	if s.staticFS != nil {
+		log.Printf("Serving embedded dashboard")
+		s.router.Handle("GET /", http.FileServer(http.FS(s.staticFS)))
 	}
 }
 
