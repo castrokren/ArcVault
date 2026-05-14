@@ -54,6 +54,12 @@ func (s *Server) handleUpdateJobStatus(w http.ResponseWriter, r *http.Request) {
 		j.Schedule = &schedule.String
 	}
 
+	// broadcast to WebSocket clients
+	s.hub.Broadcast(Event{
+		Type:    "job.updated",
+		Payload: map[string]string{"id": j.ID, "status": j.Status},
+	})
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(j)
 }
