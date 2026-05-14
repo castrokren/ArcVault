@@ -2,20 +2,26 @@
 **Last updated:** May 14, 2026
 
 ## Current Phase
-Phase 4 in progress. Tasks 1-3 complete. Production build not yet started.
+Phase 4 COMPLETE.
 
 ## What works
-- `coordinator.exe init` -- prompts for port/db path, generates admin token
-- `coordinator.exe start` -- HTTP server, SQLite, CORS, offline detector, cron scheduler
-- `agent.exe` -- registers, heartbeats, polls jobs, executes robocopy/rsync, posts results
-- 45 tests passing across coordinator/server and agent/runner
-- Vue 3 dashboard -- agents, jobs, history (real /runs data), live WebSocket
+- `coordinator.exe start` -- single command starts everything:
+  - HTTP API (all endpoints)
+  - WebSocket hub (real-time events)
+  - CORS middleware
+  - Offline detector (60s interval, 90s threshold)
+  - Cron job scheduler (robfig/cron per job + 60s fallback ticker)
+  - Serves Vue dashboard from dashboard/dist at GET /
+- `agent.exe` -- registers, heartbeats every 30s, polls + executes jobs, posts results
+- 45 tests passing (coordinator/server: 40, agent/runner: 5)
+- Production deployment: run coordinator from repo root, dashboard served on same port
 
 ## Full API
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET    | /health | No | Health check |
 | GET    | /ws | ?token= | WebSocket |
+| GET    | / | No | Dashboard (static) |
 | POST   | /api/agents/register | Bearer | Register agent |
 | POST   | /api/agents/{id}/heartbeat | Bearer | Agent heartbeat |
 | GET    | /api/agents | Bearer | List agents |
@@ -27,15 +33,16 @@ Phase 4 in progress. Tasks 1-3 complete. Production build not yet started.
 | POST   | /api/jobs/{id}/results | Bearer | Store run result |
 | GET    | /api/jobs/{id}/runs | Bearer | List job runs |
 
-## Background services (start on coordinator start)
-- Offline detector: checks every 60s, marks offline after 90s no heartbeat
-- Cron scheduler: robfig/cron per job schedule + 60s fallback ticker
+## Production deployment
+```
+cd C:\Projects\ArcVault2.0
+go run ./coordinator start   # serves API + dashboard on port 443
+go run ./agent               # run on each machine to back up
+```
 
-## Open items
-- Production build not yet done (Task 4)
-
-## Next step
-Task 4 -- Production build
-- `npm run build` in dashboard/
-- Coordinator serves dashboard/dist as static files
-- Single binary + dist folder deployment
+## Possible Phase 5 ideas
+- goreleaser / cross-platform binary distribution
+- Per-agent tokens instead of single admin token
+- Email/webhook notifications on job failure
+- Dashboard: dark/light theme toggle, pagination, search
+- Agent auto-update mechanism

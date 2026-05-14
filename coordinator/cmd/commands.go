@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/rand"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path/filepath"
@@ -19,6 +20,7 @@ func InitCommand() error {
 	fmt.Println("ArcVault Coordinator - Initialization")
 	fmt.Println("=====================================")
 	reader := bufio.NewReader(os.Stdin)
+
 	// Get port
 	fmt.Print("Enter port (default 8080): ")
 	portStr, _ := reader.ReadString('\n')
@@ -55,7 +57,6 @@ func InitCommand() error {
 		Environment:  "development",
 	}
 
-	// Save configuration
 	if err := config.Save(cfg); err != nil {
 		return err
 	}
@@ -68,10 +69,11 @@ func InitCommand() error {
 	return nil
 }
 
-func StartCommand(cfg *config.Config) error {
-	log.Printf("Starting ArcVault Coordinator on port %d\n", cfg.Port)
+// StartCommand starts the coordinator. staticFS is the embedded dashboard
+// filesystem — pass nil to skip static serving (e.g. in dev without a build).
+func StartCommand(cfg *config.Config, staticFS fs.FS) error {
+	log.Printf("Starting ArcVault Coordinator on port %d", cfg.Port)
 
-	// Initialize database
 	database, err := db.Init(cfg.DatabasePath)
 	if err != nil {
 		return fmt.Errorf("failed to initialize database: %v", err)
@@ -80,8 +82,7 @@ func StartCommand(cfg *config.Config) error {
 
 	log.Println("Database initialized")
 
-	// Start HTTP server
-	srv := server.New(cfg, database)
+	srv := server.NewWithFS(cfg, database, staticFS)
 	return srv.Start()
 }
 
