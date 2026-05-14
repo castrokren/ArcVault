@@ -35,6 +35,9 @@ func (s *Server) Start() error {
 	// check every 60s, mark offline after 90s without heartbeat
 	s.StartOfflineDetector(60*time.Second, 90*time.Second)
 
+	// start cron-based job scheduler
+	s.StartScheduler()
+
 	return http.ListenAndServe(addr, corsMiddleware(s.router))
 }
 
