@@ -1,8 +1,8 @@
 # ArcVault Project Memory
 **Project Name:** ArcVault
 **Type:** OS-agnostic Backup Orchestrator
-**Status:** Phase 3 — Tasks 1-4 Complete
-**Last Updated:** May 13, 2026
+**Status:** Phase 3 COMPLETE
+**Last Updated:** May 14, 2026
 
 ---
 
@@ -19,45 +19,47 @@ ArcVault solves key limitations in RoboBackup:
 
 ### Phase 1: COMPLETE
 - Go binaries compile on Windows
-- coordinator.exe init -- prompts for port/db path, generates token
-- agent.exe -- reads YAML config
-- Project structure established
-- Code pushed to GitHub (https://github.com/castrokren/ArcVault)
+- coordinator.exe init / start
+- agent.exe reads YAML config
+- GitHub: https://github.com/castrokren/ArcVault
 
 ### Phase 2: COMPLETE
-- coordinator.exe start -- initializes SQLite, starts HTTP server
-- agent.exe -- registers, sends heartbeat every 30s
-- SQLite schema: agents, tokens, jobs, job_runs tables
+- coordinator.exe start -- SQLite, HTTP server
+- agent.exe -- registers, heartbeats every 30s
 
-### Phase 3: IN PROGRESS (Tasks 1-4 done)
+### Phase 3: COMPLETE (31 tests passing)
 
 **Task 1 -- Job CRUD: COMPLETE**
-- POST/GET/DELETE/GET /api/jobs with source_path, dest_path fields
+- POST/GET/DELETE /api/jobs, GET /api/jobs/{id}
+- Required fields: agent_id, name, source_path, dest_path
+- Optional: schedule
 - GET /api/jobs supports ?agent_id= filter
-- jobs table: id, agent_id, name, source_path, dest_path, schedule, status, created_at
 
 **Task 2 -- Job Runner: COMPLETE**
-- agent/runner/runner.go -- polls coordinator every 30s
-- Fetches pending jobs for this agent via GET /api/jobs?agent_id=...&status=pending
-- Claims job (PATCH status=running), executes robocopy/rsync, posts results
-- agent/runner/executor.go -- RealExecutor: robocopy (Windows, exit codes 1-7 normalized to 0), rsync (Unix)
-- agent/main.go -- heartbeat + runner both run as goroutines, blocks on SIGINT/SIGTERM
+- agent/runner/runner.go -- polls every 30s
+- GET /api/jobs?agent_id=...&status=pending
+- Claims (PATCH running), executes, posts results, marks completed/failed
+- agent/runner/executor.go -- RealExecutor: robocopy (Windows, exit 1-7 = success), rsync (Unix)
+- agent/main.go -- heartbeat + runner as goroutines, SIGINT/SIGTERM shutdown
 
-**Task 3 -- Job Results endpoint: COMPLETE**
-- POST /api/jobs/{id}/results -- stores exit_code + output in job_runs table
-- PATCH /api/jobs/{id}/status -- updates job status (pending/running/completed/failed)
+**Task 3 -- Job Results: COMPLETE**
+- POST /api/jobs/{id}/results -- stores in job_runs table
+- PATCH /api/jobs/{id}/status -- pending/running/completed/failed
 
 **Task 4 -- WebSocket: COMPLETE**
-- coordinator/server/hub.go -- Hub struct, gorilla/websocket, broadcasts to all clients
-- GET /ws -- WebSocket upgrade endpoint (Bearer auth required)
-- Events: job.updated (on PATCH status), job.result (on POST results)
-- Event shape: {"type": "job.updated", "payload": {"id": "...", "status": "..."}}
+- coordinator/server/hub.go -- gorilla/websocket hub
+- GET /ws -- token via ?token= query param (browsers can't set WS headers)
+- Events: job.updated, job.result
+- Event shape: {"type": "...", "payload": {...}}
 
-**Task 5 -- Vue Dashboard: NOT STARTED**
-- Will live in dashboard/
-- Vue 3 + Vite
-- Agent status panel, job list, job history
-- Real-time updates via WebSocket
+**Task 5 -- Vue Dashboard: COMPLETE**
+- Vue 3 + Vite 8, Node 24, vue-router@4
+- Token gate on first load, stored in localStorage
+- Agents view: table with status badges, last seen
+- Jobs view: table + create form + delete, status badges
+- History view: job runs (falls back gracefully if no /runs endpoint)
+- Real-time: WebSocket lastEvent prop passed to all views, auto-refresh on events
+- CORS: coordinator wraps router with corsMiddleware
 
 ---
 
@@ -65,19 +67,22 @@ ArcVault solves key limitations in RoboBackup:
 
 ### Stack
 - **Language:** Go (coordinator + agents)
-- **Frontend:** Vue 3 + Vite (not yet started)
+- **Frontend:** Vue 3 + Vite 8, vue-router@4
 - **Database:** SQLite via modernc.org/sqlite (pure Go, no CGO)
-- **Authentication:** Token-based (crypto/rand generated, stored in config.json)
+- **Authentication:** Single admin token (Bearer header or ?token= for WS)
 - **Sync Tools:** Robocopy (Windows), Rsync (Unix/Mac)
 - **WebSocket:** github.com/gorilla/websocket v1.5.3
-- **Module:** single monorepo at repo root, module name: `arcvault`
+- **Module:** single monorepo, module name: `arcvault`
 
-### Dependencies
-- modernc.org/sqlite -- SQLite driver (pure Go)
-- gopkg.in/yaml.v3 -- agent YAML config parsing
-- github.com/gorilla/websocket v1.5.3 -- WebSocket
-- github.com/robfig/cron/v3 -- available for job scheduling (future)
+### Dependencies (Go)
+- modernc.org/sqlite
+- gopkg.in/yaml.v3
+- github.com/gorilla/websocket v1.5.3
+- github.com/robfig/cron/v3 (available, not yet used)
 - golang.org/x/crypto
+
+### Dependencies (JS)
+- vite@8, vue@3, vue-router@4
 
 ### Project Layout
 ```
@@ -87,9 +92,9 @@ coordinator/
   config/config.go
   db/db.go
   server/
-    server.go
+    server.go         -- CORS middleware, routes
     agents.go
-    hub.go
+    hub.go            -- WebSocket hub, ?token= auth
     jobs.go
     job_status.go
     job_results.go
@@ -97,14 +102,24 @@ coordinator/
     jobs_test.go
     jobs_status_results_test.go
 agent/
-  main.go
+  main.go             -- goroutines + signal shutdown
   config/config.go
   heartbeat/heartbeat.go
   runner/
     runner.go
     runner_test.go
-    executor.go
-dashboard/         <-- Task 5, not started
+    executor.go       -- robocopy/rsync
+dashboard/
+  src/
+    main.js
+    App.vue           -- nav, token gate, WS indicator
+    api.js            -- fetch wrapper
+    router/index.js
+    composables/useWebSocket.js
+    views/
+      Agents.vue
+      Jobs.vue
+      History.vue
 go.mod
 ```
 
@@ -117,89 +132,48 @@ go.mod
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET    | /health | No | Health check |
-| GET    | /ws | Bearer | WebSocket |
+| GET    | /ws | ?token= | WebSocket |
 | POST   | /api/agents/register | Bearer | Register agent |
 | POST   | /api/agents/{id}/heartbeat | Bearer | Agent heartbeat |
 | GET    | /api/agents | Bearer | List all agents |
 | POST   | /api/jobs | Bearer | Create job |
-| GET    | /api/jobs | Bearer | List jobs (?agent_id= filter) |
+| GET    | /api/jobs | Bearer | List jobs (?agent_id=) |
 | GET    | /api/jobs/{id} | Bearer | Get job |
 | DELETE | /api/jobs/{id} | Bearer | Delete job |
-| PATCH  | /api/jobs/{id}/status | Bearer | Update job status |
-| POST   | /api/jobs/{id}/results | Bearer | Store job run result |
+| PATCH  | /api/jobs/{id}/status | Bearer | Update status |
+| POST   | /api/jobs/{id}/results | Bearer | Store run result |
 
 ### WebSocket Events
 | Type | Trigger | Payload |
 |------|---------|---------|
-| job.updated | PATCH /api/jobs/{id}/status | {id, status} |
-| job.result | POST /api/jobs/{id}/results | {job_id, exit_code} |
+| job.updated | PATCH status | {id, status} |
+| job.result | POST results | {job_id, exit_code} |
 
-### Job Schema
-```
-id          TEXT PRIMARY KEY
-agent_id    TEXT NOT NULL
-name        TEXT NOT NULL
-source_path TEXT NOT NULL
-dest_path   TEXT NOT NULL
-schedule    TEXT (nullable)
-status      TEXT DEFAULT 'pending'  -- pending/running/completed/failed
-created_at  DATETIME
-```
-
-### Job Run Schema
-```
-id          TEXT PRIMARY KEY
-job_id      TEXT NOT NULL
-started_at  DATETIME (nullable)
-finished_at DATETIME
-exit_code   INTEGER
-output      TEXT
-```
-
-### agent-config.yaml
-```yaml
-agent_id: agent-01
-hostname: my-machine
-os: windows
-coordinator_url: http://localhost:443
-auth_token: <token-from-init>
-version: 0.1.0
-```
+### Schemas
+**jobs:** id, agent_id, name, source_path, dest_path, schedule, status, created_at
+**job_runs:** id, job_id, started_at, finished_at, exit_code, output
 
 ---
 
 ## Windows Development Notes
-
-### PowerShell File Creation (No BOM)
-```powershell
-$utf8 = New-Object System.Text.UTF8Encoding $false
-[System.IO.File]::WriteAllText("C:\full\path\file.go", $content, $utf8)
-```
-
-### Run tests from repo root
-```powershell
-cd C:\Projects\ArcVault2.0
-go test ./coordinator/server/... -v
-go test ./... -v
-```
-
-### Watch out for duplicate files
-Stray numbered files (e.g. server_2.go, job_results_3.go) cause redeclaration errors.
-Always check with Get-ChildItem and delete duplicates before running tests.
+- PowerShell: use `[System.IO.File]::WriteAllText` with UTF8 no-BOM encoding
+- Run tests from repo root: `cd C:\Projects\ArcVault2.0 && go test ./... -v`
+- Watch for duplicate files (server_2.go etc) -- causes redeclaration errors
+- Dashboard dev server: `cd dashboard && npm run dev` → http://localhost:5173
 
 ---
 
-## Phase 3 Roadmap
-1. Job CRUD ✅
-2. Job Runner ✅
-3. Job Results endpoint ✅
-4. WebSocket ✅
-5. Vue Dashboard ⬜ -- NEXT
+## Phase 4 Candidates
+1. **Job scheduling** -- cron expressions via robfig/cron (already in go.mod)
+2. **GET /api/jobs/{id}/runs** -- full history view in dashboard
+3. **Production build** -- `npm run build` + serve static from coordinator, or goreleaser
+4. **Agent offline detection** -- mark agents offline if no heartbeat for N minutes
+5. **Multi-token auth** -- per-agent tokens instead of single admin token
 
 ---
 
 ## Git Status
-**Latest commit:** Phase 3 Task 4 complete -- WebSocket hub
+**Latest commit:** Phase 3 complete
 **Remote:** https://github.com/castrokren/ArcVault
 **Branch:** main
 

@@ -54,6 +54,9 @@ func (s *Server) registerRoutes() {
 	// jobs - lifecycle
 	s.router.HandleFunc("PATCH /api/jobs/{id}/status", s.authMiddleware(s.handleUpdateJobStatus))
 	s.router.HandleFunc("POST /api/jobs/{id}/results", s.authMiddleware(s.handlePostJobResults))
+
+	// job runs
+	s.router.HandleFunc("GET /api/jobs/{id}/runs", s.authMiddleware(s.handleGetJobRuns))
 }
 
 func corsMiddleware(next http.Handler) http.Handler {
