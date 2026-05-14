@@ -30,15 +30,15 @@ func New(cfg *config.Config, database *db.DB) *Server {
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.cfg.Port)
 	log.Printf("ArcVault Coordinator listening on %s", addr)
-	return http.ListenAndServe(addr, s.router)
+	return http.ListenAndServe(addr, corsMiddleware(s.router))
 }
 
 func (s *Server) registerRoutes() {
 	// health
 	s.router.HandleFunc("GET /health", s.handleHealth)
 
-	// websocket
-	s.router.HandleFunc("GET /ws", s.authMiddleware(s.handleWS))
+	// websocket -- auth handled inside handleWS (query param support)
+	s.router.HandleFunc("GET /ws", s.handleWS)
 
 	// agents
 	s.router.HandleFunc("POST /api/agents/register", s.authMiddleware(s.handleRegister))
@@ -54,6 +54,20 @@ func (s *Server) registerRoutes() {
 	// jobs - lifecycle
 	s.router.HandleFunc("PATCH /api/jobs/{id}/status", s.authMiddleware(s.handleUpdateJobStatus))
 	s.router.HandleFunc("POST /api/jobs/{id}/results", s.authMiddleware(s.handlePostJobResults))
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {

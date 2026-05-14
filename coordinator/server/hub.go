@@ -28,7 +28,6 @@ func newHub() *Hub {
 }
 
 // Broadcast sends an event to every connected client.
-// Slow or dead clients are removed silently.
 func (h *Hub) Broadcast(event Event) {
 	msg, err := json.Marshal(event)
 	if err != nil {
@@ -67,7 +66,22 @@ var upgrader = websocket.Upgrader{
 }
 
 // handleWS upgrades the connection and registers it with the hub.
+// Auth: accepts Bearer token from Authorization header OR ?token= query param
+// (browsers cannot set headers on WebSocket connections).
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
+	// auth checked here instead of authMiddleware to support query param token
+	token := r.Header.Get("Authorization")
+	if len(token) > 7 && token[:7] == "Bearer " {
+		token = token[7:]
+	}
+	if token == "" {
+		token = r.URL.Query().Get("token")
+	}
+	if token != s.cfg.AdminToken {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("WS upgrade failed: %v", err)
@@ -77,7 +91,6 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	s.hub.add(conn)
 	log.Printf("WS client connected (%d total)", len(s.hub.clients))
 
-	// keep connection alive; remove on disconnect
 	go func() {
 		defer func() {
 			s.hub.remove(conn)
@@ -85,7 +98,6 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			log.Printf("WS client disconnected")
 		}()
 		for {
-			// ReadMessage blocks; returns error on close
 			if _, _, err := conn.ReadMessage(); err != nil {
 				return
 			}
