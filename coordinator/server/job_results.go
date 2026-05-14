@@ -67,6 +67,15 @@ func (s *Server) handlePostJobResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// broadcast to WebSocket clients
+	s.hub.Broadcast(Event{
+		Type: "job.result",
+		Payload: map[string]interface{}{
+			"job_id":    run.JobID,
+			"exit_code": run.ExitCode,
+		},
+	})
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(run)

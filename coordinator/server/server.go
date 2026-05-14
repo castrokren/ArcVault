@@ -13,6 +13,7 @@ type Server struct {
 	cfg    *config.Config
 	db     *db.DB
 	router *http.ServeMux
+	hub    *Hub
 }
 
 func New(cfg *config.Config, database *db.DB) *Server {
@@ -20,6 +21,7 @@ func New(cfg *config.Config, database *db.DB) *Server {
 		cfg:    cfg,
 		db:     database,
 		router: http.NewServeMux(),
+		hub:    newHub(),
 	}
 	s.registerRoutes()
 	return s
@@ -34,6 +36,9 @@ func (s *Server) Start() error {
 func (s *Server) registerRoutes() {
 	// health
 	s.router.HandleFunc("GET /health", s.handleHealth)
+
+	// websocket
+	s.router.HandleFunc("GET /ws", s.authMiddleware(s.handleWS))
 
 	// agents
 	s.router.HandleFunc("POST /api/agents/register", s.authMiddleware(s.handleRegister))
