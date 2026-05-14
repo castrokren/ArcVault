@@ -12,8 +12,7 @@
       <thead>
         <tr>
           <th>Run ID</th>
-          <th>Job ID</th>
-          <th>Job Name</th>
+          <th>Job</th>
           <th>Exit Code</th>
           <th>Output</th>
           <th>Finished</th>
@@ -22,8 +21,10 @@
       <tbody>
         <tr v-for="run in runs" :key="run.id">
           <td class="mono">{{ run.id }}</td>
-          <td class="mono">{{ run.job_id }}</td>
-          <td>{{ jobName(run.job_id) }}</td>
+          <td>
+            <span class="mono">{{ run.job_id }}</span>
+            <span v-if="jobName(run.job_id)" class="job-name"> — {{ jobName(run.job_id) }}</span>
+          </td>
           <td>
             <span class="badge" :class="run.exit_code === 0 ? 'success' : 'fail'">
               {{ run.exit_code }}
@@ -47,20 +48,23 @@ const jobs = ref([])
 const loading = ref(false)
 const error = ref(null)
 
-// The coordinator doesn't have a GET /api/job_runs endpoint yet,
-// so we fetch all jobs and their runs via the jobs list for now.
-// When a dedicated /api/runs endpoint is added, swap this out.
+const BASE_URL = 'http://localhost:443'
+
+function authHeaders() {
+  return { Authorization: `Bearer ${localStorage.getItem('arcvault_token')}` }
+}
+
 async function load() {
   loading.value = true
   error.value = null
   try {
     jobs.value = await getJobs()
-    // fetch runs for each job in parallel
+
     const results = await Promise.all(
       jobs.value.map(j =>
-        fetch(`http://localhost:443/api/jobs/${j.id}/runs`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('arcvault_token')}` }
-        }).then(r => r.ok ? r.json() : []).catch(() => [])
+        fetch(`${BASE_URL}/api/jobs/${j.id}/runs`, { headers: authHeaders() })
+          .then(r => r.ok ? r.json() : [])
+          .catch(() => [])
       )
     )
     runs.value = results.flat().sort((a, b) =>
@@ -74,7 +78,7 @@ async function load() {
 }
 
 function jobName(jobID) {
-  return jobs.value.find(j => j.id === jobID)?.name || jobID
+  return jobs.value.find(j => j.id === jobID)?.name || ''
 }
 
 function formatDate(d) {
@@ -112,6 +116,7 @@ onMounted(load)
 }
 .table th { color: #888; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; }
 .mono { font-family: monospace; font-size: 0.85rem; }
+.job-name { color: #aaa; font-size: 0.85rem; }
 
 .output {
   font-family: monospace;

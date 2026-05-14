@@ -6,7 +6,6 @@
     </div>
 
     <div v-if="error" class="error">{{ error }}</div>
-
     <div v-if="agents.length === 0 && !loading" class="empty">No agents registered.</div>
 
     <table v-else class="table">
@@ -62,9 +61,9 @@ function formatDate(d) {
   return new Date(d).toLocaleString()
 }
 
-// refresh on heartbeat events
+// refresh on heartbeat or offline detection events
 watch(() => props.lastEvent, (ev) => {
-  if (ev?.type === 'agent.heartbeat') load()
+  if (ev?.type === 'agent.heartbeat' || ev?.type === 'agent.updated') load()
 })
 
 onMounted(load)
@@ -103,6 +102,6 @@ onMounted(load)
   font-weight: 600;
   text-transform: uppercase;
 }
-.badge.online { background: #1a3a1a; color: #4caf50; }
+.badge.online  { background: #1a3a1a; color: #4caf50; }
 .badge.offline { background: #3a1a1a; color: #e55; }
 </style>
