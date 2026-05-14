@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"arcvault/coordinator/config"
@@ -11,18 +12,24 @@ import (
 )
 
 type Server struct {
-	cfg    *config.Config
-	db     *db.DB
-	router *http.ServeMux
-	hub    *Hub
+	cfg       *config.Config
+	db        *db.DB
+	router    *http.ServeMux
+	hub       *Hub
+	staticDir string
 }
 
 func New(cfg *config.Config, database *db.DB) *Server {
+	return NewWithStatic(cfg, database, "dashboard/dist")
+}
+
+func NewWithStatic(cfg *config.Config, database *db.DB, staticDir string) *Server {
 	s := &Server{
-		cfg:    cfg,
-		db:     database,
-		router: http.NewServeMux(),
-		hub:    newHub(),
+		cfg:       cfg,
+		db:        database,
+		router:    http.NewServeMux(),
+		hub:       newHub(),
+		staticDir: staticDir,
 	}
 	s.registerRoutes()
 	return s
@@ -65,6 +72,15 @@ func (s *Server) registerRoutes() {
 
 	// job runs
 	s.router.HandleFunc("GET /api/jobs/{id}/runs", s.authMiddleware(s.handleGetJobRuns))
+
+	// static dashboard -- serve if dist dir exists, skip silently if not
+	if _, err := os.Stat(s.staticDir); err == nil {
+		log.Printf("Serving dashboard from %s", s.staticDir)
+		fs := http.FileServer(http.Dir(s.staticDir))
+		s.router.Handle("GET /", fs)
+	} else {
+		log.Printf("Dashboard dist not found at %s, skipping static serving", s.staticDir)
+	}
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

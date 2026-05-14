@@ -1,7 +1,7 @@
 # ArcVault Project Memory
 **Project Name:** ArcVault
 **Type:** OS-agnostic Backup Orchestrator
-**Status:** Phase 3 COMPLETE
+**Status:** Phase 4 — Tasks 1-3 Complete
 **Last Updated:** May 14, 2026
 
 ---
@@ -18,48 +18,36 @@ ArcVault solves key limitations in RoboBackup:
 ## Current Status
 
 ### Phase 1: COMPLETE
-- Go binaries compile on Windows
-- coordinator.exe init / start
-- agent.exe reads YAML config
-- GitHub: https://github.com/castrokren/ArcVault
-
 ### Phase 2: COMPLETE
-- coordinator.exe start -- SQLite, HTTP server
-- agent.exe -- registers, heartbeats every 30s
+### Phase 3: COMPLETE
 
-### Phase 3: COMPLETE (31 tests passing)
+### Phase 4: IN PROGRESS (Tasks 1-3 done)
 
-**Task 1 -- Job CRUD: COMPLETE**
-- POST/GET/DELETE /api/jobs, GET /api/jobs/{id}
-- Required fields: agent_id, name, source_path, dest_path
-- Optional: schedule
-- GET /api/jobs supports ?agent_id= filter
+**Task 1 -- GET /api/jobs/{id}/runs: COMPLETE**
+- Returns all job_runs for a given job, ordered by finished_at DESC
+- 404 if job not found, empty array if no runs
+- History.vue updated to use real endpoint
 
-**Task 2 -- Job Runner: COMPLETE**
-- agent/runner/runner.go -- polls every 30s
-- GET /api/jobs?agent_id=...&status=pending
-- Claims (PATCH running), executes, posts results, marks completed/failed
-- agent/runner/executor.go -- RealExecutor: robocopy (Windows, exit 1-7 = success), rsync (Unix)
-- agent/main.go -- heartbeat + runner as goroutines, SIGINT/SIGTERM shutdown
+**Task 2 -- Agent offline detection: COMPLETE**
+- coordinator/server/offline_detector.go
+- detectOfflineAgents(threshold) -- marks stale agents offline, broadcasts agent.updated
+- StartOfflineDetector(interval, threshold) -- runs on ticker, called from Start()
+- Default: check every 60s, mark offline after 90s
+- Agents.vue refreshes on agent.updated WebSocket events
 
-**Task 3 -- Job Results: COMPLETE**
-- POST /api/jobs/{id}/results -- stores in job_runs table
-- PATCH /api/jobs/{id}/status -- pending/running/completed/failed
+**Task 3 -- Job scheduling: COMPLETE**
+- coordinator/server/scheduler.go
+- triggerScheduledJobs() -- resets completed/failed scheduled jobs to pending
+- StartScheduler() -- loads jobs, registers with robfig/cron, 60s fallback ticker
+- Only resets jobs with non-empty schedule field
+- Does not interrupt running jobs
+- Broadcasts job.updated on reschedule
+- Called from coordinator Start()
 
-**Task 4 -- WebSocket: COMPLETE**
-- coordinator/server/hub.go -- gorilla/websocket hub
-- GET /ws -- token via ?token= query param (browsers can't set WS headers)
-- Events: job.updated, job.result
-- Event shape: {"type": "...", "payload": {...}}
-
-**Task 5 -- Vue Dashboard: COMPLETE**
-- Vue 3 + Vite 8, Node 24, vue-router@4
-- Token gate on first load, stored in localStorage
-- Agents view: table with status badges, last seen
-- Jobs view: table + create form + delete, status badges
-- History view: job runs (falls back gracefully if no /runs endpoint)
-- Real-time: WebSocket lastEvent prop passed to all views, auto-refresh on events
-- CORS: coordinator wraps router with corsMiddleware
+**Task 4 -- Production build: NOT STARTED**
+- npm run build in dashboard/
+- Coordinator serves dashboard/dist as static files
+- Single deployment: coordinator binary + dist/
 
 ---
 
@@ -72,13 +60,14 @@ ArcVault solves key limitations in RoboBackup:
 - **Authentication:** Single admin token (Bearer header or ?token= for WS)
 - **Sync Tools:** Robocopy (Windows), Rsync (Unix/Mac)
 - **WebSocket:** github.com/gorilla/websocket v1.5.3
+- **Scheduler:** github.com/robfig/cron/v3
 - **Module:** single monorepo, module name: `arcvault`
 
 ### Dependencies (Go)
 - modernc.org/sqlite
 - gopkg.in/yaml.v3
 - github.com/gorilla/websocket v1.5.3
-- github.com/robfig/cron/v3 (available, not yet used)
+- github.com/robfig/cron/v3
 - golang.org/x/crypto
 
 ### Dependencies (JS)
@@ -92,28 +81,34 @@ coordinator/
   config/config.go
   db/db.go
   server/
-    server.go         -- CORS middleware, routes
+    server.go              -- CORS, routes, Start() wires all bg services
     agents.go
-    hub.go            -- WebSocket hub, ?token= auth
+    hub.go                 -- WebSocket hub, ?token= auth
     jobs.go
     job_status.go
     job_results.go
+    job_runs.go            -- GET /api/jobs/{id}/runs
+    offline_detector.go    -- agent offline detection
+    scheduler.go           -- cron job scheduling
     hub_test.go
     jobs_test.go
     jobs_status_results_test.go
+    job_runs_test.go
+    offline_detector_test.go
+    scheduler_test.go
 agent/
-  main.go             -- goroutines + signal shutdown
+  main.go
   config/config.go
   heartbeat/heartbeat.go
   runner/
     runner.go
     runner_test.go
-    executor.go       -- robocopy/rsync
+    executor.go
 dashboard/
   src/
     main.js
-    App.vue           -- nav, token gate, WS indicator
-    api.js            -- fetch wrapper
+    App.vue
+    api.js
     router/index.js
     composables/useWebSocket.js
     views/
@@ -124,8 +119,8 @@ go.mod
 ```
 
 ### Test Count
-- 31 tests total, all passing
-- coordinator/server: 26 tests
+- 45 tests total, all passing
+- coordinator/server: 40 tests
 - agent/runner: 5 tests
 
 ### API Endpoints
@@ -135,45 +130,51 @@ go.mod
 | GET    | /ws | ?token= | WebSocket |
 | POST   | /api/agents/register | Bearer | Register agent |
 | POST   | /api/agents/{id}/heartbeat | Bearer | Agent heartbeat |
-| GET    | /api/agents | Bearer | List all agents |
+| GET    | /api/agents | Bearer | List agents |
 | POST   | /api/jobs | Bearer | Create job |
 | GET    | /api/jobs | Bearer | List jobs (?agent_id=) |
 | GET    | /api/jobs/{id} | Bearer | Get job |
 | DELETE | /api/jobs/{id} | Bearer | Delete job |
 | PATCH  | /api/jobs/{id}/status | Bearer | Update status |
 | POST   | /api/jobs/{id}/results | Bearer | Store run result |
+| GET    | /api/jobs/{id}/runs | Bearer | List job runs |
 
 ### WebSocket Events
 | Type | Trigger | Payload |
 |------|---------|---------|
-| job.updated | PATCH status | {id, status} |
+| job.updated | PATCH status / scheduler reschedule | {id, status} |
 | job.result | POST results | {job_id, exit_code} |
+| agent.updated | offline detector | {id, status} |
 
 ### Schemas
 **jobs:** id, agent_id, name, source_path, dest_path, schedule, status, created_at
 **job_runs:** id, job_id, started_at, finished_at, exit_code, output
+**agents:** id, hostname, os, version, status, last_seen, registered_at
 
 ---
 
 ## Windows Development Notes
-- PowerShell: use `[System.IO.File]::WriteAllText` with UTF8 no-BOM encoding
 - Run tests from repo root: `cd C:\Projects\ArcVault2.0 && go test ./... -v`
-- Watch for duplicate files (server_2.go etc) -- causes redeclaration errors
-- Dashboard dev server: `cd dashboard && npm run dev` → http://localhost:5173
+- Watch for duplicate files -- causes redeclaration errors, use Get-ChildItem to check
+- Dashboard dev: `cd dashboard && npm run dev` → http://localhost:5173
+- Coordinator: `go run ./coordinator start`
+- Always use PowerShell WriteAllText with UTF8 no-BOM when writing Go files manually
 
 ---
 
-## Phase 4 Candidates
-1. **Job scheduling** -- cron expressions via robfig/cron (already in go.mod)
-2. **GET /api/jobs/{id}/runs** -- full history view in dashboard
-3. **Production build** -- `npm run build` + serve static from coordinator, or goreleaser
-4. **Agent offline detection** -- mark agents offline if no heartbeat for N minutes
-5. **Multi-token auth** -- per-agent tokens instead of single admin token
+## Phase 4 Roadmap
+1. GET /api/jobs/{id}/runs ✅
+2. Agent offline detection ✅
+3. Job scheduling (cron) ✅
+4. Production build ⬜ -- NEXT
+   - npm run build → dashboard/dist
+   - Coordinator serves dist/ as static files on GET /
+   - Single deployment unit
 
 ---
 
 ## Git Status
-**Latest commit:** Phase 3 complete
+**Latest commit:** Phase 4 Tasks 1-3 complete
 **Remote:** https://github.com/castrokren/ArcVault
 **Branch:** main
 
