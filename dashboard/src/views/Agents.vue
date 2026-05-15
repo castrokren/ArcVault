@@ -6,7 +6,30 @@
     </div>
 
     <div v-if="error" class="error">{{ error }}</div>
-    <div v-if="agents.length === 0 && !loading" class="empty">No agents registered.</div>
+
+    <div v-if="agents.length > 0" class="filters">
+      <input
+        v-model="searchQuery"
+        type="text"
+        placeholder="Search agents by ID or hostname..."
+        class="search-input"
+      />
+      <div class="filter-chips">
+        <button
+          v-for="status in ['all', 'online', 'offline']"
+          :key="status"
+          class="chip"
+          :class="{ active: statusFilter === status }"
+          @click="statusFilter = status"
+        >
+          {{ status.charAt(0).toUpperCase() + status.slice(1) }}
+        </button>
+      </div>
+    </div>
+
+    <div v-if="filteredAgents.length === 0" class="empty">
+      {{ agents.length === 0 ? 'No agents registered.' : 'No agents match your search' }}
+    </div>
 
     <table v-else class="table">
       <thead>
@@ -20,7 +43,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="agent in agents" :key="agent.id">
+        <tr v-for="agent in filteredAgents" :key="agent.id">
           <td class="mono">{{ agent.id }}</td>
           <td>{{ agent.hostname }}</td>
           <td>{{ agent.os }}</td>
@@ -36,13 +59,25 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { getAgents } from '../api.js'
 
 const props = defineProps(['lastEvent'])
 const agents = ref([])
 const loading = ref(false)
 const error = ref(null)
+const searchQuery = ref('')
+const statusFilter = ref('all')
+
+const filteredAgents = computed(() => {
+  return agents.value.filter(a => {
+    const matchesSearch = !searchQuery.value ||
+      a.id.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+      a.hostname.toLowerCase().includes(searchQuery.value.toLowerCase())
+    const matchesStatus = statusFilter.value === 'all' || a.status === statusFilter.value
+    return matchesSearch && matchesStatus
+  })
+})
 
 async function load() {
   loading.value = true
@@ -82,7 +117,43 @@ onMounted(load)
 }
 
 .error { color: #e55; margin-bottom: 1rem; }
-.empty { color: #888; }
+.empty { color: #888; margin: 2rem 0; }
+
+.filters { margin-bottom: 1.5rem; }
+
+.search-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  border-radius: 4px;
+  border: 1px solid #2a2a3e;
+  background: #0f0f1a;
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #4f8ef7;
+  box-shadow: 0 0 0 2px rgba(79, 142, 247, 0.1);
+}
+
+.filter-chips { display: flex; gap: 0.5rem; }
+
+.chip {
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  border: 1px solid #2a2a3e;
+  background: transparent;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.chip:hover { border-color: #4f8ef7; color: #4f8ef7; }
+
+.chip.active { background: #4f8ef7; border-color: #4f8ef7; color: #fff; }
 
 .table { width: 100%; border-collapse: collapse; }
 .table th, .table td {
