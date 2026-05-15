@@ -14,6 +14,8 @@
       </div>
     </header>
 
+    <UpdateBanner v-if="tokenSet" :onUpdate="showUpdateModal" />
+
     <div v-if="!tokenSet" class="token-gate">
       <div class="token-box">
         <h2>Enter Admin Token</h2>
@@ -25,22 +27,40 @@
     <main v-else>
       <router-view :lastEvent="lastEvent" />
     </main>
+
+    <UpdateModal :isOpen="updateModalOpen" :lastEvent="lastEvent" @close="updateModalOpen = false" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, provide, reactive } from 'vue'
 import { saveToken as persistToken, hasToken } from './api.js'
 import { useWebSocket } from './composables/useWebSocket.js'
+import UpdateBanner from './components/UpdateBanner.vue'
+import UpdateModal from './components/UpdateModal.vue'
 
 const tokenInput = ref('')
 const tokenSet = ref(false)
+const updateModalOpen = ref(false)
 const { connected: wsConnected, lastEvent, connect } = useWebSocket()
+
+// Reactive update info store
+const updateStore = reactive({
+  current: 'v0.2.0',
+  latest: 'v0.2.0',
+  available: false,
+  releaseUrl: '',
+  assetUrl: ''
+})
+
+// Provide updateStore to child components
+provide('updateStore', updateStore)
 
 onMounted(() => {
   if (hasToken()) {
     tokenSet.value = true
     connect()
+    checkForUpdates()
   }
 })
 
@@ -49,6 +69,34 @@ function saveToken() {
   persistToken(tokenInput.value.trim())
   tokenSet.value = true
   connect()
+  checkForUpdates()
+}
+
+function checkForUpdates() {
+  const token = localStorage.getItem('arcvault_token')
+  if (!token) return
+
+  fetch('/api/update/check', {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+    .then(r => r.json())
+    .then(data => {
+      updateStore.current = data.current
+      updateStore.latest = data.latest
+      updateStore.available = data.update_available
+      updateStore.releaseUrl = data.release_url
+      updateStore.assetUrl = data.asset_url
+    })
+    .catch(err => {
+      console.error('Failed to check for updates:', err)
+    })
+}
+
+function showUpdateModal() {
+  updateModalOpen.value = true
 }
 </script>
 

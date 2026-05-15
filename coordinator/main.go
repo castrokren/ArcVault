@@ -11,6 +11,8 @@ import (
 	"arcvault/coordinator/static"
 )
 
+const Version = "v0.2.0"
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -27,6 +29,8 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to load config: %v", err)
 		}
+		// Set version in environment for update checks
+		os.Setenv("ARCVAULT_VERSION", Version)
 		if err := cmd.StartCommand(cfg, static.FS()); err != nil {
 			log.Fatalf("server error: %v", err)
 		}
@@ -37,6 +41,10 @@ func main() {
 		}
 		if err := cmd.CreateAgentTokenCommand(os.Args[2]); err != nil {
 			log.Fatalf("create-agent-token failed: %v", err)
+		}
+	case "check-update":
+		if err := cmd.CheckUpdateCommand(Version); err != nil {
+			log.Fatalf("check-update failed: %v", err)
 		}
 	case "install-service":
 		if err := service.Install(); err != nil {
@@ -60,6 +68,7 @@ func printUsage() {
 	fmt.Println("  init                          - Initialize and generate admin token")
 	fmt.Println("  start                         - Start the coordinator server")
 	fmt.Println("  create-agent-token <agent-id> - Generate a token for an agent")
+	fmt.Println("  check-update                  - Check for available updates")
 	fmt.Println("  install-service               - Install as a system service (requires admin/root)")
 	fmt.Println("  uninstall-service             - Remove the system service (requires admin/root)")
 	fmt.Println("  help                          - Show this help message")

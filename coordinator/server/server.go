@@ -65,6 +65,9 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /api/jobs/{id}/results", s.authMiddleware(s.handlePostJobResults))
 	s.router.HandleFunc("GET /api/jobs/{id}/runs", s.authMiddleware(s.handleGetJobRuns))
 
+	s.router.HandleFunc("GET /api/update/check", s.adminMiddleware(s.handleCheckUpdate))
+	s.router.HandleFunc("POST /api/update/apply", s.adminMiddleware(s.handleApplyUpdate))
+
 	if s.staticFS != nil {
 		log.Printf("Serving embedded dashboard")
 		s.router.Handle("GET /", http.FileServer(http.FS(s.staticFS)))
@@ -111,6 +114,28 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		http.Error(w, "invalid token", http.StatusUnauthorized)
+	}
+}
+
+// adminMiddleware accepts only the admin token from config.
+func (s *Server) adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("Authorization")
+		if token == "" {
+			http.Error(w, "missing Authorization header", http.StatusUnauthorized)
+			return
+		}
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+
+		// Only admin token is valid
+		if token == s.cfg.AdminToken {
+			next(w, r)
+			return
+		}
+
+		http.Error(w, "admin token required", http.StatusForbidden)
 	}
 }
 
