@@ -7,12 +7,13 @@ import (
 
 	"arcvault/coordinator/cmd"
 	"arcvault/coordinator/config"
+	"arcvault/coordinator/service"
 	"arcvault/coordinator/static"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: coordinator init|start|help")
+		printUsage()
 		os.Exit(1)
 	}
 
@@ -29,14 +30,28 @@ func main() {
 		if err := cmd.StartCommand(cfg, static.FS()); err != nil {
 			log.Fatalf("server error: %v", err)
 		}
+	case "install-service":
+		if err := service.Install(); err != nil {
+			log.Fatalf("install-service failed: %v", err)
+		}
+	case "uninstall-service":
+		if err := service.Uninstall(); err != nil {
+			log.Fatalf("uninstall-service failed: %v", err)
+		}
 	case "help":
-		fmt.Println("ArcVault Coordinator")
-		fmt.Println("  init   - Initialize coordinator and generate admin token")
-		fmt.Println("  start  - Start the coordinator server")
-		fmt.Println("  help   - Show this help message")
+		printUsage()
 	default:
 		fmt.Printf("Unknown command: %s\n", os.Args[1])
-		fmt.Println("Usage: coordinator init|start|help")
+		printUsage()
 		os.Exit(1)
 	}
+}
+
+func printUsage() {
+	fmt.Println("ArcVault Coordinator")
+	fmt.Println("  init               - Initialize coordinator and generate admin token")
+	fmt.Println("  start              - Start the coordinator server")
+	fmt.Println("  install-service    - Install as a system service (requires admin/root)")
+	fmt.Println("  uninstall-service  - Remove the system service (requires admin/root)")
+	fmt.Println("  help               - Show this help message")
 }

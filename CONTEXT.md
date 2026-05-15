@@ -2,47 +2,35 @@
 **Last updated:** May 14, 2026
 
 ## Current Phase
-Phase 4 COMPLETE.
+Phase 5 COMPLETE. v0.1.0 released on GitHub.
 
 ## What works
-- `coordinator.exe start` -- single command starts everything:
-  - HTTP API (all endpoints)
-  - WebSocket hub (real-time events)
-  - CORS middleware
-  - Offline detector (60s interval, 90s threshold)
-  - Cron job scheduler (robfig/cron per job + 60s fallback ticker)
-  - Serves Vue dashboard from dashboard/dist at GET /
-- `agent.exe` -- registers, heartbeats every 30s, polls + executes jobs, posts results
-- 45 tests passing (coordinator/server: 40, agent/runner: 5)
-- Production deployment: run coordinator from repo root, dashboard served on same port
+- `coordinator.exe start` -- single binary, dashboard embedded, no separate dist folder needed
+- `agent.exe` -- registers, heartbeats, polls + executes jobs, posts results
+- 45 tests passing
+- v0.1.0 draft release on GitHub with 10 archives (Windows/Mac/Linux, amd64/arm64)
 
-## Full API
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET    | /health | No | Health check |
-| GET    | /ws | ?token= | WebSocket |
-| GET    | / | No | Dashboard (static) |
-| POST   | /api/agents/register | Bearer | Register agent |
-| POST   | /api/agents/{id}/heartbeat | Bearer | Agent heartbeat |
-| GET    | /api/agents | Bearer | List agents |
-| POST   | /api/jobs | Bearer | Create job |
-| GET    | /api/jobs | Bearer | List jobs (?agent_id=) |
-| GET    | /api/jobs/{id} | Bearer | Get job |
-| DELETE | /api/jobs/{id} | Bearer | Delete job |
-| PATCH  | /api/jobs/{id}/status | Bearer | Update status |
-| POST   | /api/jobs/{id}/results | Bearer | Store run result |
-| GET    | /api/jobs/{id}/runs | Bearer | List job runs |
+## Release artifacts at https://github.com/castrokren/ArcVault/releases/tag/v0.1.0
+- coordinator_0.1.0_windows_amd64.tar.gz -- coordinator.exe + README
+- coordinator_0.1.0_darwin_amd64.tar.gz
+- coordinator_0.1.0_darwin_arm64.tar.gz
+- coordinator_0.1.0_linux_amd64.tar.gz
+- coordinator_0.1.0_linux_arm64.tar.gz
+- agent_0.1.0_windows_amd64.tar.gz -- agent.exe + agent-config.yaml + README
+- agent_0.1.0_darwin_amd64.tar.gz
+- agent_0.1.0_darwin_arm64.tar.gz
+- agent_0.1.0_linux_amd64.tar.gz
+- agent_0.1.0_linux_arm64.tar.gz
+- checksums.txt
 
 ## Production deployment
-```
-cd C:\Projects\ArcVault2.0
-go run ./coordinator start   # serves API + dashboard on port 443
-go run ./agent               # run on each machine to back up
-```
+1. Download coordinator archive for your platform, extract, run `coordinator init` then `coordinator start`
+2. Download agent archive for each machine, edit agent-config.yaml, run `agent`
+3. Open http://localhost:443 in browser
 
-## Possible Phase 5 ideas
-- goreleaser / cross-platform binary distribution
+## Possible Phase 6 ideas
 - Per-agent tokens instead of single admin token
 - Email/webhook notifications on job failure
-- Dashboard: dark/light theme toggle, pagination, search
-- Agent auto-update mechanism
+- `coordinator check-update` command (GitHub releases API)
+- Dashboard improvements (pagination, search, theme toggle)
+- Windows service / systemd unit files for auto-start
