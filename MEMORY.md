@@ -146,4 +146,18 @@ goreleaser release --clean   # needs GITHUB_TOKEN with repo scope
 **Build:** Version injected via ldflags: `-X main.Version={{.Version}}`
 
 ---
+
+## Phase 7 (deferred, not started)
+
+Dashboard improvements:
+- Pagination for large job/agent lists
+- Search/filter for jobs and agents
+- Light/dark theme toggle with localStorage persistence
+
+Optional future work:
+- Agent self-update capability
+- Rollback to previous coordinator version
+- Failure notifications system (webhook + email, originally planned for Phase 6)
+
+---
 **End of Memory Document**
