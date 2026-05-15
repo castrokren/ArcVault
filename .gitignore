@@ -1,3 +1,10 @@
 
 dist/
 .claude/
+
+# Built binaries
+coordinator.exe
+coordinator
+agent.exe
+agent
+dist/
