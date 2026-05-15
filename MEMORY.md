@@ -22,7 +22,7 @@ ArcVault solves key limitations in RoboBackup:
 ### Phase 3: COMPLETE — job CRUD, agent runner, WebSocket, Vue dashboard
 ### Phase 4: COMPLETE — job runs history, offline detection, cron scheduling, production build
 ### Phase 5: COMPLETE — embedded dashboard, single binary, goreleaser, v0.1.0 GitHub release
-### Phase 6: COMPLETE — service installation, per-agent tokens, failure notifications, self-update
+### Phase 6: COMPLETE — service installation, per-agent tokens, self-update system
 
 ---
 
@@ -43,12 +43,10 @@ ArcVault solves key limitations in RoboBackup:
 - Multiple tokens per agent allowed (each call creates new one)
 - Admin token unchanged -- still used for dashboard and management
 
-**Failure notifications: COMPLETE**
-- coordinator/notifications/ package with config.go, notifier.go, webhook.go, email.go
-- Loads notifications.yaml (optional), dispatches on job completion and agent offline
-- Per-job notify_on config (defaults to ["failure"])
-- Webhook and email senders with full event details
-- 7 comprehensive tests
+**Failure notifications: NOT IMPLEMENTED**
+- Documented as complete in earlier Phase 6 notes, but code was never written
+- No coordinator/notifications/ package exists
+- Deferred to Phase 7 (listed in "optional future work")
 
 **Self-update system: COMPLETE**
 - coordinator/updater/ package (platform-agnostic): CheckLatestRelease, DownloadBinary, VerifyBinary, StageBinary
@@ -114,10 +112,9 @@ dashboard/src/
 ```
 
 ### Test Count
-- 60 tests total, all passing
-- coordinator/server: 51 tests (includes 5 update endpoint tests)
+- 65 tests total, all passing
+- coordinator/server: 51 tests (includes 6 agent token tests + 5 update endpoint tests)
 - coordinator/updater: 9 tests (platform handlers, download, verify, staging, version compare)
-- coordinator/notifications: 7 tests
 - agent/runner: 5 tests
 
 ### Key Commands
