@@ -1,36 +1,25 @@
 # ArcVault2.0 -- Project Status
-**Last updated:** May 14, 2026
+**Last updated:** May 15, 2026
 
 ## Current Phase
-Phase 5 COMPLETE. v0.1.0 released on GitHub.
+Phase 6 in progress. Service installation complete.
 
 ## What works
-- `coordinator.exe start` -- single binary, dashboard embedded, no separate dist folder needed
-- `agent.exe` -- registers, heartbeats, polls + executes jobs, posts results
+- `coordinator init` / `start` / `install-service` / `uninstall-service`
+- `agent` (no args = run) / `install-service` / `uninstall-service`
+- Single binary deployment, dashboard embedded
 - 45 tests passing
-- v0.1.0 draft release on GitHub with 10 archives (Windows/Mac/Linux, amd64/arm64)
+- v0.1.0 released on GitHub, v0.2.0 ready to tag
 
-## Release artifacts at https://github.com/castrokren/ArcVault/releases/tag/v0.1.0
-- coordinator_0.1.0_windows_amd64.tar.gz -- coordinator.exe + README
-- coordinator_0.1.0_darwin_amd64.tar.gz
-- coordinator_0.1.0_darwin_arm64.tar.gz
-- coordinator_0.1.0_linux_amd64.tar.gz
-- coordinator_0.1.0_linux_arm64.tar.gz
-- agent_0.1.0_windows_amd64.tar.gz -- agent.exe + agent-config.yaml + README
-- agent_0.1.0_darwin_amd64.tar.gz
-- agent_0.1.0_darwin_arm64.tar.gz
-- agent_0.1.0_linux_amd64.tar.gz
-- agent_0.1.0_linux_arm64.tar.gz
-- checksums.txt
+## Service installation
+| Platform | Coordinator | Agent |
+|----------|-------------|-------|
+| Windows | SCM via golang.org/x/sys/windows/svc/mgr | same |
+| Linux | /etc/systemd/system/arcvault-coordinator.service | /etc/systemd/system/arcvault-agent.service |
+| macOS | /Library/LaunchDaemons/com.arcvault.coordinator.plist | /Library/LaunchDaemons/com.arcvault.agent.plist |
 
-## Production deployment
-1. Download coordinator archive for your platform, extract, run `coordinator init` then `coordinator start`
-2. Download agent archive for each machine, edit agent-config.yaml, run `agent`
-3. Open http://localhost:443 in browser
-
-## Possible Phase 6 ideas
-- Per-agent tokens instead of single admin token
-- Email/webhook notifications on job failure
-- `coordinator check-update` command (GitHub releases API)
-- Dashboard improvements (pagination, search, theme toggle)
-- Windows service / systemd unit files for auto-start
+## Phase 6 remaining candidates
+1. Per-agent tokens -- each agent authenticates with its own token
+2. Failure notifications -- webhook or email on job failure
+3. `coordinator check-update` -- checks GitHub releases API
+4. Dashboard improvements -- pagination, search, theme toggle

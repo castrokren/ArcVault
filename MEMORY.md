@@ -1,8 +1,8 @@
 # ArcVault Project Memory
 **Project Name:** ArcVault
 **Type:** OS-agnostic Backup Orchestrator
-**Status:** Phase 5 COMPLETE — v0.1.0 released
-**Last Updated:** May 14, 2026
+**Status:** Phase 6 In Progress
+**Last Updated:** May 15, 2026
 
 ---
 
@@ -11,7 +11,7 @@ ArcVault solves key limitations in RoboBackup:
 - RoboBackup: Windows-only, limited monitoring, no remote visibility
 - ArcVault: Cross-platform (Windows/Mac/Linux), real-time monitoring dashboard, self-hosted, agents coordinate through central coordinator
 
-**Architecture:** Lightweight agents on each machine -> central Go coordinator -> Vue.js web dashboard (embedded in binary)
+**Architecture:** Lightweight agents -> central Go coordinator -> Vue.js dashboard (embedded in binary)
 
 ---
 
@@ -22,32 +22,34 @@ ArcVault solves key limitations in RoboBackup:
 ### Phase 3: COMPLETE — job CRUD, agent runner, WebSocket, Vue dashboard
 ### Phase 4: COMPLETE — job runs history, offline detection, cron scheduling, production build
 ### Phase 5: COMPLETE — embedded dashboard, single binary, goreleaser, v0.1.0 GitHub release
+### Phase 6: IN PROGRESS
 
 ---
 
-## Phase 5 Details
+## Phase 6 Details
 
-**Embedded dashboard:**
-- coordinator/static/static.go -- `//go:embed dist` + `FS()` returns `fs.FS`
-- goreleaser before hook copies dashboard/dist → coordinator/static/dist
-- coordinator/main.go imports static package, passes `static.FS()` to `StartCommand`
-- coordinator/cmd/commands.go -- `StartCommand(cfg, fs.FS)` signature
-- coordinator/server/server.go -- `NewWithFS(cfg, db, fs.FS)`, nil = no static serving
-- Tests use `NewWithStatic(cfg, db, "")` which calls `NewWithFS` with nil
+**Service installation: COMPLETE**
 
-**goreleaser:**
-- .goreleaser.yaml at repo root
-- Builds coordinator + agent for windows/darwin/linux, amd64+arm64
-- Windows arm64 excluded (not supported)
-- Before hooks: npm build + xcopy dist into static/
-- Archives: coordinator (binary + README), agent (binary + agent-config.yaml + README)
-- dist/ in .gitignore, .claude/ untracked
-- Release: draft mode, replace_existing_draft
+coordinator/service/ and agent/service/ packages:
+- service.go -- Install()/Uninstall() + executablePath()
+- service_windows.go (//go:build windows) -- golang.org/x/sys/windows/svc/mgr, StartAutomatic
+- service_linux.go (//go:build linux) -- writes /etc/systemd/system/arcvault-{name}.service, systemctl enable
+- service_darwin.go (//go:build darwin) -- writes /Library/LaunchDaemons/com.arcvault.{name}.plist, launchctl load
 
-**v0.1.0:**
-- Tagged and released at https://github.com/castrokren/ArcVault/releases
-- 10 archives + checksums.txt
-- Draft -- needs manual publish on GitHub
+coordinator/main.go subcommands: init, start, install-service, uninstall-service, help
+agent/main.go: no args = run agent, install-service, uninstall-service, help
+
+**Usage:**
+- Windows (admin): `coordinator install-service` → `sc start arcvault-coordinator`
+- Linux (root): `sudo coordinator install-service` → `sudo systemctl start arcvault-coordinator`
+- macOS (root): `sudo coordinator install-service` → `sudo launchctl start com.arcvault.coordinator`
+- Same pattern for agent
+
+**Remaining Phase 6 candidates:**
+1. Per-agent tokens
+2. Failure notifications (webhook/email)
+3. coordinator check-update
+4. Dashboard improvements
 
 ---
 
@@ -55,27 +57,33 @@ ArcVault solves key limitations in RoboBackup:
 
 ### Stack
 - **Language:** Go (coordinator + agents)
-- **Frontend:** Vue 3 + Vite 8, vue-router@4 (hash history), embedded in binary
+- **Frontend:** Vue 3 + Vite 8, vue-router@4 (hash history), embedded via //go:embed
 - **Database:** SQLite via modernc.org/sqlite (pure Go, no CGO)
 - **Authentication:** Single admin token (Bearer or ?token= for WS)
 - **Sync Tools:** Robocopy (Windows, exit 1-7 = success), Rsync (Unix/Mac)
 - **WebSocket:** github.com/gorilla/websocket v1.5.3
 - **Scheduler:** github.com/robfig/cron/v3
-- **Module:** single monorepo, module name: `arcvault`
+- **Service mgmt:** golang.org/x/sys v0.44.0
 - **Release:** goreleaser v2.15.4
+- **Module:** single monorepo, module name: `arcvault`
 
 ### Project Layout
 ```
 coordinator/
-  main.go                    -- imports static.FS(), passes to StartCommand
-  cmd/commands.go            -- StartCommand(cfg, fs.FS)
+  main.go                    -- init/start/install-service/uninstall-service
+  cmd/commands.go
   config/config.go
   db/db.go
+  service/
+    service.go               -- Install/Uninstall interface
+    service_windows.go       -- SCM via mgr
+    service_linux.go         -- systemd unit file
+    service_darwin.go        -- launchd plist
   static/
-    static.go                -- //go:embed dist, FS() fs.FS
+    static.go                -- //go:embed dist
     dist/                    -- copied from dashboard/dist at build time
   server/
-    server.go                -- NewWithFS, NewWithStatic, corsMiddleware
+    server.go
     agents.go
     hub.go
     jobs.go
@@ -86,16 +94,21 @@ coordinator/
     scheduler.go
     *_test.go
 agent/
-  main.go
+  main.go                    -- run/(install|uninstall)-service/help
   config/config.go
   heartbeat/heartbeat.go
+  service/
+    service.go
+    service_windows.go
+    service_linux.go
+    service_darwin.go
   runner/
     runner.go
     runner_test.go
     executor.go
 dashboard/
   src/...
-  dist/                      -- production build
+  dist/
 .goreleaser.yaml
 .gitignore                   -- dist/, .claude/
 go.mod
@@ -106,42 +119,21 @@ go.mod
 - coordinator/server: 40 tests
 - agent/runner: 5 tests
 
-### Key goreleaser Commands
+### Key Commands
 ```powershell
-# local test build
+# development
+go test ./... -v
+go run ./coordinator start
+go run ./agent
+
+# release
 goreleaser build --snapshot --clean
-
-# full release dry run
-goreleaser release --snapshot --clean --skip=publish
-
-# real release (needs GITHUB_TOKEN with repo scope)
-$env:GITHUB_TOKEN = "token"
-goreleaser release --clean
+goreleaser release --clean   # needs GITHUB_TOKEN
 ```
 
-### Production Deployment
-```powershell
-# coordinator (any platform)
-coordinator init    # first time only
-coordinator start   # serves API + dashboard on configured port
-
-# agent (each machine)
-# edit agent-config.yaml with coordinator URL + token
-agent
-```
-
----
-
-## Windows Development Notes
-- Run tests from repo root: `go test ./... -v`
-- Watch for duplicate files -- use Get-ChildItem, delete with Remove-Item
-- npm run build from dashboard/ before embedding
-- coordinator/static/dist must exist for go:embed to compile
-
----
-
-## Git Status
-**Latest tag:** v0.1.0 (draft release on GitHub)
+### Git Status
+**Latest:** Phase 6 service installation complete
+**Tags:** v0.1.0 released, v0.2.0 ready to tag
 **Remote:** https://github.com/castrokren/ArcVault
 **Branch:** main
 

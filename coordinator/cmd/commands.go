@@ -21,7 +21,6 @@ func InitCommand() error {
 	fmt.Println("=====================================")
 	reader := bufio.NewReader(os.Stdin)
 
-	// Get port
 	fmt.Print("Enter port (default 8080): ")
 	portStr, _ := reader.ReadString('\n')
 	portStr = strings.TrimSpace(portStr)
@@ -34,7 +33,6 @@ func InitCommand() error {
 		port = p
 	}
 
-	// Get database path
 	homeDir, _ := os.UserHomeDir()
 	defaultDB := filepath.Join(homeDir, ".arcvault", "arcvault.db")
 	fmt.Printf("Enter database path (default %s): ", defaultDB)
@@ -44,7 +42,6 @@ func InitCommand() error {
 		dbPath = defaultDB
 	}
 
-	// Generate admin token
 	token, err := generateToken(32)
 	if err != nil {
 		return fmt.Errorf("failed to generate admin token: %v", err)
@@ -69,14 +66,12 @@ func InitCommand() error {
 	return nil
 }
 
-// StartCommand starts the coordinator. staticFS is the embedded dashboard
-// filesystem — pass nil to skip static serving (e.g. in dev without a build).
 func StartCommand(cfg *config.Config, staticFS fs.FS) error {
 	log.Printf("Starting ArcVault Coordinator on port %d", cfg.Port)
 
 	database, err := db.Init(cfg.DatabasePath)
 	if err != nil {
-		return fmt.Errorf("failed to initialize database: %v", err)
+		return fmt.Errorf("failed to initialize database: %w", err)
 	}
 	defer database.Close()
 
@@ -84,6 +79,30 @@ func StartCommand(cfg *config.Config, staticFS fs.FS) error {
 
 	srv := server.NewWithFS(cfg, database, staticFS)
 	return srv.Start()
+}
+
+// CreateAgentTokenCommand generates a new token for the given agent ID
+// and prints it. The token can then be used in agent-config.yaml.
+func CreateAgentTokenCommand(agentID string) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	database, err := db.Init(cfg.DatabasePath)
+	if err != nil {
+		return fmt.Errorf("failed to initialize database: %w", err)
+	}
+	defer database.Close()
+
+	token, err := database.CreateAgentToken(agentID)
+	if err != nil {
+		return fmt.Errorf("failed to create token: %w", err)
+	}
+
+	fmt.Printf("Agent token for %q:\n\n  %s\n\n", agentID, token)
+	fmt.Println("Add this to agent-config.yaml as auth_token.")
+	return nil
 }
 
 func generateToken(length int) (string, error) {

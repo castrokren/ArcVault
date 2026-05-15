@@ -30,6 +30,14 @@ func main() {
 		if err := cmd.StartCommand(cfg, static.FS()); err != nil {
 			log.Fatalf("server error: %v", err)
 		}
+	case "create-agent-token":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: coordinator create-agent-token <agent-id>")
+			os.Exit(1)
+		}
+		if err := cmd.CreateAgentTokenCommand(os.Args[2]); err != nil {
+			log.Fatalf("create-agent-token failed: %v", err)
+		}
 	case "install-service":
 		if err := service.Install(); err != nil {
 			log.Fatalf("install-service failed: %v", err)
@@ -49,9 +57,10 @@ func main() {
 
 func printUsage() {
 	fmt.Println("ArcVault Coordinator")
-	fmt.Println("  init               - Initialize coordinator and generate admin token")
-	fmt.Println("  start              - Start the coordinator server")
-	fmt.Println("  install-service    - Install as a system service (requires admin/root)")
-	fmt.Println("  uninstall-service  - Remove the system service (requires admin/root)")
-	fmt.Println("  help               - Show this help message")
+	fmt.Println("  init                          - Initialize and generate admin token")
+	fmt.Println("  start                         - Start the coordinator server")
+	fmt.Println("  create-agent-token <agent-id> - Generate a token for an agent")
+	fmt.Println("  install-service               - Install as a system service (requires admin/root)")
+	fmt.Println("  uninstall-service             - Remove the system service (requires admin/root)")
+	fmt.Println("  help                          - Show this help message")
 }
