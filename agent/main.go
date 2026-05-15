@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -11,9 +12,35 @@ import (
 	"arcvault/agent/config"
 	"arcvault/agent/heartbeat"
 	"arcvault/agent/runner"
+	"arcvault/agent/service"
 )
 
 func main() {
+	// no args = run the agent (backward compatible)
+	if len(os.Args) < 2 {
+		runAgent()
+		return
+	}
+
+	switch os.Args[1] {
+	case "install-service":
+		if err := service.Install(); err != nil {
+			log.Fatalf("install-service failed: %v", err)
+		}
+	case "uninstall-service":
+		if err := service.Uninstall(); err != nil {
+			log.Fatalf("uninstall-service failed: %v", err)
+		}
+	case "help":
+		printUsage()
+	default:
+		fmt.Printf("Unknown command: %s\n", os.Args[1])
+		printUsage()
+		os.Exit(1)
+	}
+}
+
+func runAgent() {
 	log.Println("ArcVault Agent starting...")
 
 	cfg, err := config.Load("agent-config.yaml")
@@ -53,4 +80,12 @@ func main() {
 
 	log.Println("ArcVault Agent shutting down...")
 	r.Stop()
+}
+
+func printUsage() {
+	fmt.Println("ArcVault Agent")
+	fmt.Println("  (no args)          - Run the agent")
+	fmt.Println("  install-service    - Install as a system service (requires admin/root)")
+	fmt.Println("  uninstall-service  - Remove the system service (requires admin/root)")
+	fmt.Println("  help               - Show this help message")
 }
