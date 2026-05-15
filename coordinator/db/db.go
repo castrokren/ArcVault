@@ -1,7 +1,9 @@
 package db
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,6 +43,41 @@ func (d *DB) Close() error {
 
 func (d *DB) Conn() *sql.DB {
 	return d.conn
+}
+
+// CreateAgentToken generates a new token for the given agent and stores it.
+// Multiple tokens per agent are allowed — each call creates a new one.
+func (d *DB) CreateAgentToken(agentID string) (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate token: %w", err)
+	}
+	token := hex.EncodeToString(b)
+
+	_, err := d.conn.Exec(
+		`INSERT INTO tokens (token, agent_id, role) VALUES (?, ?, 'agent')`,
+		token, agentID,
+	)
+	if err != nil {
+		return "", fmt.Errorf("failed to store token: %w", err)
+	}
+	return token, nil
+}
+
+// ValidateToken checks if a token exists in the tokens table.
+// Returns the role ("agent") if valid, or an error if not found.
+func (d *DB) ValidateToken(token string) (string, error) {
+	var role string
+	err := d.conn.QueryRow(
+		`SELECT role FROM tokens WHERE token = ?`, token,
+	).Scan(&role)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("token not found")
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to validate token: %w", err)
+	}
+	return role, nil
 }
 
 func (d *DB) migrate() error {
