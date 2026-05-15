@@ -29,7 +29,30 @@
     </div>
 
     <div v-if="error" class="error">{{ error }}</div>
-    <div v-if="jobs.length === 0 && !loading" class="empty">No jobs found.</div>
+
+    <div v-if="jobs.length > 0" class="filters">
+      <input
+        v-model="searchQuery"
+        type="text"
+        placeholder="Search jobs by name or agent ID..."
+        class="search-input"
+      />
+      <div class="filter-chips">
+        <button
+          v-for="status in ['all', 'pending', 'running', 'completed', 'failed']"
+          :key="status"
+          class="chip"
+          :class="{ active: statusFilter === status }"
+          @click="statusFilter = status"
+        >
+          {{ status.charAt(0).toUpperCase() + status.slice(1) }}
+        </button>
+      </div>
+    </div>
+
+    <div v-if="filteredJobs.length === 0" class="empty">
+      {{ jobs.length === 0 ? 'No jobs found.' : 'No jobs match your search' }}
+    </div>
 
     <table v-else class="table">
       <thead>
@@ -45,7 +68,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="job in jobs" :key="job.id">
+        <tr v-for="job in filteredJobs" :key="job.id">
           <td class="mono">{{ job.id }}</td>
           <td>{{ job.name }}</td>
           <td class="mono">{{ job.agent_id }}</td>
@@ -63,7 +86,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { getJobs, createJob as apiCreateJob, deleteJob } from '../api.js'
 
 const props = defineProps(['lastEvent'])
@@ -73,8 +96,20 @@ const error = ref(null)
 const showForm = ref(false)
 const creating = ref(false)
 const formError = ref(null)
+const searchQuery = ref('')
+const statusFilter = ref('all')
 
 const form = ref({ agent_id: '', name: '', source_path: '', dest_path: '', schedule: '' })
+
+const filteredJobs = computed(() => {
+  return jobs.value.filter(j => {
+    const matchesSearch = !searchQuery.value ||
+      j.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+      j.agent_id.toLowerCase().includes(searchQuery.value.toLowerCase())
+    const matchesStatus = statusFilter.value === 'all' || j.status === statusFilter.value
+    return matchesSearch && matchesStatus
+  })
+})
 
 async function load() {
   loading.value = true
@@ -177,7 +212,43 @@ button.primary {
 }
 
 .error { color: #e55; margin: 0.5rem 0; }
-.empty { color: #888; }
+.empty { color: #888; margin: 2rem 0; }
+
+.filters { margin-bottom: 1.5rem; }
+
+.search-input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1rem;
+  border-radius: 4px;
+  border: 1px solid #2a2a3e;
+  background: #0f0f1a;
+  color: #fff;
+  font-size: 0.95rem;
+}
+
+.search-input:focus {
+  outline: none;
+  border-color: #4f8ef7;
+  box-shadow: 0 0 0 2px rgba(79, 142, 247, 0.1);
+}
+
+.filter-chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+.chip {
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  border: 1px solid #2a2a3e;
+  background: transparent;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.chip:hover { border-color: #4f8ef7; color: #4f8ef7; }
+
+.chip.active { background: #4f8ef7; border-color: #4f8ef7; color: #fff; }
 
 .table { width: 100%; border-collapse: collapse; }
 .table th, .table td {
