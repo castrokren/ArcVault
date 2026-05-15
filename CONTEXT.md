@@ -2,18 +2,27 @@
 **Last updated:** May 15, 2026
 
 ## Current Phase
-Phase 6 in progress. Failure notifications complete.
+**Phase 6 complete.** Self-update system fully implemented.
 
 ## What works
-- `coordinator init` / `start` / `create-agent-token <id>` / `install-service` / `uninstall-service`
+- `coordinator init` / `start` / `create-agent-token <id>` / `check-update` / `install-service` / `uninstall-service`
 - `agent` (no args = run) / `install-service` / `uninstall-service`
 - Single binary deployment, dashboard embedded
 - Per-agent tokens: each agent gets its own token via `coordinator create-agent-token <agent-id>`
 - Admin token still works for dashboard and management
 - Failure notifications: webhook and email on job failure/success, agent offline alerts
-- 58 tests passing
-+ coordinator/notifications/ — webhook + email, per-job notify_on
-+ notifications.yaml — optional global config
+- **Self-update system:**
+  - `coordinator check-update` — check for newer releases (CLI)
+  - `/api/update/check` — cached version info (dashboard)
+  - `/api/update/apply` — initiate update with progress streaming (WebSocket)
+  - Background poller: checks GitHub releases every 24h
+  - Dashboard banner + modal with multi-state UI (confirm → progress → success/error)
+  - Atomic update flow: download → verify → stage → restart (Windows/Linux/macOS)
+- **60 tests passing** (58 original + 14 new: 9 updater + 5 server)
++ coordinator/updater/ — platform-agnostic download/verify/stage
++ coordinator/updater/{windows,linux,darwin}.go — service control
++ coordinator/server/update.go — REST endpoints + progress streaming
++ dashboard/src/components/{UpdateBanner,UpdateModal}.vue
 
 ## Per-agent token workflow
 ```
@@ -33,7 +42,8 @@ coordinator create-agent-token agent-01
 | macOS (root) | sudo coordinator install-service | sudo launchctl start com.arcvault.coordinator |
 | Same for agent | agent install-service | (platform equivalent) |
 
-## Phase 6 remaining
-- ~~Failure notifications (webhook/email on job failure)~~ ✅ **COMPLETE**
-- `coordinator check-update` (GitHub releases API)
-- Dashboard improvements (pagination, search, theme toggle)
+## Phase 7 (not started)
+Possible future work:
+- Dashboard improvements: pagination, search, theme toggle
+- Agent self-update
+- Rollback to previous version

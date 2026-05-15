@@ -1,7 +1,7 @@
 # ArcVault Project Memory
 **Project Name:** ArcVault
 **Type:** OS-agnostic Backup Orchestrator
-**Status:** Phase 6 In Progress
+**Status:** Phase 6 Complete
 **Last Updated:** May 15, 2026
 
 ---
@@ -22,7 +22,7 @@ ArcVault solves key limitations in RoboBackup:
 ### Phase 3: COMPLETE — job CRUD, agent runner, WebSocket, Vue dashboard
 ### Phase 4: COMPLETE — job runs history, offline detection, cron scheduling, production build
 ### Phase 5: COMPLETE — embedded dashboard, single binary, goreleaser, v0.1.0 GitHub release
-### Phase 6: IN PROGRESS
+### Phase 6: COMPLETE — service installation, per-agent tokens, failure notifications, self-update
 
 ---
 
@@ -50,9 +50,15 @@ ArcVault solves key limitations in RoboBackup:
 - Webhook and email senders with full event details
 - 7 comprehensive tests
 
-**Remaining Phase 6:**
-1. coordinator check-update -- GET https://api.github.com/repos/castrokren/ArcVault/releases/latest
-2. Dashboard improvements -- pagination, search, theme toggle
+**Self-update system: COMPLETE**
+- coordinator/updater/ package (platform-agnostic): CheckLatestRelease, DownloadBinary, VerifyBinary, StageBinary
+- Platform handlers: updater_{windows,linux,darwin}.go (service start/stop + atomic rename)
+- API endpoints: GET /api/update/check (cached), POST /api/update/apply (WebSocket progress)
+- CLI command: coordinator check-update (standalone, no server needed)
+- Background poller: 24h interval, silent failure recovery
+- Dashboard: UpdateBanner.vue (dismissible banner), UpdateModal.vue (multi-state UI)
+- Error safety: binary never touched before staging completes
+- 14 new tests (9 updater + 5 server, exceeding plan's 12)
 
 ---
 
@@ -73,18 +79,23 @@ ArcVault solves key limitations in RoboBackup:
 ### Project Layout
 ```
 coordinator/
-  main.go                    -- init/start/create-agent-token/install-service/uninstall-service
-  cmd/commands.go            -- InitCommand, StartCommand, CreateAgentTokenCommand
+  main.go                    -- init/start/create-agent-token/check-update/install-service/uninstall-service
+  cmd/commands.go            -- InitCommand, StartCommand, CreateAgentTokenCommand, CheckUpdateCommand
   config/config.go
   db/db.go                   -- CreateAgentToken, ValidateToken + migrate
   service/
     service.go / service_windows.go / service_linux.go / service_darwin.go
+  updater/
+    updater.go               -- CheckLatestRelease, DownloadBinary, VerifyBinary, StageBinary, ExecuteUpdate
+    updater_{windows,linux,darwin}.go -- platform-specific ApplyUpdate
+    updater_test.go          -- 9 tests (resolve asset, download, verify, staging, version compare, etc.)
   notifications/
     config.go / notifier.go / webhook.go / email.go / notifier_test.go
   static/
     static.go / dist/
   server/
-    server.go                -- authMiddleware: admin token OR DB token
+    server.go                -- authMiddleware (admin OR DB token), adminMiddleware (admin only)
+    update.go / update_test.go -- /api/update/check, /api/update/apply endpoints + caching
     agents.go / hub.go / jobs.go / job_status.go / job_results.go
     job_runs.go / offline_detector.go / scheduler.go
     agent_token_test.go + all other *_test.go
@@ -93,13 +104,19 @@ agent/
   config/config.go / heartbeat/heartbeat.go
   service/ (same platform split as coordinator)
   runner/ runner.go / runner_test.go / executor.go
-dashboard/src/... + dist/
+dashboard/src/
+  App.vue                    -- added: UpdateBanner, UpdateModal components, checkForUpdates()
+  components/
+    UpdateBanner.vue         -- dismissible banner (session-only), update version display
+    UpdateModal.vue          -- multi-state UI: confirm → progress → success/error
+  views/ ...
 .goreleaser.yaml / .gitignore / go.mod
 ```
 
 ### Test Count
-- 58 tests total, all passing
-- coordinator/server: 46 tests
+- 60 tests total, all passing
+- coordinator/server: 51 tests (includes 5 update endpoint tests)
+- coordinator/updater: 9 tests (platform handlers, download, verify, staging, version compare)
 - coordinator/notifications: 7 tests
 - agent/runner: 5 tests
 
@@ -108,21 +125,25 @@ dashboard/src/... + dist/
 # generate agent token
 coordinator create-agent-token agent-01
 
+# check for updates (CLI)
+coordinator check-update
+
 # service management (run as admin/root)
 coordinator install-service
 coordinator uninstall-service
 agent install-service
 agent uninstall-service
 
-# release
+# release (version injected via ldflags)
 goreleaser release --clean   # needs GITHUB_TOKEN with repo scope
 ```
 
 ### Git / Release Status
-**Latest:** Phase 6 failure notifications complete
-**Tags:** v0.1.0 released on GitHub
+**Latest:** Phase 6 complete (self-update system)
+**Tags:** v0.1.0, v0.2.0 released on GitHub
 **Remote:** https://github.com/castrokren/ArcVault
 **Branch:** main
+**Build:** Version injected via ldflags: `-X main.Version={{.Version}}`
 
 ---
 **End of Memory Document**
