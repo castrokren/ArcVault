@@ -2,7 +2,7 @@
 **Last updated:** May 15, 2026
 
 ## Current Phase
-**Phase 6 complete.** Self-update system fully implemented.
+**Phase 7 complete.** Dashboard improvements: theme toggle, search, and filtering.
 
 ## What works
 - `coordinator init` / `start` / `create-agent-token <id>` / `check-update` / `install-service` / `uninstall-service`
@@ -44,8 +44,16 @@ coordinator create-agent-token agent-01
 | macOS (root) | sudo coordinator install-service | sudo launchctl start com.arcvault.coordinator |
 | Same for agent | agent install-service | (platform equivalent) |
 
-## Phase 7 (not started)
-Possible future work:
-- Dashboard improvements: pagination, search, theme toggle
-- Agent self-update
+## Phase 7 (complete)
+**Dashboard improvements: COMPLETE**
+- Theme toggle (dark/light mode with localStorage persistence)
+- Search and filter for Agents view (search by ID/hostname, status filter)
+- Search and filter for Jobs view (search by name/agent_id, status filter)
+- Light mode styling with proper color scheme
+- All 65 tests passing
+
+## Future work (not started)
+Possible next phases:
+- Agent self-update capability
 - Rollback to previous version
+- Pagination for large lists
