@@ -10,7 +10,6 @@
 - Single binary deployment, dashboard embedded
 - Per-agent tokens: each agent gets its own token via `coordinator create-agent-token <agent-id>`
 - Admin token still works for dashboard and management
-- Failure notifications: webhook and email on job failure/success, agent offline alerts
 - **Self-update system:**
   - `coordinator check-update` — check for newer releases (CLI)
   - `/api/update/check` — cached version info (dashboard)
@@ -18,7 +17,10 @@
   - Background poller: checks GitHub releases every 24h
   - Dashboard banner + modal with multi-state UI (confirm → progress → success/error)
   - Atomic update flow: download → verify → stage → restart (Windows/Linux/macOS)
-- **60 tests passing** (58 original + 14 new: 9 updater + 5 server)
+- **65 tests passing** (51 original + 14 new: 9 updater + 5 server)
+  - coordinator/server: 51 (includes agent token tests)
+  - coordinator/updater: 9 (new)
+  - agent/runner: 5
 + coordinator/updater/ — platform-agnostic download/verify/stage
 + coordinator/updater/{windows,linux,darwin}.go — service control
 + coordinator/server/update.go — REST endpoints + progress streaming
