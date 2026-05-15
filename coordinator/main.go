@@ -11,7 +11,8 @@ import (
 	"arcvault/coordinator/static"
 )
 
-const Version = "v0.2.0"
+// Version is injected at build time via ldflags: -X main.Version=vX.Y.Z
+var Version = "v0.2.0"
 
 func main() {
 	if len(os.Args) < 2 {

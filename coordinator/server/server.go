@@ -129,13 +129,12 @@ func (s *Server) adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			token = token[7:]
 		}
 
-		// Only admin token is valid
-		if token == s.cfg.AdminToken {
-			next(w, r)
+		if token != s.cfg.AdminToken {
+			http.Error(w, "admin token required", http.StatusForbidden)
 			return
 		}
 
-		http.Error(w, "admin token required", http.StatusForbidden)
+		next(w, r)
 	}
 }
 
