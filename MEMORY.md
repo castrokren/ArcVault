@@ -1,8 +1,8 @@
 # ArcVault Project Memory
 **Project Name:** ArcVault
 **Type:** OS-agnostic Backup Orchestrator
-**Status:** Phase 6 Complete
-**Last Updated:** May 15, 2026
+**Status:** Phase 7 Complete
+**Last Updated:** May 15, 2026 (Phase 7 complete)
 
 ---
 
@@ -23,6 +23,7 @@ ArcVault solves key limitations in RoboBackup:
 ### Phase 4: COMPLETE — job runs history, offline detection, cron scheduling, production build
 ### Phase 5: COMPLETE — embedded dashboard, single binary, goreleaser, v0.1.0 GitHub release
 ### Phase 6: COMPLETE — service installation, per-agent tokens, self-update system
+### Phase 7: COMPLETE — dashboard improvements (theme toggle, search, filtering)
 
 ---
 
@@ -144,16 +145,44 @@ goreleaser release --clean   # needs GITHUB_TOKEN with repo scope
 
 ---
 
-## Phase 7 (deferred, not started)
+## Phase 7 Details
 
-Dashboard improvements:
-- Pagination for large job/agent lists
-- Search/filter for jobs and agents
-- Light/dark theme toggle with localStorage persistence
+**Theme Toggle: COMPLETE**
+- Added `theme` ref with localStorage persistence (`arcvault-theme`)
+- `applyTheme(val)` function sets `data-theme` attribute on document root
+- `toggleTheme()` function flips between 'dark' and 'light'
+- Dark mode: existing color scheme (#1a1a2e background, #4f8ef7 blue accent)
+- Light mode: white/light gray backgrounds, dark text, updated accent colors
+- Sun/moon icon button in header (☀️ for dark mode, 🌙 for light mode)
 
-Optional future work:
+**Agents View - Search & Filter: COMPLETE**
+- Search input: filters by agent ID or hostname (case-insensitive)
+- Status filter chips: All, Online, Offline
+- AND logic: both active simultaneously narrows results
+- Empty state: "No agents match your search"
+- WebSocket updates don't reset filters
+
+**Jobs View - Search & Filter: COMPLETE**
+- Search input: filters by job name or agent_id (case-insensitive)
+- Status filter chips: All, Pending, Running, Completed, Failed
+- AND logic: both active simultaneously narrows results
+- Empty state: "No jobs match your search"
+- WebSocket updates don't reset filters
+
+**Dashboard Build & Tests: COMPLETE**
+- `npm run build` compiles successfully (~570ms)
+- `go build ./...` compiles with embedded dashboard
+- All 65 tests passing (no new tests added, requirements unchanged)
+- Commit: b3a275c "feat: phase 7 dashboard improvements - theme toggle, search, and filter for agents and jobs"
+
+---
+
+## Future Work (not started)
+
+Possible next phases:
 - Agent self-update capability
 - Rollback to previous coordinator version
+- Pagination for very large job/agent lists
 - Failure notifications system (webhook + email, originally planned for Phase 6)
 
 ---
