@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"arcvault/coordinator/config"
 	"arcvault/coordinator/db"
 	"arcvault/coordinator/server"
+	"arcvault/coordinator/updater"
 )
 
 func InitCommand() error {
@@ -78,7 +80,44 @@ func StartCommand(cfg *config.Config, staticFS fs.FS) error {
 	log.Println("Database initialized")
 
 	srv := server.NewWithFS(cfg, database, staticFS)
+
+	// Start background version checker
+	currentVersion := os.Getenv("ARCVAULT_VERSION")
+	if currentVersion == "" {
+		currentVersion = "v0.2.0"
+	}
+
+	go startVersionChecker(currentVersion)
+
 	return srv.Start()
+}
+
+// startVersionChecker polls GitHub for new releases every 24 hours.
+func startVersionChecker(currentVersion string) {
+	// Check on startup
+	checkAndCache(currentVersion)
+
+	// Check every 24 hours
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		checkAndCache(currentVersion)
+	}
+}
+
+// checkAndCache fetches the latest release and caches it.
+func checkAndCache(currentVersion string) {
+	info, err := updater.CheckLatestRelease(currentVersion)
+	if err != nil {
+		log.Printf("Version check failed (will retry in 24h): %v", err)
+		return
+	}
+
+	server.SetUpdateCache(info)
+	if info.UpdateAvailable {
+		log.Printf("New version available: %s (current: %s)", info.Latest, info.Current)
+	}
 }
 
 // CreateAgentTokenCommand generates a new token for the given agent ID
@@ -102,6 +141,24 @@ func CreateAgentTokenCommand(agentID string) error {
 
 	fmt.Printf("Agent token for %q:\n\n  %s\n\n", agentID, token)
 	fmt.Println("Add this to agent-config.yaml as auth_token.")
+	return nil
+}
+
+// CheckUpdateCommand checks for available updates without starting the server.
+func CheckUpdateCommand(currentVersion string) error {
+	info, err := updater.CheckLatestRelease(currentVersion)
+	if err != nil {
+		return fmt.Errorf("could not check for updates: %w", err)
+	}
+
+	fmt.Printf("current:  %s\n", info.Current)
+	fmt.Printf("latest:   %s\n", info.Latest)
+	if info.UpdateAvailable {
+		fmt.Printf("status:   update available\n")
+		fmt.Printf("release:  %s\n", info.ReleaseURL)
+	} else {
+		fmt.Printf("status:   up to date\n")
+	}
 	return nil
 }
 

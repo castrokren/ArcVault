@@ -29,27 +29,30 @@ ArcVault solves key limitations in RoboBackup:
 ## Phase 6 Details
 
 **Service installation: COMPLETE**
+- coordinator/service/ and agent/service/ packages
+- service.go, service_windows.go, service_linux.go, service_darwin.go
+- Windows: golang.org/x/sys/windows/svc/mgr, StartAutomatic
+- Linux: /etc/systemd/system/arcvault-{name}.service
+- macOS: /Library/LaunchDaemons/com.arcvault.{name}.plist
 
-coordinator/service/ and agent/service/ packages:
-- service.go -- Install()/Uninstall() + executablePath()
-- service_windows.go (//go:build windows) -- golang.org/x/sys/windows/svc/mgr, StartAutomatic
-- service_linux.go (//go:build linux) -- writes /etc/systemd/system/arcvault-{name}.service, systemctl enable
-- service_darwin.go (//go:build darwin) -- writes /Library/LaunchDaemons/com.arcvault.{name}.plist, launchctl load
+**Per-agent tokens: COMPLETE**
+- coordinator/db/db.go -- CreateAgentToken(agentID) string, ValidateToken(token) (role, error)
+- tokens table was already in schema, now actually used
+- authMiddleware accepts admin token OR valid agent token from DB
+- coordinator create-agent-token <agent-id> -- generates + stores + prints token
+- Multiple tokens per agent allowed (each call creates new one)
+- Admin token unchanged -- still used for dashboard and management
 
-coordinator/main.go subcommands: init, start, install-service, uninstall-service, help
-agent/main.go: no args = run agent, install-service, uninstall-service, help
+**Failure notifications: COMPLETE**
+- coordinator/notifications/ package with config.go, notifier.go, webhook.go, email.go
+- Loads notifications.yaml (optional), dispatches on job completion and agent offline
+- Per-job notify_on config (defaults to ["failure"])
+- Webhook and email senders with full event details
+- 7 comprehensive tests
 
-**Usage:**
-- Windows (admin): `coordinator install-service` → `sc start arcvault-coordinator`
-- Linux (root): `sudo coordinator install-service` → `sudo systemctl start arcvault-coordinator`
-- macOS (root): `sudo coordinator install-service` → `sudo launchctl start com.arcvault.coordinator`
-- Same pattern for agent
-
-**Remaining Phase 6 candidates:**
-1. Per-agent tokens
-2. Failure notifications (webhook/email)
-3. coordinator check-update
-4. Dashboard improvements
+**Remaining Phase 6:**
+1. coordinator check-update -- GET https://api.github.com/repos/castrokren/ArcVault/releases/latest
+2. Dashboard improvements -- pagination, search, theme toggle
 
 ---
 
@@ -59,7 +62,7 @@ agent/main.go: no args = run agent, install-service, uninstall-service, help
 - **Language:** Go (coordinator + agents)
 - **Frontend:** Vue 3 + Vite 8, vue-router@4 (hash history), embedded via //go:embed
 - **Database:** SQLite via modernc.org/sqlite (pure Go, no CGO)
-- **Authentication:** Single admin token (Bearer or ?token= for WS)
+- **Auth:** Admin token (config.json) OR agent token (tokens table, role='agent')
 - **Sync Tools:** Robocopy (Windows, exit 1-7 = success), Rsync (Unix/Mac)
 - **WebSocket:** github.com/gorilla/websocket v1.5.3
 - **Scheduler:** github.com/robfig/cron/v3
@@ -70,70 +73,54 @@ agent/main.go: no args = run agent, install-service, uninstall-service, help
 ### Project Layout
 ```
 coordinator/
-  main.go                    -- init/start/install-service/uninstall-service
-  cmd/commands.go
+  main.go                    -- init/start/create-agent-token/install-service/uninstall-service
+  cmd/commands.go            -- InitCommand, StartCommand, CreateAgentTokenCommand
   config/config.go
-  db/db.go
+  db/db.go                   -- CreateAgentToken, ValidateToken + migrate
   service/
-    service.go               -- Install/Uninstall interface
-    service_windows.go       -- SCM via mgr
-    service_linux.go         -- systemd unit file
-    service_darwin.go        -- launchd plist
+    service.go / service_windows.go / service_linux.go / service_darwin.go
+  notifications/
+    config.go / notifier.go / webhook.go / email.go / notifier_test.go
   static/
-    static.go                -- //go:embed dist
-    dist/                    -- copied from dashboard/dist at build time
+    static.go / dist/
   server/
-    server.go
-    agents.go
-    hub.go
-    jobs.go
-    job_status.go
-    job_results.go
-    job_runs.go
-    offline_detector.go
-    scheduler.go
-    *_test.go
+    server.go                -- authMiddleware: admin token OR DB token
+    agents.go / hub.go / jobs.go / job_status.go / job_results.go
+    job_runs.go / offline_detector.go / scheduler.go
+    agent_token_test.go + all other *_test.go
 agent/
   main.go                    -- run/(install|uninstall)-service/help
-  config/config.go
-  heartbeat/heartbeat.go
-  service/
-    service.go
-    service_windows.go
-    service_linux.go
-    service_darwin.go
-  runner/
-    runner.go
-    runner_test.go
-    executor.go
-dashboard/
-  src/...
-  dist/
-.goreleaser.yaml
-.gitignore                   -- dist/, .claude/
-go.mod
+  config/config.go / heartbeat/heartbeat.go
+  service/ (same platform split as coordinator)
+  runner/ runner.go / runner_test.go / executor.go
+dashboard/src/... + dist/
+.goreleaser.yaml / .gitignore / go.mod
 ```
 
 ### Test Count
-- 45 tests total, all passing
-- coordinator/server: 40 tests
+- 58 tests total, all passing
+- coordinator/server: 46 tests
+- coordinator/notifications: 7 tests
 - agent/runner: 5 tests
 
 ### Key Commands
 ```powershell
-# development
-go test ./... -v
-go run ./coordinator start
-go run ./agent
+# generate agent token
+coordinator create-agent-token agent-01
+
+# service management (run as admin/root)
+coordinator install-service
+coordinator uninstall-service
+agent install-service
+agent uninstall-service
 
 # release
-goreleaser build --snapshot --clean
-goreleaser release --clean   # needs GITHUB_TOKEN
+goreleaser release --clean   # needs GITHUB_TOKEN with repo scope
 ```
 
-### Git Status
-**Latest:** Phase 6 service installation complete
-**Tags:** v0.1.0 released, v0.2.0 ready to tag
+### Git / Release Status
+**Latest:** Phase 6 failure notifications complete
+**Tags:** v0.1.0 released on GitHub
 **Remote:** https://github.com/castrokren/ArcVault
 **Branch:** main
 
