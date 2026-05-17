@@ -52,6 +52,7 @@ func (s *Server) Start() error {
 func (s *Server) registerRoutes() {
 	s.router.HandleFunc("GET /health", s.handleHealth)
 	s.router.HandleFunc("GET /ws", s.handleWS)
+	s.router.HandleFunc("GET /ws/agent", s.handleAgentWS)
 
 	s.router.HandleFunc("POST /api/agents/register", s.authMiddleware(s.handleRegister))
 	s.router.HandleFunc("POST /api/agents/{id}/heartbeat", s.authMiddleware(s.handleHeartbeat))
@@ -64,9 +65,15 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("PATCH /api/jobs/{id}/status", s.authMiddleware(s.handleUpdateJobStatus))
 	s.router.HandleFunc("POST /api/jobs/{id}/results", s.authMiddleware(s.handlePostJobResults))
 	s.router.HandleFunc("GET /api/jobs/{id}/runs", s.authMiddleware(s.handleGetJobRuns))
+	s.router.HandleFunc("GET /api/job-runs", s.authMiddleware(s.handleListAllJobRuns))
 
 	s.router.HandleFunc("GET /api/update/check", s.adminMiddleware(s.handleCheckUpdate))
 	s.router.HandleFunc("POST /api/update/apply", s.adminMiddleware(s.handleApplyUpdate))
+	s.router.HandleFunc("POST /api/agents/{id}/update", s.adminMiddleware(s.handleAgentUpdate))
+
+	s.router.HandleFunc("GET /api/rollback-available", s.adminMiddleware(s.handleRollbackAvailable))
+	s.router.HandleFunc("POST /api/rollback", s.adminMiddleware(s.handleRollback))
+	s.router.HandleFunc("POST /api/agents/{id}/rollback", s.adminMiddleware(s.handleAgentRollback))
 
 	if s.staticFS != nil {
 		log.Printf("Serving embedded dashboard")
