@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 )
@@ -27,13 +28,16 @@ type ProgressEvent struct {
 	Message string `json:"message"`
 }
 
+// ReleaseAsset is a single downloadable asset from a GitHub release.
+type ReleaseAsset struct {
+	Name        string `json:"name"`
+	DownloadURL string `json:"browser_download_url"`
+}
+
 type githubRelease struct {
-	TagName string `json:"tag_name"`
-	Assets  []struct {
-		Name        string `json:"name"`
-		DownloadURL string `json:"browser_download_url"`
-	} `json:"assets"`
-	HTMLURL string `json:"html_url"`
+	TagName string         `json:"tag_name"`
+	Assets  []ReleaseAsset `json:"assets"`
+	HTMLURL string         `json:"html_url"`
 }
 
 // CheckLatestRelease fetches the latest release from GitHub API.
@@ -70,35 +74,24 @@ func CheckLatestRelease(currentVersion string) (*UpdateInfo, error) {
 	}, nil
 }
 
-// resolveAssetURL finds the appropriate asset URL for the current platform from GitHub release.
-func resolveAssetURL(assets []struct {
-	Name        string `json:"name"`
-	DownloadURL string `json:"browser_download_url"`
-}) (string, error) {
-	goos := runtime.GOOS
-	goarch := runtime.GOARCH
-	assetName := fmt.Sprintf("coordinator_%s_%s", goos, goarch)
-	if goos == "windows" {
-		assetName += ".exe"
-	}
-
-	for _, asset := range assets {
-		if asset.Name == assetName {
-			return asset.DownloadURL, nil
-		}
-	}
-
-	return "", fmt.Errorf("no release asset found for your platform (%s/%s)", goos, goarch)
+// resolveAssetURL finds the coordinator asset URL for the current platform.
+func resolveAssetURL(assets []ReleaseAsset) (string, error) {
+	return resolveAsset("coordinator", runtime.GOOS, runtime.GOARCH, assets)
 }
 
-// ResolveAssetURL finds the appropriate asset URL for the current platform (for testing).
-func ResolveAssetURL(assets []struct {
-	Name        string
-	DownloadURL string
-}) (string, error) {
-	goos := runtime.GOOS
-	goarch := runtime.GOARCH
-	assetName := fmt.Sprintf("coordinator_%s_%s", goos, goarch)
+// ResolveAssetURL finds the coordinator asset URL for the current platform (exported for tests).
+func ResolveAssetURL(assets []ReleaseAsset) (string, error) {
+	return resolveAsset("coordinator", runtime.GOOS, runtime.GOARCH, assets)
+}
+
+// ResolveAgentAssetURL finds the agent asset URL for the given OS/arch.
+func ResolveAgentAssetURL(goos, goarch string, assets []ReleaseAsset) (string, error) {
+	return resolveAsset("agent", goos, goarch, assets)
+}
+
+// resolveAsset finds a release asset URL for the given binary prefix, OS, and arch.
+func resolveAsset(prefix, goos, goarch string, assets []ReleaseAsset) (string, error) {
+	assetName := fmt.Sprintf("%s_%s_%s", prefix, goos, goarch)
 	if goos == "windows" {
 		assetName += ".exe"
 	}
@@ -109,7 +102,27 @@ func ResolveAssetURL(assets []struct {
 		}
 	}
 
-	return "", fmt.Errorf("no release asset found for your platform (%s/%s)", goos, goarch)
+	return "", fmt.Errorf("no release asset found for %s on %s/%s", prefix, goos, goarch)
+}
+
+// FetchLatestRelease fetches the latest GitHub release assets and release URL.
+func FetchLatestRelease() ([]ReleaseAsset, string, error) {
+	resp, err := http.Get("https://api.github.com/repos/castrokren/ArcVault/releases/latest")
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to fetch latest release: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("github api returned status %d", resp.StatusCode)
+	}
+
+	var release githubRelease
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return nil, "", fmt.Errorf("failed to parse release JSON: %w", err)
+	}
+
+	return release.Assets, release.HTMLURL, nil
 }
 
 // DownloadBinary downloads the binary to a temporary file and calls progress callback.
@@ -206,8 +219,150 @@ func IsServiceMode() bool {
 	return os.Getenv("ARCVAULT_SERVICE") == "1"
 }
 
+// getBackupDir returns the platform-specific backup directory path.
+// Respects ARCVAULT_BACKUP_DIR env var for testing.
+func getBackupDir() (string, error) {
+	if testDir := os.Getenv("ARCVAULT_BACKUP_DIR"); testDir != "" {
+		if err := os.MkdirAll(testDir, 0755); err != nil {
+			return "", fmt.Errorf("failed to create backup directory: %w", err)
+		}
+		return testDir, nil
+	}
+
+	var backupDir string
+	switch runtime.GOOS {
+	case "windows":
+		programData := os.Getenv("ProgramData")
+		if programData == "" {
+			programData = filepath.Join(os.Getenv("SystemDrive"), "ProgramData")
+		}
+		backupDir = filepath.Join(programData, "ArcVault", "backups")
+	default: // linux, darwin
+		backupDir = "/var/lib/arcvault/backups"
+	}
+
+	if err := os.MkdirAll(backupDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create backup directory: %w", err)
+	}
+	return backupDir, nil
+}
+
+// BackupCurrent copies the current binary to the backup directory before update.
+func BackupCurrent(currentPath string) error {
+	backupDir, err := getBackupDir()
+	if err != nil {
+		return err
+	}
+
+	backupPath := filepath.Join(backupDir, "coordinator.previous")
+	src, err := os.Open(currentPath)
+	if err != nil {
+		return fmt.Errorf("failed to open current binary for backup: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(backupPath)
+	if err != nil {
+		return fmt.Errorf("failed to create backup file: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		os.Remove(backupPath)
+		return fmt.Errorf("failed to copy binary to backup: %w", err)
+	}
+
+	return nil
+}
+
+// IsRollbackAvailable checks if a backup binary exists.
+func IsRollbackAvailable() (bool, error) {
+	backupDir, err := getBackupDir()
+	if err != nil {
+		return false, err
+	}
+	backupPath := filepath.Join(backupDir, "coordinator.previous")
+	_, err = os.Stat(backupPath)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
+// Rollback restores the previous binary from backup.
+func Rollback(currentPath string, progress func(ProgressEvent)) error {
+	backupDir, err := getBackupDir()
+	if err != nil {
+		return err
+	}
+
+	backupPath := filepath.Join(backupDir, "coordinator.previous")
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		return fmt.Errorf("no backup available for rollback")
+	}
+
+	progress(ProgressEvent{
+		Type:    "rollback_progress",
+		Step:    "verify_backup",
+		Pct:     10,
+		Message: "Verifying backup binary...",
+	})
+
+	if err := VerifyBinary(backupPath); err != nil {
+		return fmt.Errorf("backup binary is corrupt or invalid: %w", err)
+	}
+
+	progress(ProgressEvent{
+		Type:    "rollback_progress",
+		Step:    "stage_backup",
+		Pct:     30,
+		Message: "Staging backup binary...",
+	})
+
+	stagePath := currentPath + ".rollback"
+	src, err := os.Open(backupPath)
+	if err != nil {
+		return fmt.Errorf("failed to open backup for rollback: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(stagePath)
+	if err != nil {
+		return fmt.Errorf("failed to stage backup: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		os.Remove(stagePath)
+		return fmt.Errorf("failed to copy backup to stage: %w", err)
+	}
+
+	progress(ProgressEvent{
+		Type:    "rollback_progress",
+		Step:    "apply_rollback",
+		Pct:     60,
+		Message: "Applying rollback...",
+	})
+
+	return ApplyUpdate(stagePath, currentPath, progress)
+}
+
 // ExecuteUpdate handles the full update flow, including service vs. terminal mode.
 func ExecuteUpdate(stagedPath, currentPath string, progress func(ProgressEvent)) error {
+	progress(ProgressEvent{
+		Type:    "update_progress",
+		Step:    "backup_current",
+		Pct:     80,
+		Message: "Creating backup of current binary...",
+	})
+
+	if err := BackupCurrent(currentPath); err != nil {
+		return err
+	}
+
 	if !IsServiceMode() {
 		// Terminal mode: just rename and emit done_manual event
 		if err := os.Rename(stagedPath, currentPath); err != nil {

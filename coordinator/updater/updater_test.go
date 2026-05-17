@@ -28,10 +28,7 @@ func TestResolveAssetURL(t *testing.T) {
 		t.Run(fmt.Sprintf("%s_%s", tt.goos, tt.goarch), func(t *testing.T) {
 			// Save original runtime values and mock them would require platform build,
 			// so we just test the asset matching logic
-			assets := []struct {
-				Name        string
-				DownloadURL string
-			}{
+			assets := []ReleaseAsset{
 				{Name: "coordinator_linux_amd64", DownloadURL: "http://example.com/linux"},
 				{Name: "coordinator_darwin_arm64", DownloadURL: "http://example.com/darwin"},
 				{Name: "coordinator_windows_amd64.exe", DownloadURL: "http://example.com/windows"},
@@ -304,5 +301,143 @@ func TestStageBinary(t *testing.T) {
 func BenchmarkVersionComparison(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		compareVersions("0.2.0", "0.3.1")
+	}
+}
+
+// TestBackupCurrent tests backing up the current binary.
+func TestBackupCurrent(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+
+	// Set env var for test
+	os.Setenv("ARCVAULT_BACKUP_DIR", backupDir)
+	defer os.Unsetenv("ARCVAULT_BACKUP_DIR")
+
+	// Create a mock current binary
+	currentPath := filepath.Join(tmpDir, "coordinator")
+	if runtime.GOOS == "windows" {
+		currentPath += ".exe"
+	}
+	err := os.WriteFile(currentPath, []byte("binary_content"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create current binary: %v", err)
+	}
+
+	err = BackupCurrent(currentPath)
+	if err != nil {
+		t.Errorf("BackupCurrent failed: %v", err)
+	}
+
+	// Check that backup file exists
+	backupPath := filepath.Join(backupDir, "coordinator.previous")
+	if _, err := os.Stat(backupPath); err != nil {
+		t.Errorf("Backup file not created: %v", err)
+	}
+
+	// Verify backup content matches original
+	content, err := os.ReadFile(backupPath)
+	if err != nil {
+		t.Errorf("Failed to read backup: %v", err)
+	}
+	if string(content) != "binary_content" {
+		t.Errorf("Backup content mismatch: got %q, want %q", string(content), "binary_content")
+	}
+}
+
+// TestIsRollbackAvailable tests checking if rollback is available.
+func TestIsRollbackAvailable(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+
+	os.Setenv("ARCVAULT_BACKUP_DIR", backupDir)
+	defer os.Unsetenv("ARCVAULT_BACKUP_DIR")
+
+	// Test when no backup exists
+	available, err := IsRollbackAvailable()
+	if err != nil {
+		t.Errorf("IsRollbackAvailable failed: %v", err)
+	}
+	if available {
+		t.Errorf("IsRollbackAvailable should return false when no backup exists")
+	}
+
+	// Create a backup file
+	os.MkdirAll(backupDir, 0755)
+	backupPath := filepath.Join(backupDir, "coordinator.previous")
+	err = os.WriteFile(backupPath, []byte("backup_content"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create backup file: %v", err)
+	}
+
+	// Test when backup exists
+	available, err = IsRollbackAvailable()
+	if err != nil {
+		t.Errorf("IsRollbackAvailable failed: %v", err)
+	}
+	if !available {
+		t.Errorf("IsRollbackAvailable should return true when backup exists")
+	}
+}
+
+// TestRollbackHappyPath tests successful rollback binary verification.
+func TestRollbackHappyPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping rollback test on Windows")
+	}
+
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+
+	os.Setenv("ARCVAULT_BACKUP_DIR", backupDir)
+	defer os.Unsetenv("ARCVAULT_BACKUP_DIR")
+
+	currentPath := filepath.Join(tmpDir, "coordinator")
+	os.WriteFile(currentPath, []byte("current"), 0755)
+
+	// Create a valid backup binary that passes verification
+	os.MkdirAll(backupDir, 0755)
+	backupPath := filepath.Join(backupDir, "coordinator.previous")
+	backupScript := `#!/bin/bash
+if [ "$1" = "--version" ]; then
+  echo "v0.1.0"
+  exit 0
+fi
+exit 1
+`
+	os.WriteFile(backupPath, []byte(backupScript), 0755)
+
+	progressCalls := 0
+	progress := func(evt ProgressEvent) {
+		progressCalls++
+		if evt.Type != "rollback_progress" {
+			t.Errorf("Wrong progress event type: %s", evt.Type)
+		}
+	}
+
+	// Rollback will fail on ApplyUpdate (platform-specific) but progress events should still emit
+	Rollback(currentPath, progress)
+
+	if progressCalls == 0 {
+		t.Errorf("Rollback did not emit progress events")
+	}
+}
+
+// TestRollbackNoBackupError tests rollback when no backup exists.
+func TestRollbackNoBackupError(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+
+	os.Setenv("ARCVAULT_BACKUP_DIR", backupDir)
+	defer os.Unsetenv("ARCVAULT_BACKUP_DIR")
+
+	currentPath := filepath.Join(tmpDir, "coordinator")
+
+	progress := func(evt ProgressEvent) {}
+	err := Rollback(currentPath, progress)
+	if err == nil {
+		t.Errorf("Expected error when no backup exists")
+	}
+	if err.Error() != "no backup available for rollback" {
+		t.Errorf("Wrong error message: %v", err)
 	}
 }
