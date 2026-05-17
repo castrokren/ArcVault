@@ -86,6 +86,7 @@ CREATE TABLE IF NOT EXISTS agents (
 	id            TEXT PRIMARY KEY,
 	hostname      TEXT NOT NULL,
 	os            TEXT NOT NULL,
+	arch          TEXT NOT NULL DEFAULT '',
 	version       TEXT NOT NULL,
 	status        TEXT NOT NULL DEFAULT 'offline',
 	last_seen     DATETIME,
@@ -122,6 +123,12 @@ CREATE TABLE IF NOT EXISTS job_runs (
 	FOREIGN KEY (job_id) REFERENCES jobs(id)
 );
 `
-	_, err := d.conn.Exec(schema)
-	return err
+	if _, err := d.conn.Exec(schema); err != nil {
+		return err
+	}
+	// Idempotent: add arch column to existing databases that predate this migration.
+	d.conn.Exec(`ALTER TABLE agents ADD COLUMN arch TEXT NOT NULL DEFAULT ''`)
+	// Idempotent: add rollback_available column for Phase 10 rollback support.
+	d.conn.Exec(`ALTER TABLE agents ADD COLUMN rollback_available BOOLEAN NOT NULL DEFAULT 0`)
+	return nil
 }
