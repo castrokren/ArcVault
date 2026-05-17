@@ -167,12 +167,12 @@ func TestListJobs_returnsEmptyArrayWhenNoJobs(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rr.Code)
 	}
 
-	var jobs []Job
-	if err := json.NewDecoder(rr.Body).Decode(&jobs); err != nil {
+	var resp PaginatedResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatalf("response is not valid JSON: %v", err)
 	}
-	if len(jobs) != 0 {
-		t.Errorf("expected empty list, got %d jobs", len(jobs))
+	if resp.Total != 0 {
+		t.Errorf("expected total=0, got %d", resp.Total)
 	}
 }
 
@@ -193,12 +193,12 @@ func TestListJobs_returnsCreatedJobs(t *testing.T) {
 
 	s.router.ServeHTTP(rr, req)
 
-	var jobs []Job
-	if err := json.NewDecoder(rr.Body).Decode(&jobs); err != nil {
+	var resp PaginatedResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatalf("response is not valid JSON: %v", err)
 	}
-	if len(jobs) != 2 {
-		t.Errorf("expected 2 jobs, got %d", len(jobs))
+	if resp.Total != 2 {
+		t.Errorf("expected total=2, got %d", resp.Total)
 	}
 }
 
@@ -218,12 +218,12 @@ func TestListJobs_filtersByAgentID(t *testing.T) {
 	rr := httptest.NewRecorder()
 	s.router.ServeHTTP(rr, req)
 
-	var jobs []Job
-	if err := json.NewDecoder(rr.Body).Decode(&jobs); err != nil {
+	var resp PaginatedResponse
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
 		t.Fatalf("response is not valid JSON: %v", err)
 	}
-	if len(jobs) != 2 {
-		t.Errorf("expected 2 jobs for agent-01, got %d", len(jobs))
+	if resp.Total != 2 {
+		t.Errorf("expected total=2 for agent-01, got %d", resp.Total)
 	}
 }
 

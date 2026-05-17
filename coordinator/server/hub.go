@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sync"
@@ -16,18 +17,23 @@ type Event struct {
 }
 
 // Hub manages connected WebSocket clients and broadcasts events to them.
+// It tracks two distinct connection pools:
+//   - clients: dashboard (browser) connections — receives broadcasts
+//   - agentConns: agent connections indexed by agent ID — bidirectional
 type Hub struct {
-	mu      sync.Mutex
-	clients map[*websocket.Conn]struct{}
+	mu         sync.Mutex
+	clients    map[*websocket.Conn]struct{}
+	agentConns map[string]*websocket.Conn
 }
 
 func newHub() *Hub {
 	return &Hub{
-		clients: make(map[*websocket.Conn]struct{}),
+		clients:    make(map[*websocket.Conn]struct{}),
+		agentConns: make(map[string]*websocket.Conn),
 	}
 }
 
-// Broadcast sends an event to every connected client.
+// Broadcast sends an event to every connected dashboard client.
 func (h *Hub) Broadcast(event Event) {
 	msg, err := json.Marshal(event)
 	if err != nil {
@@ -47,6 +53,28 @@ func (h *Hub) Broadcast(event Event) {
 	}
 }
 
+// SendToAgent sends a message to a specific agent's WebSocket connection.
+// Returns an error if the agent is not currently connected.
+func (h *Hub) SendToAgent(agentID string, msg any) error {
+	raw, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	h.mu.Lock()
+	conn, ok := h.agentConns[agentID]
+	h.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("agent %q not connected", agentID)
+	}
+
+	if err := conn.WriteMessage(websocket.TextMessage, raw); err != nil {
+		return fmt.Errorf("failed to send to agent %q: %w", agentID, err)
+	}
+	return nil
+}
+
 func (h *Hub) add(conn *websocket.Conn) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -59,6 +87,18 @@ func (h *Hub) remove(conn *websocket.Conn) {
 	delete(h.clients, conn)
 }
 
+func (h *Hub) addAgent(agentID string, conn *websocket.Conn) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.agentConns[agentID] = conn
+}
+
+func (h *Hub) removeAgent(agentID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.agentConns, agentID)
+}
+
 // --- WebSocket upgrade handler ---
 
 var upgrader = websocket.Upgrader{
@@ -69,7 +109,6 @@ var upgrader = websocket.Upgrader{
 // Auth: accepts Bearer token from Authorization header OR ?token= query param
 // (browsers cannot set headers on WebSocket connections).
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
-	// auth checked here instead of authMiddleware to support query param token
 	token := r.Header.Get("Authorization")
 	if len(token) > 7 && token[:7] == "Bearer " {
 		token = token[7:]
@@ -100,6 +139,70 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		for {
 			if _, _, err := conn.ReadMessage(); err != nil {
 				return
+			}
+		}
+	}()
+}
+
+// handleAgentWS upgrades an agent's connection, registers it by agent ID,
+// and relays inbound update_progress events to dashboard clients.
+// Auth: agent token (from Authorization header or ?token= query param).
+func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
+	token := r.Header.Get("Authorization")
+	if len(token) > 7 && token[:7] == "Bearer " {
+		token = token[7:]
+	}
+	if token == "" {
+		token = r.URL.Query().Get("token")
+	}
+
+	// Accept both admin token and valid agent tokens.
+	isAdmin := token == s.cfg.AdminToken
+	if !isAdmin {
+		if _, err := s.db.ValidateToken(token); err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+	}
+
+	agentID := r.URL.Query().Get("agent_id")
+	if agentID == "" {
+		http.Error(w, "agent_id query param required", http.StatusBadRequest)
+		return
+	}
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("Agent WS upgrade failed: %v", err)
+		return
+	}
+
+	s.hub.addAgent(agentID, conn)
+	log.Printf("Agent %q WS connected", agentID)
+
+	go func() {
+		defer func() {
+			s.hub.removeAgent(agentID)
+			conn.Close()
+			log.Printf("Agent %q WS disconnected", agentID)
+		}()
+		for {
+			_, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			// Relay update_progress events from agent to dashboard clients.
+			var envelope map[string]json.RawMessage
+			if err := json.Unmarshal(msg, &envelope); err != nil {
+				continue
+			}
+			msgType, _ := envelope["type"]
+			var typeStr string
+			json.Unmarshal(msgType, &typeStr)
+			if typeStr == "update_progress" {
+				var payload any
+				json.Unmarshal(msg, &payload)
+				s.hub.Broadcast(Event{Type: "update_progress", Payload: payload})
 			}
 		}
 	}()

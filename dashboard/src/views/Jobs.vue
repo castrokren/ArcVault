@@ -30,28 +30,29 @@
 
     <div v-if="error" class="error">{{ error }}</div>
 
-    <div v-if="jobs.length > 0" class="filters">
+    <div class="filters">
       <input
         v-model="searchQuery"
         type="text"
         placeholder="Search jobs by name or agent ID..."
         class="search-input"
+        @input="onFilterChange"
       />
       <div class="filter-chips">
         <button
-          v-for="status in ['all', 'pending', 'running', 'completed', 'failed']"
-          :key="status"
+          v-for="s in ['all', 'pending', 'running', 'completed', 'failed']"
+          :key="s"
           class="chip"
-          :class="{ active: statusFilter === status }"
-          @click="statusFilter = status"
+          :class="{ active: statusFilter === s }"
+          @click="setStatus(s)"
         >
-          {{ status.charAt(0).toUpperCase() + status.slice(1) }}
+          {{ s.charAt(0).toUpperCase() + s.slice(1) }}
         </button>
       </div>
     </div>
 
-    <div v-if="filteredJobs.length === 0" class="empty">
-      {{ jobs.length === 0 ? 'No jobs found.' : 'No jobs match your search' }}
+    <div v-if="result.total === 0 && !loading" class="empty">
+      {{ searchQuery || statusFilter !== 'all' ? 'No jobs match your search.' : 'No jobs found.' }}
     </div>
 
     <table v-else class="table">
@@ -68,7 +69,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="job in filteredJobs" :key="job.id">
+        <tr v-for="job in result.data" :key="job.id">
           <td class="mono">{{ job.id }}</td>
           <td>{{ job.name }}</td>
           <td class="mono">{{ job.agent_id }}</td>
@@ -82,15 +83,27 @@
         </tr>
       </tbody>
     </table>
+
+    <Pagination
+      :page="page"
+      :pages="result.pages"
+      :total="result.total"
+      :limit="limit"
+      @page-change="goToPage"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { getJobs, createJob as apiCreateJob, deleteJob } from '../api.js'
+import Pagination from '../components/Pagination.vue'
 
 const props = defineProps(['lastEvent'])
-const jobs = ref([])
+
+const result = ref({ data: [], total: 0, page: 1, pages: 0, limit: 25 })
+const page = ref(1)
+const limit = 25
 const loading = ref(false)
 const error = ref(null)
 const showForm = ref(false)
@@ -101,26 +114,37 @@ const statusFilter = ref('all')
 
 const form = ref({ agent_id: '', name: '', source_path: '', dest_path: '', schedule: '' })
 
-const filteredJobs = computed(() => {
-  return jobs.value.filter(j => {
-    const matchesSearch = !searchQuery.value ||
-      j.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      j.agent_id.toLowerCase().includes(searchQuery.value.toLowerCase())
-    const matchesStatus = statusFilter.value === 'all' || j.status === statusFilter.value
-    return matchesSearch && matchesStatus
-  })
-})
-
 async function load() {
   loading.value = true
   error.value = null
   try {
-    jobs.value = await getJobs()
+    result.value = await getJobs({
+      page: page.value,
+      limit,
+      search: searchQuery.value,
+      status: statusFilter.value === 'all' ? '' : statusFilter.value,
+    })
   } catch (e) {
     error.value = e.message
   } finally {
     loading.value = false
   }
+}
+
+function onFilterChange() {
+  page.value = 1
+  load()
+}
+
+function setStatus(s) {
+  statusFilter.value = s
+  page.value = 1
+  load()
+}
+
+function goToPage(n) {
+  page.value = n
+  load()
 }
 
 async function createJob() {
@@ -132,6 +156,7 @@ async function createJob() {
     await apiCreateJob(payload)
     form.value = { agent_id: '', name: '', source_path: '', dest_path: '', schedule: '' }
     showForm.value = false
+    page.value = 1
     await load()
   } catch (e) {
     formError.value = e.message
@@ -155,7 +180,6 @@ function formatDate(d) {
   return new Date(d).toLocaleString()
 }
 
-// refresh on job events from WebSocket
 watch(() => props.lastEvent, (ev) => {
   if (ev?.type === 'job.updated' || ev?.type === 'job.result') load()
 })
@@ -247,7 +271,6 @@ button.primary {
 }
 
 .chip:hover { border-color: #4f8ef7; color: #4f8ef7; }
-
 .chip.active { background: #4f8ef7; border-color: #4f8ef7; color: #fff; }
 
 .table { width: 100%; border-collapse: collapse; }

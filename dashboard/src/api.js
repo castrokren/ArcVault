@@ -23,12 +23,22 @@ async function request(method, path, body = null) {
   return res.json()
 }
 
+// Build a query string from a params object, omitting null/undefined/''/0 values.
+function buildQuery(params) {
+  const q = Object.entries(params)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== 0)
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    .join('&')
+  return q ? `?${q}` : ''
+}
+
 // --- agents ---
-export const getAgents = () => request('GET', '/api/agents')
+export const getAgents = ({ page = 1, limit = 25, search = '', status = '' } = {}) =>
+  request('GET', `/api/agents${buildQuery({ page, limit, search, status })}`)
 
 // --- jobs ---
-export const getJobs = (agentID = null) =>
-  request('GET', `/api/jobs${agentID ? `?agent_id=${agentID}` : ''}`)
+export const getJobs = ({ page = 1, limit = 25, search = '', status = '', agentID = '' } = {}) =>
+  request('GET', `/api/jobs${buildQuery({ page, limit, search, status, agent_id: agentID })}`)
 
 export const getJob = (id) => request('GET', `/api/jobs/${id}`)
 
@@ -38,6 +48,20 @@ export const deleteJob = (id) => request('DELETE', `/api/jobs/${id}`)
 
 export const updateJobStatus = (id, status) =>
   request('PATCH', `/api/jobs/${id}/status`, { status })
+
+// --- job runs ---
+export const getJobRuns = ({ page = 1, limit = 25, jobID = '', agentID = '' } = {}) =>
+  request('GET', `/api/job-runs${buildQuery({ page, limit, job_id: jobID, agent_id: agentID })}`)
+
+// --- rollback ---
+export const getRollbackAvailable = () =>
+  request('GET', '/api/rollback-available')
+
+export const applyRollback = () =>
+  request('POST', '/api/rollback')
+
+export const applyAgentRollback = (agentId) =>
+  request('POST', `/api/agents/${agentId}/rollback`)
 
 // --- token helpers ---
 export function saveToken(token) {

@@ -84,26 +84,44 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleListJobs handles GET /api/jobs
-// Optional query param: ?agent_id=<id> to filter by agent
+// Optional query params: ?agent_id=, ?search=, ?status=, ?page=, ?limit=
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
-	agentID := r.URL.Query().Get("agent_id")
+	q := r.URL.Query()
+	agentID := q.Get("agent_id")
+	search := q.Get("search")
+	status := q.Get("status")
+	p := ParsePagination(r)
 
-	var (
-		rows *sql.Rows
-		err  error
-	)
+	args := []any{}
+	where := " WHERE 1=1"
 	if agentID != "" {
-		rows, err = s.db.Conn().Query(
-			`SELECT id, agent_id, name, source_path, dest_path, schedule, status, created_at
-			 FROM jobs WHERE agent_id = ? ORDER BY created_at DESC`,
-			agentID,
-		)
-	} else {
-		rows, err = s.db.Conn().Query(
-			`SELECT id, agent_id, name, source_path, dest_path, schedule, status, created_at
-			 FROM jobs ORDER BY created_at DESC`,
-		)
+		where += " AND agent_id = ?"
+		args = append(args, agentID)
 	}
+	if search != "" {
+		where += " AND (name LIKE ? OR agent_id LIKE ?)"
+		like := "%" + search + "%"
+		args = append(args, like, like)
+	}
+	if status != "" {
+		where += " AND status = ?"
+		args = append(args, status)
+	}
+
+	var total int
+	countArgs := append([]any{}, args...)
+	if err := s.db.Conn().QueryRow("SELECT COUNT(*) FROM jobs"+where, countArgs...).Scan(&total); err != nil {
+		http.Error(w, "failed to count jobs", http.StatusInternalServerError)
+		return
+	}
+
+	offset := (p.Page - 1) * p.Limit
+	queryArgs := append(args, p.Limit, offset)
+	rows, err := s.db.Conn().Query(
+		"SELECT id, agent_id, name, source_path, dest_path, schedule, status, created_at FROM jobs"+where+
+			" ORDER BY created_at DESC LIMIT ? OFFSET ?",
+		queryArgs...,
+	)
 	if err != nil {
 		http.Error(w, "failed to query jobs", http.StatusInternalServerError)
 		return
@@ -113,19 +131,17 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	jobs := []Job{}
 	for rows.Next() {
 		var j Job
-		var schedule sql.NullString
+		var schedule *string
 		if err := rows.Scan(&j.ID, &j.AgentID, &j.Name, &j.SourcePath, &j.DestPath, &schedule, &j.Status, &j.CreatedAt); err != nil {
 			http.Error(w, "failed to scan job", http.StatusInternalServerError)
 			return
 		}
-		if schedule.Valid {
-			j.Schedule = &schedule.String
-		}
+		j.Schedule = schedule
 		jobs = append(jobs, j)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(jobs)
+	json.NewEncoder(w).Encode(NewPaginatedResponse(jobs, total, p.Page, p.Limit))
 }
 
 // handleGetJob handles GET /api/jobs/{id}
@@ -133,7 +149,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	var j Job
-	var schedule sql.NullString
+	var schedule *string
 	err := s.db.Conn().QueryRow(
 		`SELECT id, agent_id, name, source_path, dest_path, schedule, status, created_at
 		 FROM jobs WHERE id = ?`, id,
@@ -147,9 +163,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed to query job", http.StatusInternalServerError)
 		return
 	}
-	if schedule.Valid {
-		j.Schedule = &schedule.String
-	}
+	j.Schedule = schedule
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(j)

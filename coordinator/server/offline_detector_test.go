@@ -34,11 +34,13 @@ func TestOfflineDetector_marksAgentOfflineAfterTimeout(t *testing.T) {
 	rr2 := httptest.NewRecorder()
 	s.router.ServeHTTP(rr2, req2)
 
-	var agents []agentResponse
-	json.NewDecoder(rr2.Body).Decode(&agents)
+	var resp struct {
+		Data []agentResponse `json:"data"`
+	}
+	json.NewDecoder(rr2.Body).Decode(&resp)
 
 	var found bool
-	for _, a := range agents {
+	for _, a := range resp.Data {
 		if a.ID == "agent-stale" {
 			found = true
 			if a.Status != "offline" {
@@ -73,10 +75,12 @@ func TestOfflineDetector_doesNotMarkRecentAgentOffline(t *testing.T) {
 	rr2 := httptest.NewRecorder()
 	s.router.ServeHTTP(rr2, req2)
 
-	var agents []agentResponse
-	json.NewDecoder(rr2.Body).Decode(&agents)
+	var resp struct {
+		Data []agentResponse `json:"data"`
+	}
+	json.NewDecoder(rr2.Body).Decode(&resp)
 
-	for _, a := range agents {
+	for _, a := range resp.Data {
 		if a.ID == "agent-fresh" && a.Status != "online" {
 			t.Errorf("expected status 'online', got %q", a.Status)
 		}
