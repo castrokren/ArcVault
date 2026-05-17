@@ -8,6 +8,14 @@
         <router-link to="/history">History</router-link>
       </nav>
       <div class="nav-right">
+        <button
+          v-if="rollbackAvailable"
+          class="btn-rollback-header"
+          title="Roll back coordinator to previous version"
+          @click="showRollbackModal = true"
+        >
+          ↩ Rollback
+        </button>
         <button class="theme-toggle" @click="toggleTheme" :title="`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`">
           <span v-if="theme === 'dark'">☀️</span>
           <span v-else>🌙</span>
@@ -33,19 +41,29 @@
     </main>
 
     <UpdateModal :isOpen="updateModalOpen" :lastEvent="lastEvent" @close="updateModalOpen = false" />
+
+    <RollbackModal
+      v-if="showRollbackModal"
+      target="coordinator"
+      @close="showRollbackModal = false"
+      @complete="onCoordinatorRollbackComplete"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, provide, reactive } from 'vue'
-import { saveToken as persistToken, hasToken } from './api.js'
+import { saveToken as persistToken, hasToken, getRollbackAvailable } from './api.js'
 import { useWebSocket } from './composables/useWebSocket.js'
 import UpdateBanner from './components/UpdateBanner.vue'
 import UpdateModal from './components/UpdateModal.vue'
+import RollbackModal from './components/RollbackModal.vue'
 
 const tokenInput = ref('')
 const tokenSet = ref(false)
 const updateModalOpen = ref(false)
+const showRollbackModal = ref(false)
+const rollbackAvailable = ref(false)
 const theme = ref(localStorage.getItem('arcvault-theme') || 'dark')
 const { connected: wsConnected, lastEvent, connect } = useWebSocket()
 
@@ -67,6 +85,7 @@ onMounted(() => {
     tokenSet.value = true
     connect()
     checkForUpdates()
+    checkRollbackAvailable()
   }
 })
 
@@ -86,6 +105,7 @@ function saveToken() {
   tokenSet.value = true
   connect()
   checkForUpdates()
+  checkRollbackAvailable()
 }
 
 function checkForUpdates() {
@@ -111,8 +131,22 @@ function checkForUpdates() {
     })
 }
 
+async function checkRollbackAvailable() {
+  try {
+    const data = await getRollbackAvailable()
+    rollbackAvailable.value = data.available === true
+  } catch {
+    rollbackAvailable.value = false
+  }
+}
+
 function showUpdateModal() {
   updateModalOpen.value = true
+}
+
+function onCoordinatorRollbackComplete() {
+  showRollbackModal.value = false
+  rollbackAvailable.value = false
 }
 </script>
 
@@ -143,6 +177,20 @@ function showUpdateModal() {
   align-items: center;
   gap: 1rem;
 }
+
+.btn-rollback-header {
+  padding: 0.3rem 0.8rem;
+  background: transparent;
+  color: #e6a817;
+  border: 1px solid #e6a817;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.btn-rollback-header:hover { background: rgba(230, 168, 23, 0.15); }
 
 .theme-toggle {
   background: none;

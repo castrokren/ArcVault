@@ -7,28 +7,29 @@
 
     <div v-if="error" class="error">{{ error }}</div>
 
-    <div v-if="agents.length > 0" class="filters">
+    <div class="filters">
       <input
         v-model="searchQuery"
         type="text"
         placeholder="Search agents by ID or hostname..."
         class="search-input"
+        @input="onFilterChange"
       />
       <div class="filter-chips">
         <button
-          v-for="status in ['all', 'online', 'offline']"
-          :key="status"
+          v-for="s in ['all', 'online', 'offline']"
+          :key="s"
           class="chip"
-          :class="{ active: statusFilter === status }"
-          @click="statusFilter = status"
+          :class="{ active: statusFilter === s }"
+          @click="setStatus(s)"
         >
-          {{ status.charAt(0).toUpperCase() + status.slice(1) }}
+          {{ s.charAt(0).toUpperCase() + s.slice(1) }}
         </button>
       </div>
     </div>
 
-    <div v-if="filteredAgents.length === 0" class="empty">
-      {{ agents.length === 0 ? 'No agents registered.' : 'No agents match your search' }}
+    <div v-if="result.total === 0 && !loading" class="empty">
+      {{ searchQuery || statusFilter !== 'all' ? 'No agents match your search.' : 'No agents registered.' }}
     </div>
 
     <table v-else class="table">
@@ -40,50 +41,120 @@
           <th>Version</th>
           <th>Status</th>
           <th>Last Seen</th>
+          <th></th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="agent in filteredAgents" :key="agent.id">
+        <tr v-for="agent in result.data" :key="agent.id">
           <td class="mono">{{ agent.id }}</td>
           <td>{{ agent.hostname }}</td>
           <td>{{ agent.os }}</td>
-          <td>{{ agent.version }}</td>
+          <td>
+            {{ agent.version }}
+            <span v-if="updateAvailable(agent)" class="update-badge">Update</span>
+          </td>
           <td>
             <span class="badge" :class="agent.status">{{ agent.status }}</span>
           </td>
           <td>{{ formatDate(agent.last_seen) }}</td>
+          <td class="actions-cell">
+            <button
+              v-if="updateAvailable(agent) && agent.status === 'online'"
+              class="btn-update-agent"
+              @click="openUpdateModal(agent)"
+            >
+              Update
+            </button>
+            <button
+              v-if="agent.rollback_available"
+              class="btn-rollback-agent"
+              @click="openRollbackModal(agent)"
+            >
+              ↩ Rollback
+            </button>
+          </td>
         </tr>
       </tbody>
     </table>
+
+    <Pagination
+      :page="page"
+      :pages="result.pages"
+      :total="result.total"
+      :limit="limit"
+      @page-change="goToPage"
+    />
+
+    <AgentUpdateModal
+      :isOpen="modalOpen"
+      :agentId="selectedAgent?.id"
+      :agentVersion="selectedAgent?.version"
+      :agents="result.data"
+      :lastEvent="lastEvent"
+      @close="modalOpen = false"
+    />
+
+    <RollbackModal
+      v-if="rollbackModal.show"
+      target="agent"
+      :agentId="rollbackModal.agentId"
+      @close="rollbackModal.show = false"
+      @complete="onRollbackComplete"
+    />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, watch, inject } from 'vue'
 import { getAgents } from '../api.js'
+import AgentUpdateModal from '../components/AgentUpdateModal.vue'
+import RollbackModal from '../components/RollbackModal.vue'
+import Pagination from '../components/Pagination.vue'
 
 const props = defineProps(['lastEvent'])
-const agents = ref([])
+
+const result = ref({ data: [], total: 0, page: 1, pages: 0, limit: 25 })
+const page = ref(1)
+const limit = 25
 const loading = ref(false)
 const error = ref(null)
 const searchQuery = ref('')
 const statusFilter = ref('all')
+const modalOpen = ref(false)
+const selectedAgent = ref(null)
+const rollbackModal = ref({ show: false, agentId: null })
 
-const filteredAgents = computed(() => {
-  return agents.value.filter(a => {
-    const matchesSearch = !searchQuery.value ||
-      a.id.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-      a.hostname.toLowerCase().includes(searchQuery.value.toLowerCase())
-    const matchesStatus = statusFilter.value === 'all' || a.status === statusFilter.value
-    return matchesSearch && matchesStatus
-  })
-})
+const updateStore = inject('updateStore', { available: false, latest: '' })
+
+function updateAvailable(agent) {
+  if (!updateStore.available || !updateStore.latest) return false
+  return agent.version !== updateStore.latest
+}
+
+function openUpdateModal(agent) {
+  selectedAgent.value = agent
+  modalOpen.value = true
+}
+
+function openRollbackModal(agent) {
+  rollbackModal.value = { show: true, agentId: agent.id }
+}
+
+function onRollbackComplete() {
+  rollbackModal.value.show = false
+  load()
+}
 
 async function load() {
   loading.value = true
   error.value = null
   try {
-    agents.value = await getAgents()
+    result.value = await getAgents({
+      page: page.value,
+      limit,
+      search: searchQuery.value,
+      status: statusFilter.value === 'all' ? '' : statusFilter.value,
+    })
   } catch (e) {
     error.value = e.message
   } finally {
@@ -91,12 +162,28 @@ async function load() {
   }
 }
 
+function onFilterChange() {
+  page.value = 1
+  load()
+}
+
+function setStatus(s) {
+  statusFilter.value = s
+  page.value = 1
+  load()
+}
+
+function goToPage(n) {
+  page.value = n
+  load()
+}
+
 function formatDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleString()
 }
 
-// refresh on heartbeat or offline detection events
+// WebSocket updates refresh current page without resetting pagination
 watch(() => props.lastEvent, (ev) => {
   if (ev?.type === 'agent.heartbeat' || ev?.type === 'agent.updated') load()
 })
@@ -152,7 +239,6 @@ onMounted(load)
 }
 
 .chip:hover { border-color: #4f8ef7; color: #4f8ef7; }
-
 .chip.active { background: #4f8ef7; border-color: #4f8ef7; color: #fff; }
 
 .table { width: 100%; border-collapse: collapse; }
@@ -175,4 +261,42 @@ onMounted(load)
 }
 .badge.online  { background: #1a3a1a; color: #4caf50; }
 .badge.offline { background: #3a1a1a; color: #e55; }
+
+.update-badge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.4rem;
+  background: #3a2a10;
+  color: #f39c12;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.actions-cell { display: flex; gap: 0.4rem; align-items: center; }
+
+.btn-update-agent {
+  padding: 0.3rem 0.8rem;
+  background: #f39c12;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.btn-update-agent:hover { background: #e08e00; }
+
+.btn-rollback-agent {
+  padding: 0.3rem 0.8rem;
+  background: transparent;
+  color: #e6a817;
+  border: 1px solid #e6a817;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+.btn-rollback-agent:hover { background: rgba(230, 168, 23, 0.15); }
 </style>

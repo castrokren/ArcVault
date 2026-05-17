@@ -13,6 +13,7 @@ import (
 	"arcvault/agent/heartbeat"
 	"arcvault/agent/runner"
 	"arcvault/agent/service"
+	agentws "arcvault/agent/ws"
 )
 
 func main() {
@@ -57,7 +58,7 @@ func runAgent() {
 
 	// Register with coordinator
 	hostname, _ := os.Hostname()
-	if err := heartbeat.Register(hbCfg, hostname, runtime.GOOS, cfg.Version); err != nil {
+	if err := heartbeat.Register(hbCfg, hostname, runtime.GOOS, runtime.GOARCH, cfg.Version); err != nil {
 		log.Fatalf("registration failed: %v", err)
 	}
 
@@ -72,6 +73,14 @@ func runAgent() {
 		PollInterval:   30 * time.Second,
 	}, runner.RealExecutor)
 	go r.Start()
+
+	// Start WebSocket client for receiving coordinator commands (e.g. update_command).
+	wsClient := &agentws.Client{
+		AgentID:        cfg.AgentID,
+		CoordinatorURL: cfg.CoordinatorURL,
+		AuthToken:      cfg.AuthToken,
+	}
+	go wsClient.Start()
 
 	// Block until CTRL+C or SIGTERM
 	quit := make(chan os.Signal, 1)
