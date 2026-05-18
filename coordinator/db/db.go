@@ -26,6 +26,16 @@ type Template struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+type Federation struct {
+	ID       string     `json:"id"`
+	Name     string     `json:"name"`
+	URL      string     `json:"url"`
+	Token    string     `json:"token"`
+	Status   string     `json:"status"`
+	LastSeen *time.Time `json:"last_seen"`
+	Version  string     `json:"version"`
+}
+
 func Init(dbPath string) (*DB, error) {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 		return nil, fmt.Errorf("could not create db directory: %w", err)
@@ -170,6 +180,117 @@ func (d *DB) DeleteTemplate(id string) error {
 	return err
 }
 
+// CreateFederation inserts a new federation sub-coordinator record.
+func (d *DB) CreateFederation(f Federation) error {
+	_, err := d.conn.Exec(
+		`INSERT INTO federation (id, name, url, token, status) VALUES (?, ?, ?, ?, 'offline')`,
+		f.ID, f.Name, f.URL, f.Token,
+	)
+	return err
+}
+
+// ListFederation returns all registered sub-coordinators.
+func (d *DB) ListFederation() ([]Federation, error) {
+	rows, err := d.conn.Query(
+		`SELECT id, name, url, token, status, last_seen, version FROM federation ORDER BY name ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []Federation
+	for rows.Next() {
+		var f Federation
+		var lastSeen sql.NullTime
+		var version sql.NullString
+		if err := rows.Scan(&f.ID, &f.Name, &f.URL, &f.Token, &f.Status, &lastSeen, &version); err != nil {
+			return nil, err
+		}
+		if lastSeen.Valid {
+			f.LastSeen = &lastSeen.Time
+		}
+		if version.Valid {
+			f.Version = version.String
+		}
+		list = append(list, f)
+	}
+	if list == nil {
+		list = []Federation{}
+	}
+	return list, rows.Err()
+}
+
+// GetFederation returns a single federation record by ID, or nil if not found.
+func (d *DB) GetFederation(id string) (*Federation, error) {
+	var f Federation
+	var lastSeen sql.NullTime
+	var version sql.NullString
+	err := d.conn.QueryRow(
+		`SELECT id, name, url, token, status, last_seen, version FROM federation WHERE id = ?`, id,
+	).Scan(&f.ID, &f.Name, &f.URL, &f.Token, &f.Status, &lastSeen, &version)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if lastSeen.Valid {
+		f.LastSeen = &lastSeen.Time
+	}
+	if version.Valid {
+		f.Version = version.String
+	}
+	return &f, nil
+}
+
+// GetFederationByToken looks up a federation record by its token.
+func (d *DB) GetFederationByToken(token string) (*Federation, error) {
+	var f Federation
+	var lastSeen sql.NullTime
+	var version sql.NullString
+	err := d.conn.QueryRow(
+		`SELECT id, name, url, token, status, last_seen, version FROM federation WHERE token = ?`, token,
+	).Scan(&f.ID, &f.Name, &f.URL, &f.Token, &f.Status, &lastSeen, &version)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if lastSeen.Valid {
+		f.LastSeen = &lastSeen.Time
+	}
+	if version.Valid {
+		f.Version = version.String
+	}
+	return &f, nil
+}
+
+// UpdateFederation updates name, url, and token for an existing federation record.
+func (d *DB) UpdateFederation(f Federation) error {
+	_, err := d.conn.Exec(
+		`UPDATE federation SET name=?, url=?, token=? WHERE id=?`,
+		f.Name, f.URL, f.Token, f.ID,
+	)
+	return err
+}
+
+// DeleteFederation removes a federation record by ID.
+func (d *DB) DeleteFederation(id string) error {
+	_, err := d.conn.Exec(`DELETE FROM federation WHERE id = ?`, id)
+	return err
+}
+
+// SetFederationStatus updates the live status, last_seen, and version of a sub-coordinator.
+func (d *DB) SetFederationStatus(id, status string, lastSeen time.Time, version string) error {
+	_, err := d.conn.Exec(
+		`UPDATE federation SET status=?, last_seen=?, version=? WHERE id=?`,
+		status, lastSeen, version, id,
+	)
+	return err
+}
+
 func (d *DB) migrate() error {
 	schema := `
 CREATE TABLE IF NOT EXISTS agents (
@@ -231,6 +352,16 @@ CREATE TABLE IF NOT EXISTS job_runs (
 		schedule    TEXT NOT NULL,
 		enabled     INTEGER NOT NULL DEFAULT 1,
 		created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`)
+	// Idempotent: add federation table for Phase 14 multi-coordinator federation.
+	d.conn.Exec(`CREATE TABLE IF NOT EXISTS federation (
+		id        TEXT PRIMARY KEY,
+		name      TEXT NOT NULL,
+		url       TEXT NOT NULL,
+		token     TEXT NOT NULL,
+		status    TEXT NOT NULL DEFAULT 'offline',
+		last_seen DATETIME,
+		version   TEXT
 	)`)
 	return nil
 }

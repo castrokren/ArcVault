@@ -12,13 +12,18 @@ import (
 	"arcvault/coordinator/notifications"
 )
 
+// Version is injected at build time via -ldflags.
+var Version = "dev"
+
 type Server struct {
-	cfg      *config.Config
-	db       *db.DB
-	router   *http.ServeMux
-	hub      *Hub
-	staticFS fs.FS
-	Notifier *notifications.Dispatcher
+	cfg       *config.Config
+	db        *db.DB
+	router    *http.ServeMux
+	hub       *Hub
+	fedHub    *FederationHub
+	fedClient *FederationClient
+	staticFS  fs.FS
+	Notifier  *notifications.Dispatcher
 }
 
 func New(cfg *config.Config, database *db.DB) *Server {
@@ -31,9 +36,15 @@ func NewWithFS(cfg *config.Config, database *db.DB, staticFS fs.FS) *Server {
 		db:       database,
 		router:   http.NewServeMux(),
 		hub:      newHub(),
+		fedHub:   NewFederationHub(database),
 		staticFS: staticFS,
 		Notifier: notifications.NewDispatcher(cfg.Notifications),
 	}
+
+	if cfg.Federation != nil {
+		s.fedClient = NewFederationClient(cfg.Federation, database, Version)
+	}
+
 	s.registerRoutes()
 	return s
 }
@@ -49,6 +60,11 @@ func (s *Server) Start() error {
 	s.StartOfflineDetector(60*time.Second, 90*time.Second)
 	s.StartScheduler()
 
+	if s.fedClient != nil {
+		log.Printf("Federation: sub mode enabled, connecting to %s", s.cfg.Federation.RootURL)
+		go s.fedClient.Start()
+	}
+
 	return http.ListenAndServe(addr, corsMiddleware(s.router))
 }
 
@@ -56,6 +72,7 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("GET /health", s.handleHealth)
 	s.router.HandleFunc("GET /ws", s.handleWS)
 	s.router.HandleFunc("GET /ws/agent", s.handleAgentWS)
+	s.router.HandleFunc("GET /ws/federation", s.fedHub.HandleSubConnect)
 
 	s.router.HandleFunc("POST /api/agents/register", s.authMiddleware(s.handleRegister))
 	s.router.HandleFunc("POST /api/agents/{id}/heartbeat", s.authMiddleware(s.handleHeartbeat))
@@ -84,6 +101,16 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("PUT /api/templates/{id}", s.adminMiddleware(s.handleUpdateTemplate))
 	s.router.HandleFunc("DELETE /api/templates/{id}", s.adminMiddleware(s.handleDeleteTemplate))
 	s.router.HandleFunc("POST /api/templates/{id}/run", s.adminMiddleware(s.handleRunTemplateNow))
+
+	s.router.HandleFunc("GET /api/federation", s.adminMiddleware(s.handleListFederation))
+	s.router.HandleFunc("POST /api/federation", s.adminMiddleware(s.handleCreateFederation))
+	s.router.HandleFunc("GET /api/federation/{id}", s.adminMiddleware(s.handleGetFederation))
+	s.router.HandleFunc("PUT /api/federation/{id}", s.adminMiddleware(s.handleUpdateFederation))
+	s.router.HandleFunc("DELETE /api/federation/{id}", s.adminMiddleware(s.handleDeleteFederation))
+	s.router.HandleFunc("POST /api/federation/{id}/sync", s.adminMiddleware(s.handleSyncFederation))
+	s.router.HandleFunc("GET /api/federation/{id}/agents", s.adminMiddleware(s.handleFederationAgents))
+	s.router.HandleFunc("GET /api/federation/{id}/jobs", s.adminMiddleware(s.handleFederationJobs))
+	s.router.HandleFunc("GET /api/federation/{id}/history", s.adminMiddleware(s.handleFederationHistory))
 
 	if s.staticFS != nil {
 		log.Printf("Serving embedded dashboard")
@@ -158,4 +185,12 @@ func (s *Server) adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Write([]byte(`{"status":"ok"}`))
+}
+
+// broadcastFedDelta sends a delta event to the root if this coordinator
+// is running as a sub. No-op if federation is not configured.
+func (s *Server) broadcastFedDelta(msg FedMessage) {
+	if s.fedClient != nil {
+		s.fedClient.BroadcastDelta(msg)
+	}
 }

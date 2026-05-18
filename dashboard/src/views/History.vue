@@ -4,31 +4,38 @@
       <h2 class="history-title">History</h2>
     </div>
 
-    <!-- ── Visualization panels ──────────────────────────── -->
-    <JobTimeline
-      :job-rows="timelineRows"
-      :loading="tlLoading"
-      :selected-job="filterJobId"
-      window-label="last 48 runs"
-      class="history-section"
-      @select-job="onSelectJob"
-    />
+    <!-- Stale data banner -->
+    <div v-if="stale" class="stale-banner history-section">
+      ⚠ Site data last synced {{ fmtStaleTime(staleAsOf) }}. Data may be outdated.
+    </div>
 
-    <AgentRunChart
-      :agents="agentChartData"
-      :loading="acLoading"
-      :selected-agent="filterAgentId"
-      :days="14"
-      class="history-section"
-      @select-agent="onSelectAgent"
-    />
+    <!-- ── Visualization panels (local only) ─────────────── -->
+    <template v-if="!selectedSite">
+      <JobTimeline
+        :job-rows="timelineRows"
+        :loading="tlLoading"
+        :selected-job="filterJobId"
+        window-label="last 48 runs"
+        class="history-section"
+        @select-job="onSelectJob"
+      />
 
-    <!-- ── Table: existing paginated run list ────────────── -->
+      <AgentRunChart
+        :agents="agentChartData"
+        :loading="acLoading"
+        :selected-agent="filterAgentId"
+        :days="14"
+        class="history-section"
+        @select-agent="onSelectAgent"
+      />
+    </template>
+
+    <!-- ── Table: paginated run list ────────────────────── -->
     <div class="history-table-card history-section">
       <div class="table-header">
         <span class="section-label">Run Log</span>
 
-        <div class="table-filters">
+        <div class="table-filters" v-if="!selectedSite">
           <input
             v-model="search"
             class="filter-input"
@@ -48,7 +55,7 @@
       </div>
 
       <!-- active filter pills -->
-      <div v-if="filterJobId || filterAgentId" class="filter-pills">
+      <div v-if="!selectedSite && (filterJobId || filterAgentId)" class="filter-pills">
         <span v-if="filterJobId" class="pill">
           job: {{ filterJobId }}
           <button class="pill-x" @click="onSelectJob(null)">✕</button>
@@ -63,7 +70,7 @@
         <span class="tl-loading-dot"></span> loading…
       </div>
 
-      <div v-else-if="runs.length === 0" class="table-empty">
+      <div v-else-if="displayRuns.length === 0" class="table-empty">
         No runs match the current filters.
       </div>
 
@@ -81,7 +88,7 @@
           </thead>
           <tbody>
             <tr
-              v-for="run in runs"
+              v-for="run in displayRuns"
               :key="run.id"
               class="run-row"
               :class="run.status"
@@ -105,9 +112,9 @@
         </table>
       </div>
 
-      <!-- Pagination -->
+      <!-- Pagination (local only) -->
       <Pagination
-        v-if="pagination.pages > 1"
+        v-if="!selectedSite && pagination.pages > 1"
         :page="pagination.page"
         :pages="pagination.pages"
         :total="pagination.total"
@@ -134,27 +141,38 @@
 import JobTimeline from '../components/JobTimeline.vue'
 import AgentRunChart from '../components/AgentRunChart.vue'
 import Pagination from '../components/Pagination.vue'
-import { getJobRuns } from '../api.js'
+import { getJobRuns, getFederationHistory } from '../api.js'
+import { inject, ref } from 'vue'
 
 export default {
   name: 'HistoryView',
   components: { JobTimeline, AgentRunChart, Pagination },
 
+  setup() {
+    const selectedSite = inject('selectedSite', ref(null))
+    return { selectedSite }
+  },
+
   data() {
     return {
       // ── Timeline data
       tlLoading: true,
-      tlRuns: [],        // all recent runs for timeline (up to 48*jobs)
-      tlJobMeta: {},     // { jobId: { jobName, agentId } }
+      tlRuns: [],
+      tlJobMeta: {},
 
       // ── Agent chart data
       acLoading: true,
-      acRuns: [],        // all runs for agent chart (14 days)
+      acRuns: [],
 
       // ── Table data
       runsLoading: false,
       runs: [],
+      fedRuns: [],
       pagination: { page: 1, pages: 1, total: 0, limit: 25 },
+
+      // ── Federation stale state
+      stale: false,
+      staleAsOf: null,
 
       // ── Filters
       search: '',
@@ -168,7 +186,10 @@ export default {
   },
 
   computed: {
-    // Build JobTimeline rows from tlRuns
+    displayRuns() {
+      return this.selectedSite ? this.fedRuns : this.runs
+    },
+
     timelineRows() {
       const byJob = {}
       for (const run of this.tlRuns) {
@@ -182,30 +203,22 @@ export default {
         }
         byJob[run.job_id].runs.push(run)
       }
-
-      // Attach _idx for positioning, latest last
       return Object.values(byJob).map(row => {
         const sorted = [...row.runs].sort(
           (a, b) => new Date(a.started_at) - new Date(b.started_at)
         ).slice(-48)
         sorted.forEach((r, i) => (r._idx = i))
-
         const okCount = sorted.filter(r => r.status === 'completed').length
         const failCount = sorted.filter(r => r.status === 'failed').length
         return { ...row, runs: sorted, okCount, failCount }
       })
     },
 
-    // Build per-agent data for AgentRunChart
     agentChartData() {
       const byAgent = {}
       for (const run of this.acRuns) {
         if (!byAgent[run.agent_id]) {
-          byAgent[run.agent_id] = {
-            agentId: run.agent_id,
-            hostname: run.agent_id,
-            runs: []
-          }
+          byAgent[run.agent_id] = { agentId: run.agent_id, hostname: run.agent_id, runs: [] }
         }
         byAgent[run.agent_id].runs.push(run)
       }
@@ -213,24 +226,48 @@ export default {
     }
   },
 
+  watch: {
+    selectedSite(val) {
+      this.stale = false
+      this.fedRuns = []
+      if (val) {
+        this.loadFedHistory()
+      } else {
+        this.loadTableRuns()
+      }
+    }
+  },
+
   async created() {
-    await Promise.all([
-      this.loadTimelineData(),
-      this.loadAgentChartData()
-    ])
-    this.loadTableRuns()
+    if (this.selectedSite) {
+      await this.loadFedHistory()
+    } else {
+      await Promise.all([this.loadTimelineData(), this.loadAgentChartData()])
+      this.loadTableRuns()
+    }
   },
 
   methods: {
-    // ── Data loading ───────────────────────────────────────
+    async loadFedHistory() {
+      this.runsLoading = true
+      this.stale = false
+      try {
+        const data = await getFederationHistory(this.selectedSite)
+        this.fedRuns = data.history || []
+        this.stale = data.stale || false
+        this.staleAsOf = data.as_of || null
+      } catch (e) {
+        console.error('Fed history load failed', e)
+      } finally {
+        this.runsLoading = false
+      }
+    },
 
     async loadTimelineData() {
       this.tlLoading = true
       try {
-        // Fetch a broad batch: high limit, no job filter — timeline shows all jobs
         const resp = await getJobRuns({ limit: 500, page: 1 })
         this.tlRuns = resp.data ?? []
-        // Build name map from whatever comes back
         for (const r of this.tlRuns) {
           if (!this.tlJobMeta[r.job_id]) {
             this.tlJobMeta[r.job_id] = { name: r.job_id }
@@ -247,12 +284,10 @@ export default {
       this.acLoading = true
       const cutoff = new Date(Date.now() - 14 * 86400000).toISOString()
       try {
-        // Fetch last 14 days — high limit
         const resp = await getJobRuns({ limit: 1000, page: 1, after: cutoff })
         this.acRuns = resp.data ?? []
       } catch (e) {
         console.error('Agent chart load failed', e)
-        // Fall back to same data as timeline
         this.acRuns = this.tlRuns
       } finally {
         this.acLoading = false
@@ -272,12 +307,7 @@ export default {
         }
         const resp = await getJobRuns(params)
         this.runs = resp.data ?? []
-        this.pagination = {
-          page: resp.page,
-          pages: resp.pages,
-          total: resp.total,
-          limit: resp.limit
-        }
+        this.pagination = { page: resp.page, pages: resp.pages, total: resp.total, limit: resp.limit }
       } catch (e) {
         console.error('Run table load failed', e)
       } finally {
@@ -285,21 +315,9 @@ export default {
       }
     },
 
-    // ── Filter / selection ─────────────────────────────────
-
-    onSelectJob(jobId) {
-      this.filterJobId = jobId
-      this.loadTableRuns()
-    },
-
-    onSelectAgent(agentId) {
-      this.filterAgentId = agentId
-      this.loadTableRuns()
-    },
-
-    onFilterChange() {
-      this.loadTableRuns(1)
-    },
+    onSelectJob(jobId) { this.filterJobId = jobId; this.loadTableRuns() },
+    onSelectAgent(agentId) { this.filterAgentId = agentId; this.loadTableRuns() },
+    onFilterChange() { this.loadTableRuns(1) },
 
     clearFilters() {
       this.search = ''
@@ -309,21 +327,11 @@ export default {
       this.loadTableRuns(1)
     },
 
-    onPageChange(page) {
-      this.loadTableRuns(page)
-    },
-
-    // ── Output modal ───────────────────────────────────────
+    onPageChange(page) { this.loadTableRuns(page) },
 
     openOutput(run) {
-      this.outputModal = {
-        visible: true,
-        jobId: run.job_id,
-        text: run.output ?? '(no output)'
-      }
+      this.outputModal = { visible: true, jobId: run.job_id, text: run.output ?? '(no output)' }
     },
-
-    // ── Formatting ─────────────────────────────────────────
 
     fmtTime(ts) {
       if (!ts) return '—'
@@ -338,13 +346,20 @@ export default {
       const secs = Math.round((new Date(end) - new Date(start)) / 1000)
       if (secs < 60) return `${secs}s`
       return `${Math.floor(secs / 60)}m ${secs % 60}s`
+    },
+
+    fmtStaleTime(iso) {
+      if (!iso) return 'an unknown time ago'
+      const secs = Math.floor((Date.now() - new Date(iso)) / 1000)
+      if (secs < 60) return `${secs}s ago`
+      if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
+      return `${Math.floor(secs / 3600)}h ago`
     }
   }
 }
 </script>
 
 <style scoped>
-/* ── Page layout ──────────────────────────────────────────── */
 .history-view {
   padding: 24px;
   max-width: 1280px;
@@ -352,9 +367,7 @@ export default {
   font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
 }
 
-.history-header {
-  margin-bottom: 20px;
-}
+.history-header { margin-bottom: 20px; }
 .history-title {
   font-size: 18px;
   font-weight: 700;
@@ -362,8 +375,15 @@ export default {
   letter-spacing: -0.01em;
 }
 
-.history-section {
-  margin-bottom: 18px;
+.history-section { margin-bottom: 18px; }
+
+.stale-banner {
+  background: rgba(255, 167, 38, 0.12);
+  border: 1px solid rgba(255, 167, 38, 0.4);
+  color: #ffa726;
+  padding: 0.5rem 0.85rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
 }
 
 .section-label {
@@ -374,7 +394,6 @@ export default {
   color: var(--text-muted, #6b6b8a);
 }
 
-/* ── Table card ───────────────────────────────────────────── */
 .history-table-card {
   background: var(--card-bg, #1a1a2e);
   border: 1px solid var(--border, #2e2e4a);
@@ -427,7 +446,6 @@ export default {
 }
 .btn-clear:hover { color: var(--fail, #ff4d6d); border-color: var(--fail, #ff4d6d); }
 
-/* Filter pills */
 .filter-pills { display: flex; gap: 8px; margin-bottom: 10px; }
 .pill {
   display: flex;
@@ -450,7 +468,6 @@ export default {
   line-height: 1;
 }
 
-/* Loading / empty */
 .table-loading {
   display: flex;
   align-items: center;
@@ -473,7 +490,6 @@ export default {
   text-align: center;
 }
 
-/* ── Table ────────────────────────────────────────────────── */
 .table-wrap { overflow-x: auto; }
 
 .runs-table {
@@ -531,7 +547,6 @@ export default {
 
 .table-pagination { margin-top: 14px; }
 
-/* ── Output Modal ─────────────────────────────────────────── */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -589,7 +604,6 @@ export default {
   flex: 1;
 }
 
-/* ── Light theme ──────────────────────────────────────────── */
 [data-theme="light"] .history-view {
   --card-bg: #ffffff;
   --border: #e0e0ec;

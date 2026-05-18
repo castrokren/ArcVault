@@ -13,12 +13,13 @@ type Config struct {
 	AdminToken    string              `json:"admin_token"`
 	Environment   string              `json:"environment"`
 	Notifications *NotificationConfig `json:"notifications,omitempty"`
+	Federation    *FederationConfig   `json:"federation,omitempty"`
 }
 
 type NotificationConfig struct {
-	OnFailure bool                `json:"on_failure"`
-	Webhook   *WebhookConfig      `json:"webhook,omitempty"`
-	Email     *EmailConfig        `json:"email,omitempty"`
+	OnFailure bool           `json:"on_failure"`
+	Webhook   *WebhookConfig `json:"webhook,omitempty"`
+	Email     *EmailConfig   `json:"email,omitempty"`
 }
 
 type WebhookConfig struct {
@@ -33,6 +34,11 @@ type EmailConfig struct {
 	To       []string `json:"to"`
 	Username string   `json:"username"`
 	Password string   `json:"password"`
+}
+
+type FederationConfig struct {
+	RootURL string `json:"root_url"`
+	Token   string `json:"token"`
 }
 
 func GetConfigPath() (string, error) {
