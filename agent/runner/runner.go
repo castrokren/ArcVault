@@ -16,6 +16,7 @@ type Job struct {
 	Name       string `json:"name"`
 	SourcePath string `json:"source_path"`
 	DestPath   string `json:"dest_path"`
+	Command    string `json:"command"`
 	Status     string `json:"status"`
 }
 

@@ -8,11 +8,20 @@ import (
 )
 
 // RealExecutor runs robocopy on Windows or rsync on Unix/Mac.
+// If job.Command is non-empty, it is executed directly via the shell instead
+// of building a robocopy/rsync command from source_path/dest_path.
 // This is the production executor wired into agent/main.go.
 func RealExecutor(job Job) (exitCode int, output string) {
 	var cmd *exec.Cmd
 
-	if runtime.GOOS == "windows" {
+	if job.Command != "" {
+		// Template-fired job: run the command directly.
+		if runtime.GOOS == "windows" {
+			cmd = exec.Command("cmd", "/C", job.Command)
+		} else {
+			cmd = exec.Command("sh", "-c", job.Command)
+		}
+	} else if runtime.GOOS == "windows" {
 		// robocopy exit codes: 0-7 are success/warning, 8+ are errors
 		cmd = exec.Command("robocopy", job.SourcePath, job.DestPath, "/E", "/LOG+:NUL")
 	} else {
@@ -27,8 +36,9 @@ func RealExecutor(job Job) (exitCode int, output string) {
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
-			// robocopy: codes 1-7 mean success with warnings/copies made
-			if runtime.GOOS == "windows" && exitCode <= 7 {
+			// robocopy: codes 1-7 mean success with warnings/copies made.
+			// Only apply this for non-command jobs (robocopy path).
+			if runtime.GOOS == "windows" && job.Command == "" && exitCode <= 7 {
 				exitCode = 0
 			}
 		} else {

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"arcvault/coordinator/notifications"
 )
 
 // JobRun represents a single execution result for a job.
@@ -28,9 +30,10 @@ func newRunID() string {
 func (s *Server) handlePostJobResults(w http.ResponseWriter, r *http.Request) {
 	jobID := r.PathValue("id")
 
-	// verify job exists
-	var exists string
-	err := s.db.Conn().QueryRow(`SELECT id FROM jobs WHERE id = ?`, jobID).Scan(&exists)
+	// fetch job name and agent_id for notification context
+	var jobName, agentID string
+	err := s.db.Conn().QueryRow(`SELECT name, agent_id FROM jobs WHERE id = ?`, jobID).
+		Scan(&jobName, &agentID)
 	if err == sql.ErrNoRows {
 		http.Error(w, "job not found", http.StatusNotFound)
 		return
@@ -49,12 +52,13 @@ func (s *Server) handlePostJobResults(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	finishedAt := time.Now().UTC()
 	run := JobRun{
 		ID:         newRunID(),
 		JobID:      jobID,
 		ExitCode:   input.ExitCode,
 		Output:     input.Output,
-		FinishedAt: time.Now().UTC().Format(time.RFC3339),
+		FinishedAt: finishedAt.Format(time.RFC3339),
 	}
 
 	_, err = s.db.Conn().Exec(
@@ -65,6 +69,19 @@ func (s *Server) handlePostJobResults(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "failed to store result", http.StatusInternalServerError)
 		return
+	}
+
+	// dispatch failure notification
+	if input.ExitCode != 0 {
+		s.Notifier.Dispatch(notifications.JobFailureEvent{
+			JobID:      jobID,
+			JobName:    jobName,
+			AgentID:    agentID,
+			RunID:      run.ID,
+			StartedAt:  finishedAt, // no start time recorded; use finished as best-effort
+			FinishedAt: finishedAt,
+			ErrorMsg:   run.Output,
+		})
 	}
 
 	// broadcast to WebSocket clients

@@ -131,9 +131,9 @@
 </template>
 
 <script>
-import JobTimeline from './JobTimeline.vue'
-import AgentRunChart from './AgentRunChart.vue'
-import Pagination from './Pagination.vue'
+import JobTimeline from '../components/JobTimeline.vue'
+import AgentRunChart from '../components/AgentRunChart.vue'
+import Pagination from '../components/Pagination.vue'
 import { getJobRuns } from '../api.js'
 
 export default {
