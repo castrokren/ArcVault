@@ -9,6 +9,7 @@ import (
 
 	"arcvault/coordinator/config"
 	"arcvault/coordinator/db"
+	"arcvault/coordinator/notifications"
 )
 
 type Server struct {
@@ -17,6 +18,7 @@ type Server struct {
 	router   *http.ServeMux
 	hub      *Hub
 	staticFS fs.FS
+	Notifier *notifications.Dispatcher
 }
 
 func New(cfg *config.Config, database *db.DB) *Server {
@@ -30,6 +32,7 @@ func NewWithFS(cfg *config.Config, database *db.DB, staticFS fs.FS) *Server {
 		router:   http.NewServeMux(),
 		hub:      newHub(),
 		staticFS: staticFS,
+		Notifier: notifications.NewDispatcher(cfg.Notifications),
 	}
 	s.registerRoutes()
 	return s
@@ -75,6 +78,13 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /api/rollback", s.adminMiddleware(s.handleRollback))
 	s.router.HandleFunc("POST /api/agents/{id}/rollback", s.adminMiddleware(s.handleAgentRollback))
 
+	s.router.HandleFunc("GET /api/templates", s.adminMiddleware(s.handleListTemplates))
+	s.router.HandleFunc("POST /api/templates", s.adminMiddleware(s.handleCreateTemplate))
+	s.router.HandleFunc("GET /api/templates/{id}", s.adminMiddleware(s.handleGetTemplate))
+	s.router.HandleFunc("PUT /api/templates/{id}", s.adminMiddleware(s.handleUpdateTemplate))
+	s.router.HandleFunc("DELETE /api/templates/{id}", s.adminMiddleware(s.handleDeleteTemplate))
+	s.router.HandleFunc("POST /api/templates/{id}/run", s.adminMiddleware(s.handleRunTemplateNow))
+
 	if s.staticFS != nil {
 		log.Printf("Serving embedded dashboard")
 		s.router.Handle("GET /", http.FileServer(http.FS(s.staticFS)))
@@ -84,7 +94,7 @@ func (s *Server) registerRoutes() {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

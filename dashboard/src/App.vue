@@ -6,6 +6,7 @@
         <router-link to="/agents">Agents</router-link>
         <router-link to="/jobs">Jobs</router-link>
         <router-link to="/history">History</router-link>
+        <router-link to="/templates">Templates</router-link>
       </nav>
       <div class="nav-right">
         <button

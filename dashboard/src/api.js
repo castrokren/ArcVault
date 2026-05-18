@@ -63,6 +63,20 @@ export const applyRollback = () =>
 export const applyAgentRollback = (agentId) =>
   request('POST', `/api/agents/${agentId}/rollback`)
 
+// --- templates ---
+export const getTemplates = ({ page = 1, limit = 25, search = '' } = {}) =>
+  request('GET', `/api/templates${buildQuery({ page, limit, search })}`)
+
+export const getTemplate = (id) => request('GET', `/api/templates/${id}`)
+
+export const createTemplate = (template) => request('POST', '/api/templates', template)
+
+export const updateTemplate = (id, data) => request('PUT', `/api/templates/${id}`, data)
+
+export const deleteTemplate = (id) => request('DELETE', `/api/templates/${id}`)
+
+export const runTemplate = (id) => request('POST', `/api/templates/${id}/run`)
+
 // --- token helpers ---
 export function saveToken(token) {
   localStorage.setItem('arcvault_token', token)
@@ -74,4 +88,95 @@ export function clearToken() {
 
 export function hasToken() {
   return !!getToken()
+}
+
+// --- cronPreview ---
+// Returns a plain-English description of a cron expression.
+// Covers the most common patterns; falls back to the raw expression.
+//
+// Field order: minute hour dom month dow
+export function cronPreview(expr) {
+  if (!expr || !expr.trim()) return ''
+
+  const parts = expr.trim().split(/\s+/)
+  if (parts.length !== 5) return expr
+
+  const [min, hour, dom, month, dow] = parts
+
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+  const months = ['January', 'February', 'March', 'April', 'May', 'June',
+                  'July', 'August', 'September', 'October', 'November', 'December']
+
+  function fmtTime(h, m) {
+    const hh = parseInt(h, 10)
+    const mm = parseInt(m, 10)
+    const suffix = hh >= 12 ? 'PM' : 'AM'
+    const h12 = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh
+    const mmStr = mm === 0 ? '' : `:${String(mm).padStart(2, '0')}`
+    return `${h12}${mmStr} ${suffix}`
+  }
+
+  // Every N minutes: */N * * * *
+  if (min.startsWith('*/') && hour === '*' && dom === '*' && month === '*' && dow === '*') {
+    const n = min.slice(2)
+    return `Every ${n} minute${n === '1' ? '' : 's'}`
+  }
+
+  // Every hour at minute N: N * * * *
+  if (!min.includes('*') && !min.includes('/') && hour === '*' && dom === '*' && month === '*' && dow === '*') {
+    return `Every hour at minute ${min}`
+  }
+
+  // Daily at specific time: M H * * *
+  if (!min.includes('*') && !min.includes('/') &&
+      !hour.includes('*') && !hour.includes('/') &&
+      dom === '*' && month === '*' && dow === '*') {
+    return `Every day at ${fmtTime(hour, min)}`
+  }
+
+  // Weekly on a specific day: M H * * D
+  if (!min.includes('*') && !min.includes('/') &&
+      !hour.includes('*') && !hour.includes('/') &&
+      dom === '*' && month === '*' &&
+      !dow.includes('*') && !dow.includes('/') && !dow.includes(',')) {
+    const d = parseInt(dow, 10)
+    const dayName = d >= 0 && d <= 6 ? days[d] : `day ${dow}`
+    return `Every ${dayName} at ${fmtTime(hour, min)}`
+  }
+
+  // Monthly on a specific day: M H D * *
+  if (!min.includes('*') && !min.includes('/') &&
+      !hour.includes('*') && !hour.includes('/') &&
+      !dom.includes('*') && !dom.includes('/') &&
+      month === '*' && dow === '*') {
+    return `Monthly on day ${dom} at ${fmtTime(hour, min)}`
+  }
+
+  // Yearly on a specific date: M H D Mo *
+  if (!min.includes('*') && !min.includes('/') &&
+      !hour.includes('*') && !hour.includes('/') &&
+      !dom.includes('*') && !dom.includes('/') &&
+      !month.includes('*') && !month.includes('/') &&
+      dow === '*') {
+    const mo = parseInt(month, 10)
+    const monthName = mo >= 1 && mo <= 12 ? months[mo - 1] : `month ${month}`
+    return `Yearly on ${monthName} ${dom} at ${fmtTime(hour, min)}`
+  }
+
+  // Weekdays only: M H * * 1-5
+  if (!min.includes('*') && !min.includes('/') &&
+      !hour.includes('*') && !hour.includes('/') &&
+      dom === '*' && month === '*' && dow === '1-5') {
+    return `Weekdays at ${fmtTime(hour, min)}`
+  }
+
+  // Weekends only: M H * * 0,6 or 6,0
+  if (!min.includes('*') && !min.includes('/') &&
+      !hour.includes('*') && !hour.includes('/') &&
+      dom === '*' && month === '*' && (dow === '0,6' || dow === '6,0')) {
+    return `Weekends at ${fmtTime(hour, min)}`
+  }
+
+  // fallback — show the raw expression
+  return expr
 }
