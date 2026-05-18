@@ -5,9 +5,14 @@
       <button @click="load" :disabled="loading">{{ loading ? 'Loading...' : 'Refresh' }}</button>
     </div>
 
+    <!-- Stale data banner -->
+    <div v-if="stale" class="stale-banner">
+      ⚠ Site data last synced {{ fmtStaleTime(staleAsOf) }}. Data may be outdated.
+    </div>
+
     <div v-if="error" class="error">{{ error }}</div>
 
-    <div class="filters">
+    <div class="filters" v-if="!selectedSite">
       <input
         v-model="searchQuery"
         type="text"
@@ -28,8 +33,8 @@
       </div>
     </div>
 
-    <div v-if="result.total === 0 && !loading" class="empty">
-      {{ searchQuery || statusFilter !== 'all' ? 'No agents match your search.' : 'No agents registered.' }}
+    <div v-if="agents.length === 0 && !loading" class="empty">
+      {{ selectedSite ? 'No agents found for this site.' : (searchQuery || statusFilter !== 'all' ? 'No agents match your search.' : 'No agents registered.') }}
     </div>
 
     <table v-else class="table">
@@ -41,23 +46,23 @@
           <th>Version</th>
           <th>Status</th>
           <th>Last Seen</th>
-          <th></th>
+          <th v-if="!selectedSite"></th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="agent in result.data" :key="agent.id">
+        <tr v-for="agent in agents" :key="agent.id">
           <td class="mono">{{ agent.id }}</td>
           <td>{{ agent.hostname }}</td>
           <td>{{ agent.os }}</td>
           <td>
             {{ agent.version }}
-            <span v-if="updateAvailable(agent)" class="update-badge">Update</span>
+            <span v-if="!selectedSite && updateAvailable(agent)" class="update-badge">Update</span>
           </td>
           <td>
             <span class="badge" :class="agent.status">{{ agent.status }}</span>
           </td>
           <td>{{ formatDate(agent.last_seen) }}</td>
-          <td class="actions-cell">
+          <td v-if="!selectedSite" class="actions-cell">
             <button
               v-if="updateAvailable(agent) && agent.status === 'online'"
               class="btn-update-agent"
@@ -78,6 +83,7 @@
     </table>
 
     <Pagination
+      v-if="!selectedSite"
       :page="page"
       :pages="result.pages"
       :total="result.total"
@@ -86,16 +92,17 @@
     />
 
     <AgentUpdateModal
+      v-if="!selectedSite"
       :isOpen="modalOpen"
       :agentId="selectedAgent?.id"
       :agentVersion="selectedAgent?.version"
-      :agents="result.data"
+      :agents="agents"
       :lastEvent="lastEvent"
       @close="modalOpen = false"
     />
 
     <RollbackModal
-      v-if="rollbackModal.show"
+      v-if="!selectedSite && rollbackModal.show"
       target="agent"
       :agentId="rollbackModal.agentId"
       @close="rollbackModal.show = false"
@@ -105,15 +112,23 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, inject } from 'vue'
-import { getAgents } from '../api.js'
+import { ref, computed, onMounted, watch, inject } from 'vue'
+import { getAgents, getFederationAgents } from '../api.js'
 import AgentUpdateModal from '../components/AgentUpdateModal.vue'
 import RollbackModal from '../components/RollbackModal.vue'
 import Pagination from '../components/Pagination.vue'
 
 const props = defineProps(['lastEvent'])
 
+const selectedSite = inject('selectedSite', ref(null))
+
 const result = ref({ data: [], total: 0, page: 1, pages: 0, limit: 25 })
+const fedAgents = ref([])
+const stale = ref(false)
+const staleAsOf = ref(null)
+
+const agents = computed(() => selectedSite.value ? fedAgents.value : (result.value.data || []))
+
 const page = ref(1)
 const limit = 25
 const loading = ref(false)
@@ -148,13 +163,22 @@ function onRollbackComplete() {
 async function load() {
   loading.value = true
   error.value = null
+  stale.value = false
+
   try {
-    result.value = await getAgents({
-      page: page.value,
-      limit,
-      search: searchQuery.value,
-      status: statusFilter.value === 'all' ? '' : statusFilter.value,
-    })
+    if (selectedSite.value) {
+      const data = await getFederationAgents(selectedSite.value)
+      fedAgents.value = data.agents || []
+      stale.value = data.stale || false
+      staleAsOf.value = data.as_of || null
+    } else {
+      result.value = await getAgents({
+        page: page.value,
+        limit,
+        search: searchQuery.value,
+        status: statusFilter.value === 'all' ? '' : statusFilter.value,
+      })
+    }
   } catch (e) {
     error.value = e.message
   } finally {
@@ -183,9 +207,21 @@ function formatDate(d) {
   return new Date(d).toLocaleString()
 }
 
-// WebSocket updates refresh current page without resetting pagination
+function fmtStaleTime(iso) {
+  if (!iso) return 'an unknown time ago'
+  const secs = Math.floor((Date.now() - new Date(iso)) / 1000)
+  if (secs < 60) return `${secs}s ago`
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
+  return `${Math.floor(secs / 3600)}h ago`
+}
+
+watch(selectedSite, () => {
+  page.value = 1
+  load()
+})
+
 watch(() => props.lastEvent, (ev) => {
-  if (ev?.type === 'agent.heartbeat' || ev?.type === 'agent.updated') load()
+  if (!selectedSite.value && (ev?.type === 'agent.heartbeat' || ev?.type === 'agent.updated')) load()
 })
 
 onMounted(load)
@@ -201,6 +237,16 @@ onMounted(load)
   border: none;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.stale-banner {
+  background: rgba(255, 167, 38, 0.12);
+  border: 1px solid rgba(255, 167, 38, 0.4);
+  color: #ffa726;
+  padding: 0.5rem 0.85rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
 }
 
 .error { color: #e55; margin-bottom: 1rem; }

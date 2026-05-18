@@ -1,4 +1,4 @@
-const BASE_URL = 'http://localhost:443'
+const BASE_URL = ''
 
 function getToken() {
   return localStorage.getItem('arcvault_token') || ''
@@ -19,7 +19,7 @@ async function request(method, path, body = null) {
     const text = await res.text()
     throw new Error(`${method} ${path} → ${res.status}: ${text}`)
   }
-  if (res.status === 204) return null
+  if (res.status === 204 || res.status === 202) return null
   return res.json()
 }
 
@@ -49,6 +49,10 @@ export const deleteJob = (id) => request('DELETE', `/api/jobs/${id}`)
 export const updateJobStatus = (id, status) =>
   request('PATCH', `/api/jobs/${id}/status`, { status })
 
+// Trigger a job. Pass siteID to proxy through federation to a sub-coordinator.
+export const triggerJob = (id, siteID = null) =>
+  request('POST', `/api/jobs/${id}/trigger${siteID ? `?site=${siteID}` : ''}`)
+
 // --- job runs ---
 export const getJobRuns = ({ page = 1, limit = 25, jobID = '', agentID = '' } = {}) =>
   request('GET', `/api/job-runs${buildQuery({ page, limit, job_id: jobID, agent_id: agentID })}`)
@@ -75,7 +79,37 @@ export const updateTemplate = (id, data) => request('PUT', `/api/templates/${id}
 
 export const deleteTemplate = (id) => request('DELETE', `/api/templates/${id}`)
 
-export const runTemplate = (id) => request('POST', `/api/templates/${id}/run`)
+// Run a template. Pass siteID to proxy through federation to a sub-coordinator.
+export const runTemplate = (id, siteID = null) =>
+  request('POST', `/api/templates/${id}/run${siteID ? `?site=${siteID}` : ''}`)
+
+// --- federation ---
+export const listFederation = () =>
+  request('GET', '/api/federation')
+
+export const createFederation = (data) =>
+  request('POST', '/api/federation', data)
+
+export const getFederation = (id) =>
+  request('GET', `/api/federation/${id}`)
+
+export const updateFederation = (id, data) =>
+  request('PUT', `/api/federation/${id}`, data)
+
+export const deleteFederation = (id) =>
+  request('DELETE', `/api/federation/${id}`)
+
+export const syncFederation = (id) =>
+  request('POST', `/api/federation/${id}/sync`)
+
+export const getFederationAgents = (id) =>
+  request('GET', `/api/federation/${id}/agents`)
+
+export const getFederationJobs = (id) =>
+  request('GET', `/api/federation/${id}/jobs`)
+
+export const getFederationHistory = (id) =>
+  request('GET', `/api/federation/${id}/history`)
 
 // --- token helpers ---
 export function saveToken(token) {

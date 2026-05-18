@@ -2,11 +2,16 @@
   <div>
     <div class="page-header">
       <h1>Jobs</h1>
-      <button @click="showForm = !showForm">{{ showForm ? 'Cancel' : '+ New Job' }}</button>
+      <button v-if="!selectedSite" @click="showForm = !showForm">{{ showForm ? 'Cancel' : '+ New Job' }}</button>
       <button @click="load" :disabled="loading">{{ loading ? 'Loading...' : 'Refresh' }}</button>
     </div>
 
-    <div v-if="showForm" class="form-card">
+    <!-- Stale data banner -->
+    <div v-if="stale" class="stale-banner">
+      ⚠ Site data last synced {{ fmtStaleTime(staleAsOf) }}. Data may be outdated.
+    </div>
+
+    <div v-if="!selectedSite && showForm" class="form-card">
       <h3>Create Job</h3>
       <div class="form-grid">
         <label>Agent ID</label>
@@ -30,7 +35,7 @@
 
     <div v-if="error" class="error">{{ error }}</div>
 
-    <div class="filters">
+    <div v-if="!selectedSite" class="filters">
       <input
         v-model="searchQuery"
         type="text"
@@ -51,8 +56,8 @@
       </div>
     </div>
 
-    <div v-if="result.total === 0 && !loading" class="empty">
-      {{ searchQuery || statusFilter !== 'all' ? 'No jobs match your search.' : 'No jobs found.' }}
+    <div v-if="jobs.length === 0 && !loading" class="empty">
+      {{ selectedSite ? 'No jobs found for this site.' : (searchQuery || statusFilter !== 'all' ? 'No jobs match your search.' : 'No jobs found.') }}
     </div>
 
     <table v-else class="table">
@@ -65,11 +70,11 @@
           <th>Dest</th>
           <th>Status</th>
           <th>Created</th>
-          <th></th>
+          <th v-if="!selectedSite"></th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="job in result.data" :key="job.id">
+        <tr v-for="job in jobs" :key="job.id">
           <td class="mono">{{ job.id }}</td>
           <td>{{ job.name }}</td>
           <td class="mono">{{ job.agent_id }}</td>
@@ -77,7 +82,7 @@
           <td class="mono">{{ job.dest_path }}</td>
           <td><span class="badge" :class="job.status">{{ job.status }}</span></td>
           <td>{{ formatDate(job.created_at) }}</td>
-          <td>
+          <td v-if="!selectedSite">
             <button class="danger-sm" @click="removeJob(job.id)">Delete</button>
           </td>
         </tr>
@@ -85,6 +90,7 @@
     </table>
 
     <Pagination
+      v-if="!selectedSite"
       :page="page"
       :pages="result.pages"
       :total="result.total"
@@ -95,13 +101,21 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
-import { getJobs, createJob as apiCreateJob, deleteJob } from '../api.js'
+import { ref, computed, onMounted, watch, inject } from 'vue'
+import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs } from '../api.js'
 import Pagination from '../components/Pagination.vue'
 
 const props = defineProps(['lastEvent'])
 
+const selectedSite = inject('selectedSite', ref(null))
+
 const result = ref({ data: [], total: 0, page: 1, pages: 0, limit: 25 })
+const fedJobs = ref([])
+const stale = ref(false)
+const staleAsOf = ref(null)
+
+const jobs = computed(() => selectedSite.value ? fedJobs.value : (result.value.data || []))
+
 const page = ref(1)
 const limit = 25
 const loading = ref(false)
@@ -117,13 +131,22 @@ const form = ref({ agent_id: '', name: '', source_path: '', dest_path: '', sched
 async function load() {
   loading.value = true
   error.value = null
+  stale.value = false
+
   try {
-    result.value = await getJobs({
-      page: page.value,
-      limit,
-      search: searchQuery.value,
-      status: statusFilter.value === 'all' ? '' : statusFilter.value,
-    })
+    if (selectedSite.value) {
+      const data = await getFederationJobs(selectedSite.value)
+      fedJobs.value = data.jobs || []
+      stale.value = data.stale || false
+      staleAsOf.value = data.as_of || null
+    } else {
+      result.value = await getJobs({
+        page: page.value,
+        limit,
+        search: searchQuery.value,
+        status: statusFilter.value === 'all' ? '' : statusFilter.value,
+      })
+    }
   } catch (e) {
     error.value = e.message
   } finally {
@@ -180,8 +203,21 @@ function formatDate(d) {
   return new Date(d).toLocaleString()
 }
 
+function fmtStaleTime(iso) {
+  if (!iso) return 'an unknown time ago'
+  const secs = Math.floor((Date.now() - new Date(iso)) / 1000)
+  if (secs < 60) return `${secs}s ago`
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
+  return `${Math.floor(secs / 3600)}h ago`
+}
+
+watch(selectedSite, () => {
+  page.value = 1
+  load()
+})
+
 watch(() => props.lastEvent, (ev) => {
-  if (ev?.type === 'job.updated' || ev?.type === 'job.result') load()
+  if (!selectedSite.value && (ev?.type === 'job.updated' || ev?.type === 'job.result')) load()
 })
 
 onMounted(load)
@@ -197,6 +233,16 @@ onMounted(load)
   border: none;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.stale-banner {
+  background: rgba(255, 167, 38, 0.12);
+  border: 1px solid rgba(255, 167, 38, 0.4);
+  color: #ffa726;
+  padding: 0.5rem 0.85rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
 }
 
 .form-card {
@@ -290,10 +336,10 @@ button.primary {
   font-weight: 600;
   text-transform: uppercase;
 }
-.badge.pending  { background: #2a2a1a; color: #f0b429; }
-.badge.running  { background: #1a2a3a; color: #4f8ef7; }
+.badge.pending   { background: #2a2a1a; color: #f0b429; }
+.badge.running   { background: #1a2a3a; color: #4f8ef7; }
 .badge.completed { background: #1a3a1a; color: #4caf50; }
-.badge.failed   { background: #3a1a1a; color: #e55; }
+.badge.failed    { background: #3a1a1a; color: #e55; }
 
 button.danger-sm {
   padding: 0.2rem 0.6rem;

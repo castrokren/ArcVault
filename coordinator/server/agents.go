@@ -19,15 +19,15 @@ type heartbeatRequest struct {
 }
 
 type agentResponse struct {
-	ID               string  `json:"id"`
-	Hostname         string  `json:"hostname"`
-	OS               string  `json:"os"`
-	Arch             string  `json:"arch"`
-	Version          string  `json:"version"`
-	Status           string  `json:"status"`
-	LastSeen         *string `json:"last_seen"`
-	RegisteredAt     string  `json:"registered_at"`
-	RollbackAvailable bool   `json:"rollback_available"`
+	ID                string  `json:"id"`
+	Hostname          string  `json:"hostname"`
+	OS                string  `json:"os"`
+	Arch              string  `json:"arch"`
+	Version           string  `json:"version"`
+	Status            string  `json:"status"`
+	LastSeen          *string `json:"last_seen"`
+	RegisteredAt      string  `json:"registered_at"`
+	RollbackAvailable bool    `json:"rollback_available"`
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +56,22 @@ last_seen=CURRENT_TIMESTAMP
 		http.Error(w, "failed to register agent", http.StatusInternalServerError)
 		return
 	}
+
+	// Broadcast to root coordinator if running as a sub.
+	payload, _ := json.Marshal(FedAgentRegistered{
+		Agent: agentResponse{
+			ID:       req.AgentID,
+			Hostname: req.Hostname,
+			OS:       req.OS,
+			Arch:     req.Arch,
+			Version:  req.Version,
+			Status:   "online",
+		},
+	})
+	s.broadcastFedDelta(FedMessage{
+		Type:    FedEventAgentRegistered,
+		Payload: json.RawMessage(payload),
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -89,6 +105,19 @@ UPDATE agents SET status='online', last_seen=?, rollback_available=? WHERE id=?
 		http.Error(w, "agent not found", http.StatusNotFound)
 		return
 	}
+
+	// Broadcast heartbeat delta to root coordinator if running as a sub.
+	s.broadcastFedDelta(FedMessage{
+		Type: FedEventAgentHeartbeat,
+		Payload: func() json.RawMessage {
+			p, _ := json.Marshal(FedAgentHeartbeat{
+				AgentID:  agentID,
+				Status:   "online",
+				LastSeen: &now,
+			})
+			return json.RawMessage(p)
+		}(),
+	})
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
