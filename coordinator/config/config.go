@@ -1,6 +1,8 @@
 package config
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -11,6 +13,7 @@ type Config struct {
 	Port          int                 `json:"port"`
 	DatabasePath  string              `json:"database_path"`
 	AdminToken    string              `json:"admin_token"`
+	JWTSecret     string              `json:"jwt_secret"`
 	Environment   string              `json:"environment"`
 	Notifications *NotificationConfig `json:"notifications,omitempty"`
 	Federation    *FederationConfig   `json:"federation,omitempty"`
@@ -77,5 +80,28 @@ func Load() (*Config, error) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("could not parse config: %w", err)
 	}
+
+	// Auto-generate JWT secret if missing
+	if cfg.JWTSecret == "" {
+		secret, err := generateSecret(32)
+		if err != nil {
+			return nil, fmt.Errorf("could not generate JWT secret: %w", err)
+		}
+		cfg.JWTSecret = secret
+		// Save updated config back to file
+		if err := Save(&cfg); err != nil {
+			return nil, fmt.Errorf("could not save updated config: %w", err)
+		}
+	}
+
 	return &cfg, nil
+}
+
+// generateSecret creates a random hex string of the specified byte length.
+func generateSecret(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
 }

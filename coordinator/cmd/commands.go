@@ -16,6 +16,7 @@ import (
 	"arcvault/coordinator/db"
 	"arcvault/coordinator/server"
 	"arcvault/coordinator/updater"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func InitCommand() error {
@@ -78,6 +79,22 @@ func StartCommand(cfg *config.Config, staticFS fs.FS) error {
 	defer database.Close()
 
 	log.Println("Database initialized")
+
+	// First-run seeding: create default admin user if no users exist
+	count, err := database.CountUsers()
+	if err != nil {
+		return fmt.Errorf("failed to count users: %w", err)
+	}
+	if count == 0 {
+		hash, err := bcrypt.GenerateFromPassword([]byte("changeme"), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("failed to hash password: %w", err)
+		}
+		if err := database.CreateUser("admin", string(hash), "admin", true); err != nil {
+			return fmt.Errorf("failed to create default admin user: %w", err)
+		}
+		log.Println("[startup] Default admin user created (admin/changeme) — change password on first login")
+	}
 
 	srv := server.NewWithFS(cfg, database, staticFS)
 

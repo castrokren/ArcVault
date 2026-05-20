@@ -363,5 +363,30 @@ CREATE TABLE IF NOT EXISTS job_runs (
 		last_seen DATETIME,
 		version   TEXT
 	)`)
+	// Idempotent: add users table for Phase 15 RBAC.
+	d.conn.Exec(`CREATE TABLE IF NOT EXISTS users (
+		id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+		username             TEXT NOT NULL UNIQUE,
+		password_hash        TEXT NOT NULL,
+		role                 TEXT NOT NULL CHECK(role IN ('admin','operator','viewer')),
+		must_change_password INTEGER NOT NULL DEFAULT 0,
+		created_at           DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	// Idempotent: add agent_groups table for Phase 15 group dispatch.
+	d.conn.Exec(`CREATE TABLE IF NOT EXISTS agent_groups (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		name        TEXT NOT NULL UNIQUE,
+		description TEXT,
+		created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	// Idempotent: add agent_group_members table for Phase 15 group membership.
+	d.conn.Exec(`CREATE TABLE IF NOT EXISTS agent_group_members (
+		group_id  INTEGER NOT NULL REFERENCES agent_groups(id) ON DELETE CASCADE,
+		agent_id  TEXT NOT NULL,
+		PRIMARY KEY (group_id, agent_id)
+	)`)
+	// Idempotent: add group_id and dispatch_id columns to jobs for Phase 15 fan-out.
+	d.conn.Exec(`ALTER TABLE jobs ADD COLUMN group_id    INTEGER REFERENCES agent_groups(id)`)
+	d.conn.Exec(`ALTER TABLE jobs ADD COLUMN dispatch_id TEXT`)
 	return nil
 }
