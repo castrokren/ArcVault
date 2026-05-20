@@ -68,49 +68,115 @@ func (s *Server) Start() error {
 	return http.ListenAndServe(addr, corsMiddleware(s.router))
 }
 
+// === Middleware Helper Functions ===
+
+// adminRoute wraps a handler with JWT, password change check, and admin role requirement
+func (s *Server) adminRoute(next http.HandlerFunc) http.HandlerFunc {
+	return s.JWTMiddleware(
+		RequirePasswordChange("/api/auth/change-password")(
+			RequireRole("admin")(next),
+		),
+	)
+}
+
+// operatorRoute wraps a handler with JWT, password change check, and operator+ role requirement
+func (s *Server) operatorRoute(next http.HandlerFunc) http.HandlerFunc {
+	return s.JWTMiddleware(
+		RequirePasswordChange("/api/auth/change-password")(
+			RequireRole("admin", "operator")(next),
+		),
+	)
+}
+
+// viewerRoute wraps a handler with JWT, password change check, and viewer+ role requirement
+func (s *Server) viewerRoute(next http.HandlerFunc) http.HandlerFunc {
+	return s.JWTMiddleware(
+		RequirePasswordChange("/api/auth/change-password")(
+			RequireRole("admin", "operator", "viewer")(next),
+		),
+	)
+}
+
+// authRoute wraps a handler with JWT and password change check (for endpoints that don't need role checks)
+func (s *Server) authRoute(next http.HandlerFunc) http.HandlerFunc {
+	return s.JWTMiddleware(
+		RequirePasswordChange("/api/auth/change-password")(next),
+	)
+}
+
 func (s *Server) registerRoutes() {
 	s.router.HandleFunc("GET /health", s.handleHealth)
 	s.router.HandleFunc("GET /ws", s.handleWS)
 	s.router.HandleFunc("GET /ws/agent", s.handleAgentWS)
 	s.router.HandleFunc("GET /ws/federation", s.fedHub.HandleSubConnect)
 
+	// Auth endpoints (public + JWT-protected)
+	s.router.HandleFunc("POST /api/auth/login", s.handleLogin)
+	s.router.HandleFunc("POST /api/auth/logout", s.JWTMiddleware(s.handleLogout))
+	s.router.HandleFunc("GET /api/auth/me", s.JWTMiddleware(s.handleAuthMe))
+	s.router.HandleFunc("PUT /api/auth/change-password", s.JWTMiddleware(s.handleChangePassword))
+
+	// User management endpoints (admin only)
+	s.router.HandleFunc("GET /api/users", s.JWTMiddleware(s.handleListUsers))
+	s.router.HandleFunc("POST /api/users", s.JWTMiddleware(s.handleCreateUser))
+	s.router.HandleFunc("DELETE /api/users/{id}", s.JWTMiddleware(s.handleDeleteUser))
+	s.router.HandleFunc("PUT /api/users/{id}/role", s.JWTMiddleware(s.handleUpdateUserRole))
+
+	// Groups endpoints
+	s.router.HandleFunc("GET /api/groups", s.viewerRoute(s.handleListGroups))
+	s.router.HandleFunc("POST /api/groups", s.adminRoute(s.handleCreateGroup))
+	s.router.HandleFunc("GET /api/groups/{id}", s.viewerRoute(s.handleGetGroup))
+	s.router.HandleFunc("PUT /api/groups/{id}", s.adminRoute(s.handleUpdateGroup))
+	s.router.HandleFunc("DELETE /api/groups/{id}", s.adminRoute(s.handleDeleteGroup))
+	s.router.HandleFunc("POST /api/groups/{id}/agents", s.adminRoute(s.handleAddAgentToGroup))
+	s.router.HandleFunc("DELETE /api/groups/{id}/agents/{agentID}", s.adminRoute(s.handleRemoveAgentFromGroup))
+	s.router.HandleFunc("GET /api/groups/{id}/agents", s.viewerRoute(s.handleGetGroupAgents))
+
+	// Agent endpoints (keep agent token auth for backward compatibility)
 	s.router.HandleFunc("POST /api/agents/register", s.authMiddleware(s.handleRegister))
 	s.router.HandleFunc("POST /api/agents/{id}/heartbeat", s.authMiddleware(s.handleHeartbeat))
-	s.router.HandleFunc("GET /api/agents", s.authMiddleware(s.handleListAgents))
-
-	s.router.HandleFunc("POST /api/jobs", s.authMiddleware(s.handleCreateJob))
-	s.router.HandleFunc("GET /api/jobs", s.authMiddleware(s.handleListJobs))
-	s.router.HandleFunc("GET /api/jobs/{id}", s.authMiddleware(s.handleGetJob))
-	s.router.HandleFunc("DELETE /api/jobs/{id}", s.authMiddleware(s.handleDeleteJob))
-	s.router.HandleFunc("PATCH /api/jobs/{id}/status", s.authMiddleware(s.handleUpdateJobStatus))
 	s.router.HandleFunc("POST /api/jobs/{id}/results", s.authMiddleware(s.handlePostJobResults))
-	s.router.HandleFunc("GET /api/jobs/{id}/runs", s.authMiddleware(s.handleGetJobRuns))
-	s.router.HandleFunc("GET /api/job-runs", s.authMiddleware(s.handleListAllJobRuns))
 
-	s.router.HandleFunc("GET /api/update/check", s.adminMiddleware(s.handleCheckUpdate))
-	s.router.HandleFunc("POST /api/update/apply", s.adminMiddleware(s.handleApplyUpdate))
-	s.router.HandleFunc("POST /api/agents/{id}/update", s.adminMiddleware(s.handleAgentUpdate))
+	// Agent list (viewer+)
+	s.router.HandleFunc("GET /api/agents", s.viewerRoute(s.handleListAgents))
 
-	s.router.HandleFunc("GET /api/rollback-available", s.adminMiddleware(s.handleRollbackAvailable))
-	s.router.HandleFunc("POST /api/rollback", s.adminMiddleware(s.handleRollback))
-	s.router.HandleFunc("POST /api/agents/{id}/rollback", s.adminMiddleware(s.handleAgentRollback))
+	// Jobs endpoints
+	s.router.HandleFunc("POST /api/jobs", s.operatorRoute(s.handleCreateJob))
+	s.router.HandleFunc("GET /api/jobs", s.viewerRoute(s.handleListJobs))
+	s.router.HandleFunc("GET /api/jobs/{id}", s.viewerRoute(s.handleGetJob))
+	s.router.HandleFunc("DELETE /api/jobs/{id}", s.adminRoute(s.handleDeleteJob))
+	s.router.HandleFunc("PATCH /api/jobs/{id}/status", s.operatorRoute(s.handleUpdateJobStatus))
+	s.router.HandleFunc("GET /api/jobs/{id}/runs", s.viewerRoute(s.handleGetJobRuns))
+	s.router.HandleFunc("GET /api/job-runs", s.viewerRoute(s.handleListAllJobRuns))
 
-	s.router.HandleFunc("GET /api/templates", s.adminMiddleware(s.handleListTemplates))
-	s.router.HandleFunc("POST /api/templates", s.adminMiddleware(s.handleCreateTemplate))
-	s.router.HandleFunc("GET /api/templates/{id}", s.adminMiddleware(s.handleGetTemplate))
-	s.router.HandleFunc("PUT /api/templates/{id}", s.adminMiddleware(s.handleUpdateTemplate))
-	s.router.HandleFunc("DELETE /api/templates/{id}", s.adminMiddleware(s.handleDeleteTemplate))
-	s.router.HandleFunc("POST /api/templates/{id}/run", s.adminMiddleware(s.handleRunTemplateNow))
+	// Update endpoints (admin only)
+	s.router.HandleFunc("GET /api/update/check", s.adminRoute(s.handleCheckUpdate))
+	s.router.HandleFunc("POST /api/update/apply", s.adminRoute(s.handleApplyUpdate))
+	s.router.HandleFunc("POST /api/agents/{id}/update", s.adminRoute(s.handleAgentUpdate))
 
-	s.router.HandleFunc("GET /api/federation", s.adminMiddleware(s.handleListFederation))
-	s.router.HandleFunc("POST /api/federation", s.adminMiddleware(s.handleCreateFederation))
-	s.router.HandleFunc("GET /api/federation/{id}", s.adminMiddleware(s.handleGetFederation))
-	s.router.HandleFunc("PUT /api/federation/{id}", s.adminMiddleware(s.handleUpdateFederation))
-	s.router.HandleFunc("DELETE /api/federation/{id}", s.adminMiddleware(s.handleDeleteFederation))
-	s.router.HandleFunc("POST /api/federation/{id}/sync", s.adminMiddleware(s.handleSyncFederation))
-	s.router.HandleFunc("GET /api/federation/{id}/agents", s.adminMiddleware(s.handleFederationAgents))
-	s.router.HandleFunc("GET /api/federation/{id}/jobs", s.adminMiddleware(s.handleFederationJobs))
-	s.router.HandleFunc("GET /api/federation/{id}/history", s.adminMiddleware(s.handleFederationHistory))
+	// Rollback endpoints (admin only)
+	s.router.HandleFunc("GET /api/rollback-available", s.adminRoute(s.handleRollbackAvailable))
+	s.router.HandleFunc("POST /api/rollback", s.adminRoute(s.handleRollback))
+	s.router.HandleFunc("POST /api/agents/{id}/rollback", s.adminRoute(s.handleAgentRollback))
+
+	// Templates endpoints
+	s.router.HandleFunc("GET /api/templates", s.viewerRoute(s.handleListTemplates))
+	s.router.HandleFunc("POST /api/templates", s.adminRoute(s.handleCreateTemplate))
+	s.router.HandleFunc("GET /api/templates/{id}", s.viewerRoute(s.handleGetTemplate))
+	s.router.HandleFunc("PUT /api/templates/{id}", s.adminRoute(s.handleUpdateTemplate))
+	s.router.HandleFunc("DELETE /api/templates/{id}", s.adminRoute(s.handleDeleteTemplate))
+	s.router.HandleFunc("POST /api/templates/{id}/run", s.operatorRoute(s.handleRunTemplateNow))
+
+	// Federation endpoints (admin only)
+	s.router.HandleFunc("GET /api/federation", s.adminRoute(s.handleListFederation))
+	s.router.HandleFunc("POST /api/federation", s.adminRoute(s.handleCreateFederation))
+	s.router.HandleFunc("GET /api/federation/{id}", s.adminRoute(s.handleGetFederation))
+	s.router.HandleFunc("PUT /api/federation/{id}", s.adminRoute(s.handleUpdateFederation))
+	s.router.HandleFunc("DELETE /api/federation/{id}", s.adminRoute(s.handleDeleteFederation))
+	s.router.HandleFunc("POST /api/federation/{id}/sync", s.adminRoute(s.handleSyncFederation))
+	s.router.HandleFunc("GET /api/federation/{id}/agents", s.adminRoute(s.handleFederationAgents))
+	s.router.HandleFunc("GET /api/federation/{id}/jobs", s.adminRoute(s.handleFederationJobs))
+	s.router.HandleFunc("GET /api/federation/{id}/history", s.adminRoute(s.handleFederationHistory))
 
 	if s.staticFS != nil {
 		log.Printf("Serving embedded dashboard")
