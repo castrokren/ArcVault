@@ -157,11 +157,27 @@ ArcVault solves key limitations in RoboBackup:
 - API endpoints: 3 new (sync GET/POST + health GET)
 - Database: 1 new table + 1 column
 
-**Known Limitations (Phase 17+):**
-- Spoke auto-resync: Frontend integration incomplete
-- Heartbeat timeout: Background detector goroutine not yet implemented
-- Agent homing: Tracked in code but not persisted to DB
-- Performance: Index exists; pagination ready for large event logs
+**Gap Fixes (post-v0.9.0, same branch):**
+- Agent homing persisted: `home_coordinator TEXT` column added to agents table; written on register + heartbeat
+- Heartbeat detector implemented: `StartHeartbeatDetector()` goroutine in `federation_heartbeat.go`; 15s tick, marks offline after 30s, appends `coordinator_offline` event
+- `Federation` struct gains `LastSeq int64`; all three DB query functions scan it correctly
+- `agent_count` in health endpoint now queries `SELECT COUNT(*) FROM agents WHERE home_coordinator = ? AND status = 'online'`
+- Frontend stale banner: `useFederationLag.js` composable polls health every 15s; Agents.vue, Jobs.vue, History.vue show sync-lag banner on local view when `lag_events > 0`, auto-clears on sync
+
+**Files added (gap fixes):**
+- `coordinator/server/federation_heartbeat.go` — StartHeartbeatDetector() + checkHeartbeatTimeouts()
+- `dashboard/src/composables/useFederationLag.js` — shared composable; isStale + lagEvents refs
+
+**Files modified (gap fixes):**
+- `coordinator/db/db.go` — LastSeq on Federation struct; ListFederation/GetFederation/GetFederationByToken scan last_seq; home_coordinator migration
+- `coordinator/server/agents.go` — INSERT + UPDATE write home_coordinator = s.coordinatorID
+- `coordinator/server/federation_health.go` — real agent_count query
+- `coordinator/server/server.go` — go s.StartHeartbeatDetector() in Start()
+- `dashboard/src/views/Agents.vue`, `Jobs.vue`, `History.vue` — syncStale banner from useFederationLag
+
+**Tests added (gap fixes):**
+- TestFederationHealthAgentCount — verifies agent_count per coordinator
+- TestHeartbeatDetectorMarksOffline — verifies offline transition + event append
 
 ---
 
