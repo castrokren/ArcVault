@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** May 22, 2026 | **v0.9.0** | **Phase 16 COMPLETE** (federation HA)
+**Last updated:** May 22, 2026 | **v0.9.0** | **Phase 16 COMPLETE + gaps closed**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -10,6 +10,7 @@
 ✅ Phase 16 (backend): Federation failover, state sync (federation_events log), health monitoring  
 ✅ Phase 16 (frontend): FederationHealth.vue dashboard with auto-refresh  
 ✅ Phase 16 (agent): Coordinator list failover with exponential backoff  
+✅ Phase 16 (gaps): Agent homing persisted, heartbeat detector live, stale banners wired to lag composable  
 📊 All backend tests passing  
 🎯 Next: Phase 17 planning
 
@@ -89,10 +90,10 @@ sudo launchctl start com.arcvault.coordinator   # macOS
 ## Reference
 - **Project instructions & routing:** [CLAUDE.md](CLAUDE.md)
 - **Phase history & architecture:** [MEMORY.md](MEMORY.md) (detailed design decisions, technical stack, full roadmap)
-- **Current branch:** feature/phase-15-rbac (backend complete, frontend in progress)
-- **Latest release:** https://github.com/castrokren/ArcVault/releases/tag/v0.5.0 (v0.8.0-dev pending)
+- **Current branch:** feature/phase-15-rbac (Phase 16 complete + gaps closed, ready to merge or branch for Phase 17)
+- **Latest release:** https://github.com/castrokren/ArcVault/releases/tag/v0.9.0
 
 ## Development Tips
 - **PowerShell:** Line continuation uses backtick `` ` ``, not backslash
-- **Tests:** Run `go test ./...` to verify all 110 tests pass
+- **Tests:** Run `go test ./...` to verify all tests pass
 - **Dashboard:** Embedded at compile time; see `coordinator/static/`
