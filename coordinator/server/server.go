@@ -192,6 +192,14 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /api/federation/sync/ack", s.adminRoute(s.handleFederationSyncAck))
 	s.router.HandleFunc("GET /api/federation/health", s.viewerRoute(s.handleFederationHealth))
 
+	// Alert rules endpoints (Phase 17: Enhanced monitoring & alerting)
+	s.router.HandleFunc("GET /api/alert-rules", s.viewerRoute(s.handleListAlertRules))
+	s.router.HandleFunc("POST /api/alert-rules", s.adminRoute(s.handleCreateAlertRule))
+	s.router.HandleFunc("PUT /api/alert-rules/{id}", s.adminRoute(s.handleUpdateAlertRule))
+	s.router.HandleFunc("DELETE /api/alert-rules/{id}", s.adminRoute(s.handleDeleteAlertRule))
+	s.router.HandleFunc("GET /api/alert-history", s.viewerRoute(s.handleListAlertHistory))
+	s.router.HandleFunc("POST /api/alert-history/{id}/retry", s.adminRoute(s.handleRetryAlert))
+
 	if s.staticFS != nil {
 		log.Printf("Serving embedded dashboard")
 		s.router.Handle("GET /", http.FileServer(http.FS(s.staticFS)))

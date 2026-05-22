@@ -273,3 +273,22 @@ export function cronPreview(expr) {
   // fallback — show the raw expression
   return expr
 }
+
+// --- alerts (Phase 17) ---
+export const getAlertRules = () =>
+  request('GET', '/api/alert-rules')
+
+export const createAlertRule = (rule) =>
+  request('POST', '/api/alert-rules', rule)
+
+export const updateAlertRule = (id, rule) =>
+  request('PUT', `/api/alert-rules/${id}`, rule)
+
+export const deleteAlertRule = (id) =>
+  request('DELETE', `/api/alert-rules/${id}`)
+
+export const getAlertHistory = () =>
+  request('GET', '/api/alert-history')
+
+export const retryAlert = (id) =>
+  request('POST', `/api/alert-history/${id}/retry`)

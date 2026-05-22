@@ -7,6 +7,7 @@
         <router-link to="/jobs">Jobs</router-link>
         <router-link to="/history">History</router-link>
         <router-link to="/templates">Templates</router-link>
+        <router-link to="/alerts">Alerts</router-link>
         <router-link
           to="/users"
           :class="{ disabled: !isAdmin }"
