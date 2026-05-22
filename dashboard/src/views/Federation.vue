@@ -2,7 +2,10 @@
   <div class="federation-view">
     <div class="view-header">
       <h1>Federation</h1>
-      <button class="btn-primary" @click="openCreate">+ Add Site</button>
+      <div class="header-actions">
+        <router-link to="/federation/health" class="btn-secondary">Health Status</router-link>
+        <button class="btn-primary" @click="openCreate">+ Add Site</button>
+      </div>
     </div>
 
     <div v-if="loading" class="loading">Loading...</div>
@@ -206,6 +209,12 @@ onMounted(load)
 }
 
 .view-header h1 { margin: 0; font-size: 1.4rem; }
+
+.header-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
 
 .loading, .empty { color: var(--text-secondary, #888); padding: 2rem 0; }
 

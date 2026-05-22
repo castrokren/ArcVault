@@ -1,10 +1,17 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** May 18, 2026 | **v0.5.0** | **Phase 12 complete** → Phase 13 next
+**Last updated:** May 22, 2026 | **v0.9.0** | **Phase 16 COMPLETE** (federation HA)
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
-📊 110 tests passing (108 pass + 2 skip on Windows)  
-🎯 Phase 13: Scheduled backup templates (cron-based job automation)
+✅ Phase 13: Scheduled backup templates (cron-based job automation)  
+✅ Phase 14: Agent update system & rollback  
+✅ Phase 15 (backend): RBAC with JWT authentication, user management, agent groups  
+✅ Phase 15 (frontend): Login, useAuth composable, user/group CRUD, smart job forms  
+✅ Phase 16 (backend): Federation failover, state sync (federation_events log), health monitoring  
+✅ Phase 16 (frontend): FederationHealth.vue dashboard with auto-refresh  
+✅ Phase 16 (agent): Coordinator list failover with exponential backoff  
+📊 All backend tests passing  
+🎯 Next: Phase 17 planning
 
 ## Core Commands
 ```bash
@@ -33,6 +40,9 @@ agent install-service
 - ✅ Server-side pagination & filtering (all list endpoints)
 - ✅ Job history visualization (timeline + agent charts, v0.4.0+)
 - ✅ Failure notifications (webhook + email, v0.5.0+)
+- ✅ JWT-based RBAC (v0.8.0): Three roles (admin, operator, viewer) with fine-grained endpoint access
+- ✅ User management: Create/list/delete/update roles with bcrypt password hashing
+- ✅ Agent groups: Organize agents by environment or function, assign members
 
 ## Quick Setup
 
@@ -79,7 +89,8 @@ sudo launchctl start com.arcvault.coordinator   # macOS
 ## Reference
 - **Project instructions & routing:** [CLAUDE.md](CLAUDE.md)
 - **Phase history & architecture:** [MEMORY.md](MEMORY.md) (detailed design decisions, technical stack, full roadmap)
-- **Latest release:** https://github.com/castrokren/ArcVault/releases/tag/v0.5.0
+- **Current branch:** feature/phase-15-rbac (backend complete, frontend in progress)
+- **Latest release:** https://github.com/castrokren/ArcVault/releases/tag/v0.5.0 (v0.8.0-dev pending)
 
 ## Development Tips
 - **PowerShell:** Line continuation uses backtick `` ` ``, not backslash

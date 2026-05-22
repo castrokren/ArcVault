@@ -73,6 +73,9 @@ last_seen=CURRENT_TIMESTAMP
 		Payload: json.RawMessage(payload),
 	})
 
+	// Append to federation_events log for state sync.
+	s.db.AppendFederationEvent(s.coordinatorID, "agent_registered", string(payload))
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{
@@ -107,17 +110,18 @@ UPDATE agents SET status='online', last_seen=?, rollback_available=? WHERE id=?
 	}
 
 	// Broadcast heartbeat delta to root coordinator if running as a sub.
-	s.broadcastFedDelta(FedMessage{
-		Type: FedEventAgentHeartbeat,
-		Payload: func() json.RawMessage {
-			p, _ := json.Marshal(FedAgentHeartbeat{
-				AgentID:  agentID,
-				Status:   "online",
-				LastSeen: &now,
-			})
-			return json.RawMessage(p)
-		}(),
+	hbPayload, _ := json.Marshal(FedAgentHeartbeat{
+		AgentID:  agentID,
+		Status:   "online",
+		LastSeen: &now,
 	})
+	s.broadcastFedDelta(FedMessage{
+		Type:    FedEventAgentHeartbeat,
+		Payload: json.RawMessage(hbPayload),
+	})
+
+	// Append to federation_events log for state sync.
+	s.db.AppendFederationEvent(s.coordinatorID, "agent_heartbeat", string(hbPayload))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{

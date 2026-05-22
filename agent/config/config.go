@@ -8,12 +8,13 @@ import (
 )
 
 type Config struct {
-AgentID        string `yaml:"agent_id"`
-Hostname       string `yaml:"hostname"`
-OS             string `yaml:"os"`
-CoordinatorURL string `yaml:"coordinator_url"`
-AuthToken      string `yaml:"auth_token"`
-Version        string `yaml:"version"`
+	AgentID        string   `yaml:"agent_id"`
+	Hostname       string   `yaml:"hostname"`
+	OS             string   `yaml:"os"`
+	CoordinatorURL string   `yaml:"coordinator_url"`
+	Coordinators   []string `yaml:"coordinators,omitempty"`
+	AuthToken      string   `yaml:"auth_token"`
+	Version        string   `yaml:"version"`
 }
 
 func Load(path string) (*Config, error) {
@@ -30,8 +31,13 @@ return nil, fmt.Errorf("could not parse config file: %w", err)
 if cfg.AgentID == "" {
 return nil, fmt.Errorf("agent_id is required in config")
 }
-if cfg.CoordinatorURL == "" {
-return nil, fmt.Errorf("coordinator_url is required in config")
+// Either coordinator_url or coordinators list must be provided (backward compat).
+if cfg.CoordinatorURL == "" && len(cfg.Coordinators) == 0 {
+return nil, fmt.Errorf("coordinator_url or coordinators list is required in config")
+}
+// If coordinators list is provided, use it; otherwise fall back to single coordinator_url.
+if len(cfg.Coordinators) > 0 && cfg.CoordinatorURL == "" {
+cfg.CoordinatorURL = cfg.Coordinators[0]
 }
 if cfg.AuthToken == "" {
 return nil, fmt.Errorf("auth_token is required in config")

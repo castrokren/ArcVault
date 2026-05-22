@@ -1,7 +1,8 @@
 const BASE_URL = ''
 
 function getToken() {
-  return localStorage.getItem('arcvault_token') || ''
+  // Try new JWT token first, fall back to old admin token
+  return localStorage.getItem('arcvault_jwt') || localStorage.getItem('arcvault_token') || ''
 }
 
 async function request(method, path, body = null) {
@@ -31,6 +32,61 @@ function buildQuery(params) {
     .join('&')
   return q ? `?${q}` : ''
 }
+
+// --- auth ---
+export const login = (username, password) =>
+  fetch(`${BASE_URL}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  }).then(r => r.ok ? r.json() : r.text().then(t => { throw new Error(t) }))
+
+export const logout = () =>
+  request('POST', '/api/auth/logout')
+
+export const refreshToken = () =>
+  request('POST', '/api/auth/refresh')
+
+export const changePassword = (currentPassword, newPassword) =>
+  request('POST', '/api/auth/change-password', {
+    current_password: currentPassword,
+    new_password: newPassword,
+  })
+
+// --- users ---
+export const getUsers = ({ page = 1, limit = 25 } = {}) =>
+  request('GET', `/api/users${buildQuery({ page, limit })}`)
+
+export const createUser = (username, password, role) =>
+  request('POST', '/api/users', { username, password, role })
+
+export const updateUserRole = (id, role) =>
+  request('PUT', `/api/users/${id}`, { role })
+
+export const deleteUser = (id) =>
+  request('DELETE', `/api/users/${id}`)
+
+// --- groups ---
+export const getGroups = () =>
+  request('GET', '/api/groups')
+
+export const createGroup = (name, description) =>
+  request('POST', '/api/groups', { name, description })
+
+export const updateGroup = (id, name, description) =>
+  request('PUT', `/api/groups/${id}`, { name, description })
+
+export const deleteGroup = (id) =>
+  request('DELETE', `/api/groups/${id}`)
+
+export const getGroupMembers = (groupId) =>
+  request('GET', `/api/groups/${groupId}/agents`)
+
+export const addAgentToGroup = (groupId, agentId) =>
+  request('POST', `/api/groups/${groupId}/agents`, { agent_id: agentId })
+
+export const removeAgentFromGroup = (groupId, agentId) =>
+  request('DELETE', `/api/groups/${groupId}/agents/${agentId}`)
 
 // --- agents ---
 export const getAgents = ({ page = 1, limit = 25, search = '', status = '' } = {}) =>
@@ -110,6 +166,9 @@ export const getFederationJobs = (id) =>
 
 export const getFederationHistory = (id) =>
   request('GET', `/api/federation/${id}/history`)
+
+export const getFederationHealth = () =>
+  request('GET', '/api/federation/health')
 
 // --- token helpers ---
 export function saveToken(token) {
