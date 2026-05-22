@@ -1,6 +1,6 @@
 # Planning Workspace
 
-**Last updated:** May 16, 2026
+**Last updated:** May 22, 2026
 
 ## What happens here
 
@@ -18,13 +18,27 @@ Deciding what to build next in ArcVault. Breaking phases into ordered tasks. Tra
 | 6 | Service installation (Windows/Linux/macOS) |
 | 7 | Dashboard improvements: theme toggle, search/filter |
 | 8 | Agent self-update via WebSocket command channel |
+| 9 | Rollback: store previous agent binary, one-click rollback from dashboard |
+| 10 | Pagination: cursor-based pagination for agents and job history |
+| 11 | Scheduled jobs: cron-based automatic job triggers |
+| 12 | Notifications: email/webhook on job failure or agent offline |
+| 13 | Scheduled backup templates: cron-based job automation |
+| 14 | Agent update system & bidirectional rollback |
+| 15 (backend) | RBAC infrastructure: JWT authentication, user management, agent groups |
+
+## Current phase
+
+**Phase 15 (frontend) — RBAC UI Components:** Login, password change, user management, group management
+- Backend infrastructure complete (JWT, user management, groups, role-based routes) ✅
+- Task 8 complete: Group fan-out job dispatch on POST /api/jobs ✅
+- Pending: Vue components (Login.vue, ChangePassword.vue, Users.vue, Groups.vue, AuthGuard.vue)
+- Pending: Integration with existing Agents.vue and Jobs.vue
 
 ## Candidate next phases
 
-- **Phase 9 — Rollback:** store previous agent binary, allow one-click rollback from dashboard
-- **Phase 10 — Pagination:** cursor-based pagination for agents and job history lists
-- **Phase 11 — Scheduled jobs:** cron-based automatic job triggers (already have robfig/cron)
-- **Phase 12 — Notifications:** email/webhook on job failure or agent offline
+- **Phase 16 — API Documentation:** OpenAPI/Swagger spec generation from routes
+- **Phase 17 — Audit logging:** Track user actions and changes
+- **Phase 18 — Multi-coordinator federation:** Support secondary coordinators for high availability
 
 ## Process
 

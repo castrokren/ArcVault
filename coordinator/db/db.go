@@ -388,5 +388,18 @@ CREATE TABLE IF NOT EXISTS job_runs (
 	// Idempotent: add group_id and dispatch_id columns to jobs for Phase 15 fan-out.
 	d.conn.Exec(`ALTER TABLE jobs ADD COLUMN group_id    INTEGER REFERENCES agent_groups(id)`)
 	d.conn.Exec(`ALTER TABLE jobs ADD COLUMN dispatch_id TEXT`)
+	// Idempotent: add federation_events table for Phase 16 state sync.
+	d.conn.Exec(`CREATE TABLE IF NOT EXISTS federation_events (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		seq         INTEGER NOT NULL,
+		coordinator TEXT NOT NULL,
+		event_type  TEXT NOT NULL,
+		payload     TEXT NOT NULL,
+		created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	// Idempotent: add index for federation_events lookups by (coordinator, seq).
+	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_federation_events_seq ON federation_events(coordinator, seq)`)
+	// Idempotent: add last_seq column to federation table for Phase 16 tracking.
+	d.conn.Exec(`ALTER TABLE federation ADD COLUMN last_seq INTEGER NOT NULL DEFAULT 0`)
 	return nil
 }

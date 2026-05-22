@@ -13,9 +13,44 @@
 
     <div v-if="!selectedSite && showForm" class="form-card">
       <h3>Create Job</h3>
+
+      <!-- Dispatch Mode Selector -->
+      <div class="dispatch-mode">
+        <label>Dispatch Mode</label>
+        <div class="mode-buttons">
+          <button
+            class="mode-btn"
+            :class="{ active: form.dispatchMode === 'agent' }"
+            @click="form.dispatchMode = 'agent'"
+          >
+            Single Agent
+          </button>
+          <button
+            class="mode-btn"
+            :class="{ active: form.dispatchMode === 'group' }"
+            @click="form.dispatchMode = 'group'"
+          >
+            Group
+          </button>
+        </div>
+      </div>
+
       <div class="form-grid">
-        <label>Agent ID</label>
-        <input v-model="form.agent_id" placeholder="agent-01" />
+        <!-- Agent/Group Selection -->
+        <label>{{ form.dispatchMode === 'agent' ? 'Agent' : 'Group' }}</label>
+        <select v-if="form.dispatchMode === 'agent'" v-model="form.agent_id">
+          <option value="">Select an agent...</option>
+          <option v-for="agent in agents" :key="agent.id" :value="agent.id">
+            {{ agent.name }} ({{ agent.id }})
+          </option>
+        </select>
+        <select v-else v-model="form.group_id">
+          <option value="">Select a group...</option>
+          <option v-for="group in groups" :key="group.id" :value="group.id">
+            {{ group.name }}
+          </option>
+        </select>
+
         <label>Name</label>
         <input v-model="form.name" placeholder="nightly-backup" />
         <label>Source Path</label>
@@ -102,7 +137,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, inject } from 'vue'
-import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs } from '../api.js'
+import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups } from '../api.js'
 import Pagination from '../components/Pagination.vue'
 
 const props = defineProps(['lastEvent'])
@@ -126,7 +161,10 @@ const formError = ref(null)
 const searchQuery = ref('')
 const statusFilter = ref('all')
 
-const form = ref({ agent_id: '', name: '', source_path: '', dest_path: '', schedule: '' })
+const agents = ref([])
+const groups = ref([])
+
+const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '' })
 
 async function load() {
   loading.value = true
@@ -172,12 +210,34 @@ function goToPage(n) {
 
 async function createJob() {
   formError.value = null
+
+  // Validate dispatch mode
+  if (form.value.dispatchMode === 'agent' && !form.value.agent_id) {
+    formError.value = 'Please select an agent'
+    return
+  }
+  if (form.value.dispatchMode === 'group' && !form.value.group_id) {
+    formError.value = 'Please select a group'
+    return
+  }
+
+  if (!form.value.name || !form.value.source_path || !form.value.dest_path) {
+    formError.value = 'Please fill in all required fields'
+    return
+  }
+
   creating.value = true
   try {
     const payload = { ...form.value }
+    // Remove the unused dispatch field
+    delete payload.dispatchMode
+    // Remove empty fields
     if (!payload.schedule) delete payload.schedule
+    if (form.value.dispatchMode === 'agent') delete payload.group_id
+    if (form.value.dispatchMode === 'group') delete payload.agent_id
+
     await apiCreateJob(payload)
-    form.value = { agent_id: '', name: '', source_path: '', dest_path: '', schedule: '' }
+    form.value = { dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '' }
     showForm.value = false
     page.value = 1
     await load()
@@ -211,6 +271,19 @@ function fmtStaleTime(iso) {
   return `${Math.floor(secs / 3600)}h ago`
 }
 
+async function loadAgentsAndGroups() {
+  try {
+    const [agentsData, groupsData] = await Promise.all([
+      getAgents(),
+      getGroups(),
+    ])
+    agents.value = agentsData.agents || []
+    groups.value = groupsData.groups || []
+  } catch (e) {
+    console.error('Failed to load agents and groups:', e)
+  }
+}
+
 watch(selectedSite, () => {
   page.value = 1
   load()
@@ -220,7 +293,10 @@ watch(() => props.lastEvent, (ev) => {
   if (!selectedSite.value && (ev?.type === 'job.updated' || ev?.type === 'job.result')) load()
 })
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadAgentsAndGroups()
+})
 </script>
 
 <style scoped>
@@ -254,6 +330,43 @@ onMounted(load)
 }
 .form-card h3 { margin: 0 0 1rem; }
 
+.dispatch-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.dispatch-mode label { color: #aaa; font-size: 0.9rem; }
+
+.mode-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mode-btn {
+  flex: 1;
+  padding: 0.6rem 1rem;
+  background: #333;
+  color: #aaa;
+  border: 1px solid #444;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.mode-btn:hover {
+  background: #404040;
+  border-color: #555;
+}
+
+.mode-btn.active {
+  background: #4f8ef7;
+  color: #fff;
+  border-color: #4f8ef7;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 160px 1fr;
@@ -262,12 +375,25 @@ onMounted(load)
   margin-bottom: 1rem;
 }
 .form-grid label { color: #aaa; font-size: 0.9rem; }
-.form-grid input {
+.form-grid input,
+.form-grid select {
   padding: 0.4rem 0.6rem;
   border-radius: 4px;
   border: 1px solid #444;
   background: #111;
   color: #fff;
+  font-size: 0.9rem;
+}
+
+.form-grid select {
+  cursor: pointer;
+}
+
+.form-grid input:focus,
+.form-grid select:focus {
+  outline: none;
+  border-color: #4f8ef7;
+  box-shadow: 0 0 0 2px rgba(79, 142, 247, 0.1);
 }
 .optional { color: #666; font-size: 0.8rem; }
 

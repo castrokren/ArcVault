@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -149,6 +150,151 @@ func TestCreateJob_unauthenticatedReturns401(t *testing.T) {
 
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rr.Code)
+	}
+}
+
+// --- Group dispatch (fan-out) ---
+
+func TestCreateJob_groupDispatchWithMembers(t *testing.T) {
+	s := newTestServer(t)
+
+	// Create a group with 3 members
+	group, err := s.db.CreateGroup("test-group", "Test group")
+	if err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+
+	for i := 1; i <= 3; i++ {
+		agentID := "agent-0" + string(rune('0'+i))
+		if err := s.db.AddAgentToGroup(group.ID, agentID); err != nil {
+			t.Fatalf("failed to add agent to group: %v", err)
+		}
+	}
+
+	// Create job with group_id
+	body := fmt.Sprintf(`{"group_id":%d,"name":"batch-backup","source_path":"C:\\src","dest_path":"D:\\backup"}`, group.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("response is not valid JSON: %v", err)
+	}
+
+	// Verify response structure
+	if resp["dispatch_id"] == nil {
+		t.Error("expected dispatch_id in response")
+	}
+	if resp["group_id"] != float64(group.ID) {
+		t.Errorf("expected group_id %d, got %v", group.ID, resp["group_id"])
+	}
+
+	jobsList := resp["jobs"].([]interface{})
+	if len(jobsList) != 3 {
+		t.Errorf("expected 3 jobs, got %d", len(jobsList))
+	}
+
+	// Verify all jobs have correct properties
+	for i, jobItem := range jobsList {
+		job := jobItem.(map[string]interface{})
+		if job["name"] != "batch-backup" {
+			t.Errorf("job %d: expected name 'batch-backup', got %q", i, job["name"])
+		}
+		if job["status"] != "pending" {
+			t.Errorf("job %d: expected status 'pending', got %q", i, job["status"])
+		}
+	}
+}
+
+func TestCreateJob_groupDispatchEmptyGroupReturnsError(t *testing.T) {
+	s := newTestServer(t)
+
+	// Create an empty group (no members)
+	group, err := s.db.CreateGroup("empty-group", "Empty group")
+	if err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+
+	// Try to create job with empty group
+	body := fmt.Sprintf(`{"group_id":%d,"name":"batch-backup","source_path":"C:\\src","dest_path":"D:\\backup"}`, group.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+	if !bytes.Contains(rr.Body.Bytes(), []byte("no members")) {
+		t.Errorf("expected 'no members' error message, got: %s", rr.Body.String())
+	}
+}
+
+func TestCreateJob_groupDispatchInvalidGroupReturns404(t *testing.T) {
+	s := newTestServer(t)
+
+	// Try to create job with non-existent group
+	body := `{"group_id":9999,"name":"batch-backup","source_path":"C:\\src","dest_path":"D:\\backup"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", rr.Code)
+	}
+	if !bytes.Contains(rr.Body.Bytes(), []byte("not found")) {
+		t.Errorf("expected 'not found' error message, got: %s", rr.Body.String())
+	}
+}
+
+func TestCreateJob_cannotProvideBothAgentAndGroupID(t *testing.T) {
+	s := newTestServer(t)
+
+	body := `{"agent_id":"agent-01","group_id":1,"name":"backup","source_path":"C:\\src","dest_path":"D:\\backup"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+	if !bytes.Contains(rr.Body.Bytes(), []byte("either agent_id or group_id")) {
+		t.Errorf("expected validation error, got: %s", rr.Body.String())
+	}
+}
+
+func TestCreateJob_mustProvideAgentOrGroupID(t *testing.T) {
+	s := newTestServer(t)
+
+	body := `{"name":"backup","source_path":"C:\\src","dest_path":"D:\\backup"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+	if !bytes.Contains(rr.Body.Bytes(), []byte("either agent_id or group_id")) {
+		t.Errorf("expected validation error, got: %s", rr.Body.String())
 	}
 }
 

@@ -18,9 +18,11 @@ import (
 
 // Client holds the configuration for the agent WebSocket connection.
 type Client struct {
-	AgentID        string
-	CoordinatorURL string // http(s)://host:port
-	AuthToken      string
+	AgentID         string
+	CoordinatorURL  string   // http(s)://host:port (single, backward compat)
+	Coordinators    []string // list of coordinator URLs for failover
+	AuthToken       string
+	lastSuccessfulCoordinator string // track which coordinator the agent is currently homed to
 }
 
 type inboundMsg struct {
@@ -37,14 +39,44 @@ type progressMsg struct {
 }
 
 // Start connects to the coordinator's /ws/agent endpoint and processes
-// messages until the process exits. It reconnects automatically on disconnect.
+// messages until the process exits. It reconnects automatically on disconnect,
+// trying each coordinator in the list with exponential backoff.
 func (c *Client) Start() {
-	wsURL := buildWSURL(c.CoordinatorURL, c.AgentID, c.AuthToken)
+	// Build coordinator list: use Coordinators if provided, otherwise fall back to single CoordinatorURL
+	coordinators := c.Coordinators
+	if len(coordinators) == 0 && c.CoordinatorURL != "" {
+		coordinators = []string{c.CoordinatorURL}
+	}
+	if len(coordinators) == 0 {
+		log.Fatal("Agent WS: no coordinators configured")
+	}
+
+	backoff := 30 * time.Second
+	coordinatorIndex := 0
+
 	for {
+		// Try each coordinator in round-robin
+		coordinator := coordinators[coordinatorIndex%len(coordinators)]
+		wsURL := buildWSURL(coordinator, c.AgentID, c.AuthToken)
+
 		if err := c.run(wsURL); err != nil {
-			log.Printf("Agent WS: disconnected (%v) — reconnecting in 5s", err)
+			log.Printf("Agent WS: disconnected from %s (%v) — trying next coordinator in %s", coordinator, err, backoff)
+			coordinatorIndex++
+
+			// After trying all coordinators, apply exponential backoff
+			if coordinatorIndex%len(coordinators) == 0 {
+				time.Sleep(backoff)
+				backoff *= 2
+				if backoff > 120*time.Second {
+					backoff = 120 * time.Second
+				}
+			}
+		} else {
+			// Successful connection
+			c.lastSuccessfulCoordinator = coordinator
+			backoff = 30 * time.Second // Reset backoff on success
+			coordinatorIndex++ // Try next one on reconnect
 		}
-		time.Sleep(5 * time.Second)
 	}
 }
 

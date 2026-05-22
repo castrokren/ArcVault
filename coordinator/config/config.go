@@ -15,6 +15,7 @@ type Config struct {
 	AdminToken    string              `json:"admin_token"`
 	JWTSecret     string              `json:"jwt_secret"`
 	Environment   string              `json:"environment"`
+	CoordinatorID string              `json:"coordinator_id,omitempty"`
 	Notifications *NotificationConfig `json:"notifications,omitempty"`
 	Federation    *FederationConfig   `json:"federation,omitempty"`
 }

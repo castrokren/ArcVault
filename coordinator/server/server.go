@@ -16,14 +16,15 @@ import (
 var Version = "dev"
 
 type Server struct {
-	cfg       *config.Config
-	db        *db.DB
-	router    *http.ServeMux
-	hub       *Hub
-	fedHub    *FederationHub
-	fedClient *FederationClient
-	staticFS  fs.FS
-	Notifier  *notifications.Dispatcher
+	cfg           *config.Config
+	db            *db.DB
+	router        *http.ServeMux
+	hub           *Hub
+	fedHub        *FederationHub
+	fedClient     *FederationClient
+	staticFS      fs.FS
+	Notifier      *notifications.Dispatcher
+	coordinatorID string
 }
 
 func New(cfg *config.Config, database *db.DB) *Server {
@@ -31,14 +32,21 @@ func New(cfg *config.Config, database *db.DB) *Server {
 }
 
 func NewWithFS(cfg *config.Config, database *db.DB, staticFS fs.FS) *Server {
+	// Set coordinator ID from config or use a default/hostname-based ID.
+	coordinatorID := cfg.CoordinatorID
+	if coordinatorID == "" {
+		coordinatorID = "root"
+	}
+
 	s := &Server{
-		cfg:      cfg,
-		db:       database,
-		router:   http.NewServeMux(),
-		hub:      newHub(),
-		fedHub:   NewFederationHub(database),
-		staticFS: staticFS,
-		Notifier: notifications.NewDispatcher(cfg.Notifications),
+		cfg:           cfg,
+		db:            database,
+		router:        http.NewServeMux(),
+		hub:           newHub(),
+		fedHub:        NewFederationHub(database),
+		staticFS:      staticFS,
+		Notifier:      notifications.NewDispatcher(cfg.Notifications),
+		coordinatorID: coordinatorID,
 	}
 
 	if cfg.Federation != nil {
@@ -177,6 +185,11 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("GET /api/federation/{id}/agents", s.adminRoute(s.handleFederationAgents))
 	s.router.HandleFunc("GET /api/federation/{id}/jobs", s.adminRoute(s.handleFederationJobs))
 	s.router.HandleFunc("GET /api/federation/{id}/history", s.adminRoute(s.handleFederationHistory))
+
+	// Federation state sync endpoints (Phase 16: HA federation)
+	s.router.HandleFunc("GET /api/federation/sync", s.adminRoute(s.handleFederationSync))
+	s.router.HandleFunc("POST /api/federation/sync/ack", s.adminRoute(s.handleFederationSyncAck))
+	s.router.HandleFunc("GET /api/federation/health", s.viewerRoute(s.handleFederationHealth))
 
 	if s.staticFS != nil {
 		log.Printf("Serving embedded dashboard")

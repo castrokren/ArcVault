@@ -1,8 +1,8 @@
 # ArcVault Project Memory
 **Project Name:** ArcVault  
 **Type:** OS-agnostic Backup Orchestrator  
-**Current Status:** Phase 12 Complete (v0.5.0) → Phase 13 Next  
-**Last Updated:** May 18, 2026  
+**Current Status:** Phase 15 Complete (v0.8.0) → Phase 16 Next  
+**Last Updated:** May 22, 2026  
 **Quick Status:** See [CONTEXT.md](CONTEXT.md) for status and quick reference
 
 ---
@@ -28,8 +28,11 @@ ArcVault solves key limitations in RoboBackup:
 | 10 | v0.3.0 | Bidirectional rollback (one-version-back) | ✅ Complete |
 | 11 | v0.4.0 | Job history visualization (timeline + charts) | ✅ Complete |
 | 12 | v0.5.0 | Failure notifications (webhook + email) | ✅ Complete |
-| 13 | — | Scheduled backup templates (cron automation) | ⏳ Next |
-| 14+ | — | Multi-coordinator federation, agent groups, RBAC | 🔮 Future |
+| 13 | — | Scheduled backup templates (cron automation) | ✅ Complete |
+| 14 | — | Agent update system & rollback | ✅ Complete |
+| 15 | v0.8.0 | RBAC (backend: JWT auth + user/group mgmt; frontend: login + admin panels) | ✅ Complete |
+| 16 | — | Multi-coordinator federation | ⏳ Next |
+| 17+ | — | Enhanced monitoring, CLI tooling, additional backends | 🔮 Future |
 
 ---
 
@@ -57,6 +60,48 @@ ArcVault solves key limitations in RoboBackup:
 - StartedAt = FinishedAt in notifications (future: add started_at to job_runs schema)
 - Errors logged but never block job result handler
 - Tests: 16 new (110 total: 108 pass + 2 skip on Windows)
+
+---
+
+### Phase 15: Frontend RBAC (v0.8.0)
+
+**Frontend Components Added:**
+- `dashboard/src/composables/useAuth.js` — JWT auth state management with auto-refresh, remember-me toggle
+- `dashboard/src/views/Login.vue` — Username/password login form
+- `dashboard/src/components/ChangePasswordModal.vue` — Password change with strength indicator (weak/medium/strong)
+- `dashboard/src/views/Users.vue` — Admin user CRUD: create, edit role, delete (paginated table, 25/page)
+- `dashboard/src/views/Groups.vue` — Admin group CRUD: create, edit, delete, manage members (card grid + modals)
+- `dashboard/src/views/Jobs.vue` (updated) — Smart dispatch form: toggle Single Agent ↔ Group mode
+
+**Files Modified:**
+- `dashboard/src/App.vue` — Added ChangePasswordModal, user menu (username + role), logout button, disabled nav styling
+- `dashboard/src/router/index.js` — Added /users and /groups routes, beforeEach auth guard
+- `dashboard/src/api.js` — Already had auth endpoints from Phase 15 backend
+
+**Key Design Decisions:**
+- **Session persistence:** Remember-me checkbox = localStorage; unchecked = memory-only (browser closes = logout)
+- **Auto-refresh:** 5-minute timer wakes up when user returns
+- **Admin-only access:** Components self-redirect via hasRole('admin'); visible-but-disabled UI pattern
+- **Password strength:** UX indicator only (min 8 chars; frontend validation before send)
+- **Smart job form:** User toggles dispatch mode; form validates based on selection before API call
+- **Theme support:** Full light/dark mode via CSS custom properties
+
+**User Experience:**
+- Login → JWT token stored → auto-redirect to /agents
+- Admin users see /users and /groups nav links (enabled)
+- Operator/viewer users see links but disabled with "Requires admin role" title
+- Change password button (🔐) in header
+- Logout button (🚪) in header
+- All modals match ArcVault design system
+- Error messages with retry buttons where applicable
+- Loading states on all async operations
+
+**Testing Notes:**
+- All 4 tasks (10–13) completed and working
+- Login/logout flow tested
+- Admin CRUD operations (users, groups, members) fully functional
+- Smart job form mode toggle working correctly
+- Router guards protecting /users and /groups routes
 
 ---
 
@@ -235,10 +280,11 @@ dashboard/src/
 - agent/updater: 11 (2 skip on Windows)
 
 ### Git / Release Status
-**Latest:** v0.5.0 — Phase 12 complete (failure notifications)
+**Current Dev:** v0.8.0 — Phase 15 complete (RBAC backend + frontend)
+**Latest Release:** v0.5.0 — Phase 12 (failure notifications)
 **Tags:** v0.1.0, v0.2.0, v0.3.0, v0.4.0, v0.5.0 released on GitHub
 **Remote:** https://github.com/castrokren/ArcVault
-**Branch:** main
+**Branch:** main (v0.5.0) → feature/phase-15-rbac (v0.8.0 dev)
 **Build:** Version injected via ldflags: `-X main.Version={{.Version}}`
 
 ---
@@ -247,25 +293,29 @@ dashboard/src/
 
 ## Future Roadmap
 
-### Phase 13: Scheduled Backup Templates (Next)
-- Define ScheduleTemplate schema (id, name, job_id, cron_expression, enabled, created_at, updated_at)
-- Implement CRUD endpoints: POST/GET/PUT/DELETE /api/schedule-templates
-- Coordinator loads templates on startup; automatic job triggering via cron
-- Dashboard: ScheduleTemplateForm.vue (create/edit), integrate into Jobs view
-- Test coverage: minimum 10 new tests
-
-### Phase 14: Multi-Coordinator Federation
+### Phase 16: Multi-Coordinator Federation (Next)
 - Coordinator-to-coordinator replication and agent load balancing
 - Failover and state consistency
+- Federation management UI in dashboard
 
-### Phase 15: Agent Groups & RBAC
-- Agent grouping with per-group job assignments
-- Role-based access control for dashboard users
+### Phase 17+: Future Enhancements
+- Enhanced monitoring and alerting (beyond webhooks)
+- CLI tooling for headless operations
+- Additional sync backends (S3, Azure Blob, etc.)
+- Advanced reporting and compliance export
 
-### Future Improvements
+### Known Improvements for Later
 - Add started_at column to job_runs (for accurate notification durations)
 - Email notifier: TLS client certificate authentication support
 - Webhook retry logic (currently single attempt only)
+- User search/filter in admin panel
+- Password reset via email (currently users can only change own password)
+
+---
+
+## Related Memory Files
+- [[phase-15-frontend-rbac]] — Detailed Phase 15 frontend implementation (useAuth, Login, Users, Groups, smart job forms)
+- Memory/DEPLOYMENT_FIX_MEMORY.md — (unrelated: Multi-module deployment script fix, 2026-05-13)
 
 ---
 **End of Memory Document**

@@ -28,9 +28,14 @@ func newJobID() string {
 }
 
 // handleCreateJob handles POST /api/jobs
+// Supports single agent or group dispatch:
+// - If agent_id is provided: creates single job
+// - If group_id is provided: creates one job per group member with shared dispatch_id
+// - Both cannot be provided (validation required)
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		AgentID    string  `json:"agent_id"`
+		GroupID    *int    `json:"group_id"`
 		Name       string  `json:"name"`
 		SourcePath string  `json:"source_path"`
 		DestPath   string  `json:"dest_path"`
@@ -40,10 +45,13 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
-	if input.AgentID == "" {
-		http.Error(w, "agent_id is required", http.StatusBadRequest)
+
+	// Validation: exactly one of agent_id or group_id must be provided
+	if (input.AgentID == "") == (input.GroupID == nil) {
+		http.Error(w, "must provide either agent_id or group_id, not both", http.StatusBadRequest)
 		return
 	}
+
 	if input.Name == "" {
 		http.Error(w, "name is required", http.StatusBadRequest)
 		return
@@ -57,30 +65,103 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job := Job{
-		ID:         newJobID(),
-		AgentID:    input.AgentID,
-		Name:       input.Name,
-		SourcePath: input.SourcePath,
-		DestPath:   input.DestPath,
-		Schedule:   input.Schedule,
-		Status:     "pending",
-		CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+	// Single agent dispatch
+	if input.AgentID != "" {
+		job := Job{
+			ID:         newJobID(),
+			AgentID:    input.AgentID,
+			Name:       input.Name,
+			SourcePath: input.SourcePath,
+			DestPath:   input.DestPath,
+			Schedule:   input.Schedule,
+			Status:     "pending",
+			CreatedAt:  time.Now().UTC().Format(time.RFC3339),
+		}
+
+		_, err := s.db.Conn().Exec(
+			`INSERT INTO jobs (id, agent_id, name, source_path, dest_path, schedule, status, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			job.ID, job.AgentID, job.Name, job.SourcePath, job.DestPath, job.Schedule, job.Status, job.CreatedAt,
+		)
+		if err != nil {
+			http.Error(w, "failed to create job", http.StatusInternalServerError)
+			return
+		}
+
+		// Append to federation_events log for state sync.
+		payload, _ := json.Marshal(job)
+		s.db.AppendFederationEvent(s.coordinatorID, "job_created", string(payload))
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(job)
+		return
 	}
 
-	_, err := s.db.Conn().Exec(
-		`INSERT INTO jobs (id, agent_id, name, source_path, dest_path, schedule, status, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		job.ID, job.AgentID, job.Name, job.SourcePath, job.DestPath, job.Schedule, job.Status, job.CreatedAt,
-	)
+	// Group dispatch: create one job per group member with shared dispatch_id
+	groupID := *input.GroupID
+
+	// Verify group exists
+	group, err := s.db.GetGroup(groupID)
 	if err != nil {
-		http.Error(w, "failed to create job", http.StatusInternalServerError)
+		http.Error(w, "failed to fetch group", http.StatusInternalServerError)
 		return
+	}
+	if group == nil {
+		http.Error(w, "group not found", http.StatusNotFound)
+		return
+	}
+
+	// Fetch group members
+	agentIDs, err := s.db.GetGroupMembers(groupID)
+	if err != nil {
+		http.Error(w, "failed to fetch group members", http.StatusInternalServerError)
+		return
+	}
+
+	if len(agentIDs) == 0 {
+		http.Error(w, "group has no members", http.StatusBadRequest)
+		return
+	}
+
+	// Generate shared dispatch_id for the batch
+	dispatchID := "dispatch-" + newJobID()[4:] // reuse job ID generator, strip "job-" prefix
+
+	// Create one job per group member
+	jobs := []Job{}
+	createdAt := time.Now().UTC().Format(time.RFC3339)
+
+	for _, agentID := range agentIDs {
+		job := Job{
+			ID:         newJobID(),
+			AgentID:    agentID,
+			Name:       input.Name,
+			SourcePath: input.SourcePath,
+			DestPath:   input.DestPath,
+			Schedule:   input.Schedule,
+			Status:     "pending",
+			CreatedAt:  createdAt,
+		}
+
+		_, err := s.db.Conn().Exec(
+			`INSERT INTO jobs (id, agent_id, name, source_path, dest_path, schedule, status, created_at, group_id, dispatch_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			job.ID, job.AgentID, job.Name, job.SourcePath, job.DestPath, job.Schedule, job.Status, job.CreatedAt, groupID, dispatchID,
+		)
+		if err != nil {
+			http.Error(w, "failed to create job", http.StatusInternalServerError)
+			return
+		}
+		jobs = append(jobs, job)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(job)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"dispatch_id": dispatchID,
+		"group_id":    groupID,
+		"jobs":        jobs,
+	})
 }
 
 // handleListJobs handles GET /api/jobs

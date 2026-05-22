@@ -106,6 +106,20 @@ func (s *Server) StartScheduler() {
 	// load all enabled templates
 	tCount := s.loadTemplateSchedules(c)
 
+	// Add daily task to prune federation_events (Phase 16)
+	// Runs at 2 AM UTC daily
+	_, err = c.AddFunc("0 2 * * *", func() {
+		rowsDeleted, errPrune := s.db.PruneFederationEvents(7)
+		if errPrune != nil {
+			log.Printf("Scheduler: federation_events prune failed: %v", errPrune)
+		} else {
+			log.Printf("Scheduler: pruned %d federation_events older than 7 days", rowsDeleted)
+		}
+	})
+	if err != nil {
+		log.Printf("Scheduler: failed to add federation_events prune task: %v", err)
+	}
+
 	c.Start()
 	log.Printf("Scheduler: started with %d scheduled job(s) and %d template(s)", jobCount, tCount)
 

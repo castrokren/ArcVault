@@ -7,6 +7,16 @@
         <router-link to="/jobs">Jobs</router-link>
         <router-link to="/history">History</router-link>
         <router-link to="/templates">Templates</router-link>
+        <router-link
+          to="/users"
+          :class="{ disabled: !isAdmin }"
+          :title="!isAdmin ? 'Requires admin role' : ''"
+        >Users</router-link>
+        <router-link
+          to="/groups"
+          :class="{ disabled: !isAdmin }"
+          :title="!isAdmin ? 'Requires admin role' : ''"
+        >Groups</router-link>
       </nav>
       <div class="nav-right">
         <button
@@ -24,24 +34,31 @@
         <span class="ws-indicator" :class="{ connected: wsConnected }">
           {{ wsConnected ? '● Live' : '○ Disconnected' }}
         </span>
+        <div v-if="auth.isAuthenticated.value" class="user-menu">
+          <span class="user-info">{{ auth.currentUser?.username }} ({{ auth.currentUser?.role }})</span>
+          <button class="btn-user-action" @click="showChangePasswordModal = true" title="Change password">
+            🔐
+          </button>
+          <button class="btn-user-action" @click="handleLogout" title="Logout">
+            🚪
+          </button>
+        </div>
       </div>
     </header>
 
-    <UpdateBanner v-if="tokenSet" :onUpdate="showUpdateModal" />
+    <UpdateBanner v-if="updateStore.available" :onUpdate="showUpdateModal" />
 
-    <div v-if="!tokenSet" class="token-gate">
-      <div class="token-box">
-        <h2>Enter Admin Token</h2>
-        <input v-model="tokenInput" type="password" placeholder="Bearer token" @keyup.enter="saveToken" />
-        <button @click="saveToken">Connect</button>
-      </div>
-    </div>
-
-    <main v-else>
+    <main>
       <router-view :lastEvent="lastEvent" />
     </main>
 
     <UpdateModal :isOpen="updateModalOpen" :lastEvent="lastEvent" @close="updateModalOpen = false" />
+
+    <ChangePasswordModal
+      :isOpen="showChangePasswordModal"
+      @close="showChangePasswordModal = false"
+      @success="showChangePasswordModal = false"
+    />
 
     <RollbackModal
       v-if="showRollbackModal"
@@ -53,20 +70,26 @@
 </template>
 
 <script setup>
-import { ref, onMounted, provide, reactive } from 'vue'
-import { saveToken as persistToken, hasToken, getRollbackAvailable } from './api.js'
+import { ref, onMounted, provide, reactive, computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { getRollbackAvailable } from './api.js'
+import { useAuth } from './composables/useAuth.js'
 import { useWebSocket } from './composables/useWebSocket.js'
 import UpdateBanner from './components/UpdateBanner.vue'
 import UpdateModal from './components/UpdateModal.vue'
 import RollbackModal from './components/RollbackModal.vue'
+import ChangePasswordModal from './components/ChangePasswordModal.vue'
 
-const tokenInput = ref('')
-const tokenSet = ref(false)
+const router = useRouter()
+const auth = useAuth()
 const updateModalOpen = ref(false)
 const showRollbackModal = ref(false)
+const showChangePasswordModal = ref(false)
 const rollbackAvailable = ref(false)
 const theme = ref(localStorage.getItem('arcvault-theme') || 'dark')
 const { connected: wsConnected, lastEvent, connect } = useWebSocket()
+
+const isAdmin = computed(() => auth.hasRole('admin'))
 
 // Reactive update info store
 const updateStore = reactive({
@@ -82,8 +105,7 @@ provide('updateStore', updateStore)
 
 onMounted(() => {
   applyTheme(theme.value)
-  if (hasToken()) {
-    tokenSet.value = true
+  if (auth.isAuthenticated.value) {
     connect()
     checkForUpdates()
     checkRollbackAvailable()
@@ -100,17 +122,8 @@ function toggleTheme() {
   applyTheme(theme.value)
 }
 
-function saveToken() {
-  if (!tokenInput.value.trim()) return
-  persistToken(tokenInput.value.trim())
-  tokenSet.value = true
-  connect()
-  checkForUpdates()
-  checkRollbackAvailable()
-}
-
 function checkForUpdates() {
-  const token = localStorage.getItem('arcvault_token')
+  const token = auth.getToken()
   if (!token) return
 
   fetch('/api/update/check', {
@@ -149,6 +162,11 @@ function onCoordinatorRollbackComplete() {
   showRollbackModal.value = false
   rollbackAvailable.value = false
 }
+
+async function handleLogout() {
+  await auth.logout()
+  router.push('/login')
+}
 </script>
 
 <style scoped>
@@ -169,8 +187,10 @@ function onCoordinatorRollbackComplete() {
   color: #aaa;
   text-decoration: none;
   font-size: 0.95rem;
+  transition: color 0.2s;
 }
 .nav a.router-link-active { color: #fff; border-bottom: 2px solid #4f8ef7; padding-bottom: 2px; }
+.nav a.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
 .nav-right {
   margin-left: auto;
@@ -209,44 +229,30 @@ function onCoordinatorRollbackComplete() {
 .ws-indicator { font-size: 0.85rem; color: #e55; }
 .ws-indicator.connected { color: #4caf50; }
 
-.token-gate {
+.user-menu {
   display: flex;
-  justify-content: center;
   align-items: center;
-  flex: 1;
-  padding: 2rem;
+  gap: 0.75rem;
 }
 
-.token-box {
-  background: #1e1e2e;
-  border: 1px solid #333;
-  border-radius: 8px;
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  min-width: 320px;
+.user-info {
+  font-size: 0.9rem;
+  color: #aaa;
 }
 
-.token-box h2 { margin: 0; color: #fff; }
-
-.token-box input {
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  border: 1px solid #444;
-  background: #111;
-  color: #fff;
-  font-size: 1rem;
-}
-
-.token-box button {
-  padding: 0.5rem;
-  background: #4f8ef7;
-  color: #fff;
+.btn-user-action {
+  background: none;
   border: none;
-  border-radius: 4px;
+  color: inherit;
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 1.1rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.btn-user-action:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 main { padding: 1.5rem; flex: 1; }
@@ -272,17 +278,9 @@ main { padding: 1.5rem; flex: 1; }
 
 [data-theme="light"] .nav a.router-link-active { color: #1a1a1a; }
 
-[data-theme="light"] .token-box {
-  background: #fafafa;
-  border-color: #e0e0e0;
-  color: #1a1a1a;
-}
+[data-theme="light"] .user-info { color: #666; }
 
-[data-theme="light"] .token-box input {
-  background: #fff;
-  border-color: #ddd;
-  color: #1a1a1a;
-}
+[data-theme="light"] .btn-user-action:hover { background: rgba(0, 0, 0, 0.05); }
 
 [data-theme="light"] .ws-indicator { color: #e74c3c; }
 
