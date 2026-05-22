@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -17,6 +18,7 @@ type JobRun struct {
 	JobID      string `json:"job_id"`
 	ExitCode   int    `json:"exit_code"`
 	Output     string `json:"output"`
+	StartedAt  string `json:"started_at"`
 	FinishedAt string `json:"finished_at"`
 }
 
@@ -44,8 +46,9 @@ func (s *Server) handlePostJobResults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		ExitCode int    `json:"exit_code"`
-		Output   string `json:"output"`
+		ExitCode  int    `json:"exit_code"`
+		Output    string `json:"output"`
+		StartedAt string `json:"started_at,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -53,18 +56,28 @@ func (s *Server) handlePostJobResults(w http.ResponseWriter, r *http.Request) {
 	}
 
 	finishedAt := time.Now().UTC()
+
+	// Parse started_at from input, fallback to finished_at for backward compatibility
+	startedAt := finishedAt
+	if input.StartedAt != "" {
+		if parsed, err := time.Parse(time.RFC3339, input.StartedAt); err == nil {
+			startedAt = parsed
+		}
+	}
+
 	run := JobRun{
 		ID:         newRunID(),
 		JobID:      jobID,
 		ExitCode:   input.ExitCode,
 		Output:     input.Output,
+		StartedAt:  startedAt.Format(time.RFC3339),
 		FinishedAt: finishedAt.Format(time.RFC3339),
 	}
 
 	_, err = s.db.Conn().Exec(
-		`INSERT INTO job_runs (id, job_id, exit_code, output, finished_at)
-		 VALUES (?, ?, ?, ?, ?)`,
-		run.ID, run.JobID, run.ExitCode, run.Output, run.FinishedAt,
+		`INSERT INTO job_runs (id, job_id, exit_code, output, started_at, finished_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		run.ID, run.JobID, run.ExitCode, run.Output, run.StartedAt, run.FinishedAt,
 	)
 	if err != nil {
 		http.Error(w, "failed to store result", http.StatusInternalServerError)
@@ -78,10 +91,29 @@ func (s *Server) handlePostJobResults(w http.ResponseWriter, r *http.Request) {
 			JobName:    jobName,
 			AgentID:    agentID,
 			RunID:      run.ID,
-			StartedAt:  finishedAt, // no start time recorded; use finished as best-effort
+			StartedAt:  startedAt,
 			FinishedAt: finishedAt,
 			ErrorMsg:   run.Output,
 		})
+	}
+
+	// check duration_exceeded rules and fire alerts if threshold is exceeded
+	rules, err := s.db.GetAlertRulesForJob(jobID)
+	if err == nil {
+		duration := finishedAt.Sub(startedAt).Seconds()
+		for _, rule := range rules {
+			if rule.RuleType == "duration_exceeded" && rule.Enabled && duration > float64(rule.Threshold) {
+				s.Notifier.Dispatch(notifications.JobFailureEvent{
+					JobID:      jobID,
+					JobName:    jobName,
+					AgentID:    agentID,
+					RunID:      run.ID,
+					StartedAt:  startedAt,
+					FinishedAt: finishedAt,
+					ErrorMsg:   fmt.Sprintf("Job duration exceeded threshold: %ds > %ds", int64(duration), int64(rule.Threshold)),
+				})
+			}
+		}
 	}
 
 	// broadcast to WebSocket clients

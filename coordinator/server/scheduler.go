@@ -59,6 +59,75 @@ func (s *Server) triggerScheduledJobs() {
 	}
 }
 
+// checkMissedSchedules checks for scheduled jobs that haven't run within their threshold.
+// Fires missed_schedule alerts for jobs with matching rules.
+func (s *Server) checkMissedSchedules() {
+	// Get all jobs with a schedule
+	rows, err := s.db.Conn().Query(`
+		SELECT id, name, agent_id, schedule FROM jobs
+		WHERE schedule IS NOT NULL AND schedule != ''
+	`)
+	if err != nil {
+		log.Printf("Scheduler: checkMissedSchedules query failed: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	now := time.Now().UTC()
+
+	for rows.Next() {
+		var jobID, jobName, agentID, schedule string
+		if err := rows.Scan(&jobID, &jobName, &agentID, &schedule); err != nil {
+			continue
+		}
+
+		// Get alert rules for this job with rule_type = missed_schedule
+		rules, err := s.db.GetAlertRulesForJob(jobID)
+		if err != nil {
+			continue
+		}
+
+		for _, rule := range rules {
+			if rule.RuleType != "missed_schedule" || !rule.Enabled {
+				continue
+			}
+
+			// Get the most recent job run for this job
+			var lastRun *time.Time
+			err := s.db.Conn().QueryRow(`
+				SELECT MAX(finished_at) FROM job_runs WHERE job_id = ?
+			`, jobID).Scan(&lastRun)
+			if err != nil && err != sql.ErrNoRows {
+				continue
+			}
+
+			// If no runs found or last run is older than threshold, fire alert
+			if lastRun == nil || now.Sub(*lastRun).Seconds() > float64(rule.Threshold) {
+				// To avoid duplicate alerts, check if we've already fired one recently
+				var recentAlertCount int64
+				s.db.Conn().QueryRow(`
+					SELECT COUNT(*) FROM alert_history
+					WHERE job_id = ? AND rule_type = 'missed_schedule'
+					AND fired_at > datetime('now', '-' || ? || ' seconds')
+				`, jobID, rule.Threshold).Scan(&recentAlertCount)
+
+				// Only fire if we haven't already fired one within the threshold window
+				if recentAlertCount == 0 {
+					s.Notifier.Dispatch(notifications.JobFailureEvent{
+						JobID:      jobID,
+						JobName:    jobName,
+						AgentID:    agentID,
+						RunID:      "",
+						StartedAt:  now,
+						FinishedAt: now,
+						ErrorMsg:   fmt.Sprintf("Scheduled job missed: last run was %.0f seconds ago (threshold: %d seconds)", now.Sub(*lastRun).Seconds(), rule.Threshold),
+					})
+				}
+			}
+		}
+	}
+}
+
 // StartScheduler starts a cron-based scheduler that triggers scheduled jobs
 // at their defined intervals. Each job's schedule field is a standard
 // 5-field cron expression (e.g. "0 2 * * *" for 2am daily).
@@ -120,16 +189,35 @@ func (s *Server) StartScheduler() {
 		log.Printf("Scheduler: failed to add federation_events prune task: %v", err)
 	}
 
+	// Add daily task to prune alert_history (Phase 17)
+	// Runs at 3 AM UTC daily
+	retentionDays := s.cfg.AlertHistoryRetentionDays
+	if retentionDays == 0 {
+		retentionDays = 30 // default to 30 days
+	}
+	_, err = c.AddFunc("0 3 * * *", func() {
+		errPrune := s.db.PruneAlertHistory(retentionDays)
+		if errPrune != nil {
+			log.Printf("Scheduler: alert_history prune failed: %v", errPrune)
+		} else {
+			log.Printf("Scheduler: pruned alert_history older than %d days", retentionDays)
+		}
+	})
+	if err != nil {
+		log.Printf("Scheduler: failed to add alert_history prune task: %v", err)
+	}
+
 	c.Start()
 	log.Printf("Scheduler: started with %d scheduled job(s) and %d template(s)", jobCount, tCount)
 
 	// fallback ticker — re-evaluates every minute for any jobs
-	// that were created after startup
+	// that were created after startup and checks for missed schedules
 	go func() {
 		ticker := time.NewTicker(60 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
 			s.triggerScheduledJobs()
+			s.checkMissedSchedules()
 		}
 	}()
 }
