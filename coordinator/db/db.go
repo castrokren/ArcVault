@@ -34,6 +34,7 @@ type Federation struct {
 	Status   string     `json:"status"`
 	LastSeen *time.Time `json:"last_seen"`
 	Version  string     `json:"version"`
+	LastSeq  int64      `json:"last_seq"`
 }
 
 func Init(dbPath string) (*DB, error) {
@@ -192,7 +193,7 @@ func (d *DB) CreateFederation(f Federation) error {
 // ListFederation returns all registered sub-coordinators.
 func (d *DB) ListFederation() ([]Federation, error) {
 	rows, err := d.conn.Query(
-		`SELECT id, name, url, token, status, last_seen, version FROM federation ORDER BY name ASC`,
+		`SELECT id, name, url, token, status, last_seen, version, last_seq FROM federation ORDER BY name ASC`,
 	)
 	if err != nil {
 		return nil, err
@@ -204,7 +205,7 @@ func (d *DB) ListFederation() ([]Federation, error) {
 		var f Federation
 		var lastSeen sql.NullTime
 		var version sql.NullString
-		if err := rows.Scan(&f.ID, &f.Name, &f.URL, &f.Token, &f.Status, &lastSeen, &version); err != nil {
+		if err := rows.Scan(&f.ID, &f.Name, &f.URL, &f.Token, &f.Status, &lastSeen, &version, &f.LastSeq); err != nil {
 			return nil, err
 		}
 		if lastSeen.Valid {
@@ -227,8 +228,8 @@ func (d *DB) GetFederation(id string) (*Federation, error) {
 	var lastSeen sql.NullTime
 	var version sql.NullString
 	err := d.conn.QueryRow(
-		`SELECT id, name, url, token, status, last_seen, version FROM federation WHERE id = ?`, id,
-	).Scan(&f.ID, &f.Name, &f.URL, &f.Token, &f.Status, &lastSeen, &version)
+		`SELECT id, name, url, token, status, last_seen, version, last_seq FROM federation WHERE id = ?`, id,
+	).Scan(&f.ID, &f.Name, &f.URL, &f.Token, &f.Status, &lastSeen, &version, &f.LastSeq)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -250,8 +251,8 @@ func (d *DB) GetFederationByToken(token string) (*Federation, error) {
 	var lastSeen sql.NullTime
 	var version sql.NullString
 	err := d.conn.QueryRow(
-		`SELECT id, name, url, token, status, last_seen, version FROM federation WHERE token = ?`, token,
-	).Scan(&f.ID, &f.Name, &f.URL, &f.Token, &f.Status, &lastSeen, &version)
+		`SELECT id, name, url, token, status, last_seen, version, last_seq FROM federation WHERE token = ?`, token,
+	).Scan(&f.ID, &f.Name, &f.URL, &f.Token, &f.Status, &lastSeen, &version, &f.LastSeq)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -401,5 +402,7 @@ CREATE TABLE IF NOT EXISTS job_runs (
 	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_federation_events_seq ON federation_events(coordinator, seq)`)
 	// Idempotent: add last_seq column to federation table for Phase 16 tracking.
 	d.conn.Exec(`ALTER TABLE federation ADD COLUMN last_seq INTEGER NOT NULL DEFAULT 0`)
+	// Idempotent: add home_coordinator column to agents for Phase 16 health reporting.
+	d.conn.Exec(`ALTER TABLE agents ADD COLUMN home_coordinator TEXT NOT NULL DEFAULT ''`)
 	return nil
 }

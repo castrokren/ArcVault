@@ -25,20 +25,26 @@ Deciding what to build next in ArcVault. Breaking phases into ordered tasks. Tra
 | 13 | Scheduled backup templates: cron-based job automation |
 | 14 | Agent update system & bidirectional rollback |
 | 15 (backend) | RBAC infrastructure: JWT authentication, user management, agent groups |
+| 15 (frontend) | RBAC UI: Login, password change, user mgmt, group mgmt, smart job dispatch |
+| 16 | Federation HA: events log, state sync (root→spoke), health monitoring, agent failover |
 
 ## Current phase
 
-**Phase 15 (frontend) — RBAC UI Components:** Login, password change, user management, group management
-- Backend infrastructure complete (JWT, user management, groups, role-based routes) ✅
-- Task 8 complete: Group fan-out job dispatch on POST /api/jobs ✅
-- Pending: Vue components (Login.vue, ChangePassword.vue, Users.vue, Groups.vue, AuthGuard.vue)
-- Pending: Integration with existing Agents.vue and Jobs.vue
+**Phase 16 — Federation HA & State Consistency (Complete - v0.9.0)** ✅
+- Append-only federation_events log with per-coordinator monotonic sequence ✅
+- State sync endpoints: GET /api/federation/sync, POST /api/federation/sync/ack ✅
+- Health monitoring: GET /api/federation/health with status, lag, agent count ✅
+- Agent failover: coordinator list with round-robin + exponential backoff ✅
+- Frontend: FederationHealth.vue with auto-refresh, OKLCH colors, lag indicators ✅
+- Tests: 8 test cases, all passing ✅
+- Branch pushed, v0.9.0 tag created ✅
 
 ## Candidate next phases
 
-- **Phase 16 — API Documentation:** OpenAPI/Swagger spec generation from routes
-- **Phase 17 — Audit logging:** Track user actions and changes
-- **Phase 18 — Multi-coordinator federation:** Support secondary coordinators for high availability
+- **Phase 17 — Enhanced Federation:** Spoke auto-resync integration, heartbeat timeout detection, agent homing persistence
+- **Phase 18 — API Documentation:** OpenAPI/Swagger spec generation from routes
+- **Phase 19 — Audit logging:** Track user actions and changes
+- **Phase 20 — Advanced backends:** S3, Azure Blob, additional sync targets
 
 ## Process
 

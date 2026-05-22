@@ -42,16 +42,17 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, err := s.db.Conn().Exec(`
-INSERT INTO agents (id, hostname, os, arch, version, status, registered_at)
-VALUES (?, ?, ?, ?, ?, 'online', CURRENT_TIMESTAMP)
+INSERT INTO agents (id, hostname, os, arch, version, status, home_coordinator, registered_at)
+VALUES (?, ?, ?, ?, ?, 'online', ?, CURRENT_TIMESTAMP)
 ON CONFLICT(id) DO UPDATE SET
 hostname=excluded.hostname,
 os=excluded.os,
 arch=excluded.arch,
 version=excluded.version,
 status='online',
+home_coordinator=excluded.home_coordinator,
 last_seen=CURRENT_TIMESTAMP
-`, req.AgentID, req.Hostname, req.OS, req.Arch, req.Version)
+`, req.AgentID, req.Hostname, req.OS, req.Arch, req.Version, s.coordinatorID)
 	if err != nil {
 		http.Error(w, "failed to register agent", http.StatusInternalServerError)
 		return
@@ -96,8 +97,8 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	result, err := s.db.Conn().Exec(`
-UPDATE agents SET status='online', last_seen=?, rollback_available=? WHERE id=?
-`, now, req.RollbackAvailable, agentID)
+UPDATE agents SET status='online', last_seen=?, rollback_available=?, home_coordinator=? WHERE id=?
+`, now, req.RollbackAvailable, s.coordinatorID, agentID)
 	if err != nil {
 		http.Error(w, "failed to update heartbeat", http.StatusInternalServerError)
 		return
