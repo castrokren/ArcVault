@@ -1,7 +1,7 @@
 # ArcVault Project Memory
 **Project Name:** ArcVault  
 **Type:** OS-agnostic Backup Orchestrator  
-**Current Status:** Phase 15 Complete (v0.8.0) → Phase 16 Next  
+**Current Status:** Phase 16 Complete (v0.9.0)  
 **Last Updated:** May 22, 2026  
 **Quick Status:** See [CONTEXT.md](CONTEXT.md) for status and quick reference
 
@@ -31,7 +31,7 @@ ArcVault solves key limitations in RoboBackup:
 | 13 | — | Scheduled backup templates (cron automation) | ✅ Complete |
 | 14 | — | Agent update system & rollback | ✅ Complete |
 | 15 | v0.8.0 | RBAC (backend: JWT auth + user/group mgmt; frontend: login + admin panels) | ✅ Complete |
-| 16 | — | Multi-coordinator federation | ⏳ Next |
+| 16 | v0.9.0 | Federation HA (events log, state sync, health monitoring, agent failover) | ✅ Complete |
 | 17+ | — | Enhanced monitoring, CLI tooling, additional backends | 🔮 Future |
 
 ---
@@ -102,6 +102,66 @@ ArcVault solves key limitations in RoboBackup:
 - Admin CRUD operations (users, groups, members) fully functional
 - Smart job form mode toggle working correctly
 - Router guards protecting /users and /groups routes
+
+---
+
+### Phase 16: Federation HA & State Consistency (v0.9.0)
+
+**Overview:** Multi-coordinator federation with append-only event log, state sync, health monitoring, and agent failover. Enables spoke coordinators to sync state changes from root, maintain health visibility, and agents to failover between coordinators.
+
+**Backend Components Added:**
+- `coordinator/db/federation_events.go` — Per-coordinator monotonic sequence log: AppendFederationEvent(), GetFederationEventsSince(), PruneFederationEvents(), GetMaxEventSeq()
+- `coordinator/server/federation_sync.go` — State sync endpoints: GET /api/federation/sync (events + latest_seq), POST /api/federation/sync/ack (spoke acknowledgment)
+- `coordinator/server/federation_health.go` — Health monitoring: GET /api/federation/health returns CoordinatorHealth array with status (online/offline), lag_events, agent_count, last_seen
+- `coordinator/server/scheduler.go` — Daily 2 AM UTC cron task: PruneFederationEvents(7) deletes events older than 7 days
+
+**Database Changes:**
+- New table: `federation_events` (id, seq, coordinator, event_type, payload, created_at)
+- Index: (coordinator, seq) for efficient lookups
+- New column: `federation.last_seq` tracks spoke acknowledgments
+
+**Agent Failover Added:**
+- `agent/config/config.go` — New field: Coordinators []string (YAML: coordinators)
+- `agent/ws/ws.go` — Failover loop: round-robin through coordinator list, exponential backoff (30s → 60s → 120s), reset on success
+
+**Event Broadcast Wiring:**
+- `coordinator/server/agents.go` — AppendFederationEvent("agent_registered") after register broadcast; ("agent_heartbeat") after heartbeat
+- `coordinator/server/jobs.go` — AppendFederationEvent("job_created") after job insert
+
+**Frontend Components Added:**
+- `dashboard/src/views/FederationHealth.vue` — Real-time health dashboard: table layout, status pills (OKLCH colors), lag indicator, 15s auto-refresh
+- `dashboard/src/api.js` — getFederationHealth() → GET /api/federation/health
+- `dashboard/src/router/index.js` — Route: /federation/health
+- `dashboard/src/views/Federation.vue` (updated) — Added "Health Status" button linking to health dashboard
+
+**Design Decisions:**
+- Standalone mode safe — spoke keeps running jobs when disconnected
+- State sync root→spoke only — root is source of truth
+- Agent failover client-side — stateless routing, no coordinator overhead
+- Sequence numbers per-coordinator — avoids clock sync complexity
+- Event retention 7 days — balance between storage growth and recovery window
+
+**Tests Added:**
+- federation_sync_test.go: 4 cases (empty log, events present, since > 0, invalid params, ack)
+- federation_health_test.go: 4 cases (no peers, online peer, offline peer, lag calculation)
+
+**Files Modified:**
+- coordinator/db/db.go — Added federation_events table + last_seq column
+- coordinator/config/config.go — Added CoordinatorID field
+- coordinator/server/server.go — Added coordinatorID field, registered sync/health routes
+- dashboard/src/views/Federation.vue — Added health link
+
+**Metrics:**
+- Lines of code: ~450 new
+- Test coverage: 8 test cases
+- API endpoints: 3 new (sync GET/POST + health GET)
+- Database: 1 new table + 1 column
+
+**Known Limitations (Phase 17+):**
+- Spoke auto-resync: Frontend integration incomplete
+- Heartbeat timeout: Background detector goroutine not yet implemented
+- Agent homing: Tracked in code but not persisted to DB
+- Performance: Index exists; pagination ready for large event logs
 
 ---
 
@@ -280,11 +340,11 @@ dashboard/src/
 - agent/updater: 11 (2 skip on Windows)
 
 ### Git / Release Status
-**Current Dev:** v0.8.0 — Phase 15 complete (RBAC backend + frontend)
+**Current Dev:** v0.9.0 — Phase 16 complete (Federation HA + state sync + health monitoring)
 **Latest Release:** v0.5.0 — Phase 12 (failure notifications)
-**Tags:** v0.1.0, v0.2.0, v0.3.0, v0.4.0, v0.5.0 released on GitHub
+**Tags:** v0.1.0, v0.2.0, v0.3.0, v0.4.0, v0.5.0 released on GitHub; v0.9.0 tagged locally
 **Remote:** https://github.com/castrokren/ArcVault
-**Branch:** main (v0.5.0) → feature/phase-15-rbac (v0.8.0 dev)
+**Branch:** main (v0.5.0) → feature/phase-16-federation-ha (v0.9.0 dev)
 **Build:** Version injected via ldflags: `-X main.Version={{.Version}}`
 
 ---
@@ -314,6 +374,7 @@ dashboard/src/
 ---
 
 ## Related Memory Files
+- [[phase-16-federation-ha]] — Detailed Phase 16 implementation (events log, sync endpoints, health dashboard, agent failover)
 - [[phase-15-frontend-rbac]] — Detailed Phase 15 frontend implementation (useAuth, Login, Users, Groups, smart job forms)
 - Memory/DEPLOYMENT_FIX_MEMORY.md — (unrelated: Multi-module deployment script fix, 2026-05-13)
 

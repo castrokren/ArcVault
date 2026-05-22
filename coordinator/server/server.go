@@ -67,6 +67,7 @@ func (s *Server) Start() error {
 
 	s.StartOfflineDetector(60*time.Second, 90*time.Second)
 	s.StartScheduler()
+	go s.StartHeartbeatDetector()
 
 	if s.fedClient != nil {
 		log.Printf("Federation: sub mode enabled, connecting to %s", s.cfg.Federation.RootURL)

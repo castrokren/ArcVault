@@ -1,6 +1,6 @@
 # Building Workspace
 
-**Last updated:** May 13, 2026
+**Last updated:** May 22, 2026
 
 ## What happens here
 
@@ -16,25 +16,31 @@ go vet ./...
 go test ./coordinator/...
 ```
 
-## Architecture
+## Architecture (v0.9.0)
 
 ```
-Agent (agent-config.yaml)
+Agent (agent-config.yaml with coordinators list)
+  ├─ WebSocket to coordinator with failover
   └─ HTTP POST /api/agents/register
-       └─ Coordinator (Gorilla mux)
-            ├─ SQLite (agents, jobs, job_runs, tokens)
+       └─ Coordinator (Gorilla mux, JWT-protected)
+            ├─ SQLite (agents, jobs, job_runs, tokens, federation_events, federation)
             ├─ Cron scheduler (robfig/cron)
-            └─ WebSocket → Vue 3 dashboard
+            ├─ Federation events log (per-coordinator monotonic sequence)
+            ├─ State sync (root→spoke via federation_events)
+            └─ WebSocket → Vue 3 dashboard (RBAC protected)
 ```
 
-## Key files
+## Key files (Latest)
 
 - `coordinator/main.go` — CLI entry: `init | start | help`
 - `coordinator/cmd/commands.go` — InitCommand(), StartCommand()
-- `coordinator/config/` — placeholder (unimplemented)
-- `coordinator/db/` — placeholder (unimplemented)
-- `coordinator/server/` — placeholder (unimplemented)
-- `agent/main.go` — stub only
+- `coordinator/config/config.go` — Full config, including CoordinatorID
+- `coordinator/db/db.go` — SQLite schema with federation_events table
+- `coordinator/db/federation_events.go` — Event log operations (NEW Phase 16)
+- `coordinator/server/federation_sync.go` — State sync endpoints (NEW Phase 16)
+- `coordinator/server/federation_health.go` — Health monitoring (NEW Phase 16)
+- `agent/config/config.go` — Coordinator list for failover
+- `agent/ws/ws.go` — WebSocket client with failover logic
 
 ## Dependencies
 
