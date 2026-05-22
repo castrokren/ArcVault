@@ -4,9 +4,13 @@
       <h2 class="history-title">History</h2>
     </div>
 
-    <!-- Stale data banner -->
+    <!-- Stale data banner: federation site proxy data -->
     <div v-if="stale" class="stale-banner history-section">
       ⚠ Site data last synced {{ fmtStaleTime(staleAsOf) }}. Data may be outdated.
+    </div>
+    <!-- Stale data banner: local coordinator sync lag -->
+    <div v-if="!selectedSite && syncStale" class="stale-banner history-section">
+      ⚠ Federation sync in progress. Some history may be outdated.
     </div>
 
     <!-- ── Visualization panels (local only) ─────────────── -->
@@ -143,6 +147,7 @@ import AgentRunChart from '../components/AgentRunChart.vue'
 import Pagination from '../components/Pagination.vue'
 import { getJobRuns, getFederationHistory } from '../api.js'
 import { inject, ref } from 'vue'
+import { useFederationLag } from '../composables/useFederationLag.js'
 
 export default {
   name: 'HistoryView',
@@ -150,7 +155,8 @@ export default {
 
   setup() {
     const selectedSite = inject('selectedSite', ref(null))
-    return { selectedSite }
+    const { isStale: syncStale } = useFederationLag()
+    return { selectedSite, syncStale }
   },
 
   data() {

@@ -6,9 +6,13 @@
       <button @click="load" :disabled="loading">{{ loading ? 'Loading...' : 'Refresh' }}</button>
     </div>
 
-    <!-- Stale data banner -->
+    <!-- Stale data banner: federation site proxy data -->
     <div v-if="stale" class="stale-banner">
       ⚠ Site data last synced {{ fmtStaleTime(staleAsOf) }}. Data may be outdated.
+    </div>
+    <!-- Stale data banner: local coordinator sync lag -->
+    <div v-if="!selectedSite && syncStale" class="stale-banner">
+      ⚠ Federation sync in progress. Some job data may be outdated.
     </div>
 
     <div v-if="!selectedSite && showForm" class="form-card">
@@ -139,6 +143,7 @@
 import { ref, computed, onMounted, watch, inject } from 'vue'
 import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups } from '../api.js'
 import Pagination from '../components/Pagination.vue'
+import { useFederationLag } from '../composables/useFederationLag.js'
 
 const props = defineProps(['lastEvent'])
 
@@ -148,6 +153,9 @@ const result = ref({ data: [], total: 0, page: 1, pages: 0, limit: 25 })
 const fedJobs = ref([])
 const stale = ref(false)
 const staleAsOf = ref(null)
+
+// Sync lag: shows banner when local coordinator is behind peers (no site selected)
+const { isStale: syncStale } = useFederationLag()
 
 const jobs = computed(() => selectedSite.value ? fedJobs.value : (result.value.data || []))
 
