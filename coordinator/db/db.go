@@ -404,5 +404,27 @@ CREATE TABLE IF NOT EXISTS job_runs (
 	d.conn.Exec(`ALTER TABLE federation ADD COLUMN last_seq INTEGER NOT NULL DEFAULT 0`)
 	// Idempotent: add home_coordinator column to agents for Phase 16 health reporting.
 	d.conn.Exec(`ALTER TABLE agents ADD COLUMN home_coordinator TEXT NOT NULL DEFAULT ''`)
+	// Idempotent: add alert_rules table for Phase 17 alert configuration.
+	d.conn.Exec(`CREATE TABLE IF NOT EXISTS alert_rules (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		job_id      TEXT,                    -- NULL = applies to all jobs
+		rule_type   TEXT NOT NULL,           -- on_failure | duration_exceeded | missed_schedule
+		threshold   INTEGER,                 -- seconds (duration_exceeded or missed_schedule)
+		enabled     INTEGER NOT NULL DEFAULT 1,
+		created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+	)`)
+	// Idempotent: add alert_history table for Phase 17 delivery tracking.
+	d.conn.Exec(`CREATE TABLE IF NOT EXISTS alert_history (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		rule_id     INTEGER REFERENCES alert_rules(id),
+		job_id      TEXT,
+		run_id      TEXT,
+		rule_type   TEXT NOT NULL,
+		fired_at    DATETIME DEFAULT CURRENT_TIMESTAMP,
+		channel     TEXT NOT NULL,           -- webhook | email | slack | teams
+		status      TEXT NOT NULL,           -- delivered | failed | retrying
+		attempts    INTEGER NOT NULL DEFAULT 1,
+		last_error  TEXT
+	)`)
 	return nil
 }

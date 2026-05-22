@@ -10,20 +10,23 @@ import (
 )
 
 type Config struct {
-	Port          int                 `json:"port"`
-	DatabasePath  string              `json:"database_path"`
-	AdminToken    string              `json:"admin_token"`
-	JWTSecret     string              `json:"jwt_secret"`
-	Environment   string              `json:"environment"`
-	CoordinatorID string              `json:"coordinator_id,omitempty"`
-	Notifications *NotificationConfig `json:"notifications,omitempty"`
-	Federation    *FederationConfig   `json:"federation,omitempty"`
+	Port                       int                 `json:"port"`
+	DatabasePath               string              `json:"database_path"`
+	AdminToken                 string              `json:"admin_token"`
+	JWTSecret                  string              `json:"jwt_secret"`
+	Environment                string              `json:"environment"`
+	CoordinatorID              string              `json:"coordinator_id,omitempty"`
+	AlertHistoryRetentionDays  int                 `json:"alert_history_retention_days,omitempty"`
+	Notifications              *NotificationConfig `json:"notifications,omitempty"`
+	Federation                 *FederationConfig   `json:"federation,omitempty"`
 }
 
 type NotificationConfig struct {
 	OnFailure bool           `json:"on_failure"`
 	Webhook   *WebhookConfig `json:"webhook,omitempty"`
 	Email     *EmailConfig   `json:"email,omitempty"`
+	Slack     *SlackConfig   `json:"slack,omitempty"`
+	Teams     *TeamsConfig   `json:"teams,omitempty"`
 }
 
 type WebhookConfig struct {
@@ -38,6 +41,14 @@ type EmailConfig struct {
 	To       []string `json:"to"`
 	Username string   `json:"username"`
 	Password string   `json:"password"`
+}
+
+type SlackConfig struct {
+	WebhookURL string `json:"webhook_url"`
+}
+
+type TeamsConfig struct {
+	WebhookURL string `json:"webhook_url"`
 }
 
 type FederationConfig struct {
