@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -24,6 +25,12 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "run-service":
+		// Called by Windows SCM — wraps runAgent inside svc.Run() so the
+		// Service Control Manager gets the handshake it requires.
+		if err := service.RunService(runAgent); err != nil {
+			log.Fatalf("service error: %v", err)
+		}
 	case "install-service":
 		if err := service.Install(); err != nil {
 			log.Fatalf("install-service failed: %v", err)
@@ -44,7 +51,15 @@ func main() {
 func runAgent() {
 	log.Println("ArcVault Agent starting...")
 
-	cfg, err := config.Load("agent-config.yaml")
+	// Resolve config path relative to the exe so this works when SCM
+	// starts the service with a different working directory (C:\Windows\system32).
+	exe, err := os.Executable()
+	if err != nil {
+		log.Fatalf("could not determine executable path: %v", err)
+	}
+	cfgPath := filepath.Join(filepath.Dir(exe), "agent-config.yaml")
+
+	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}

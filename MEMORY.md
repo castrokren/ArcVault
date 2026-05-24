@@ -1,7 +1,7 @@
 # ArcVault Project Memory
 **Project Name:** ArcVault  
 **Type:** OS-agnostic Backup Orchestrator  
-**Current Status:** Phase 16 Complete (v0.9.0)  
+**Current Status:** Phase 17 Complete (v1.0.0) — PRODUCTION READY  
 **Last Updated:** May 22, 2026  
 **Quick Status:** See [CONTEXT.md](CONTEXT.md) for status and quick reference
 
@@ -32,7 +32,8 @@ ArcVault solves key limitations in RoboBackup:
 | 14 | — | Agent update system & rollback | ✅ Complete |
 | 15 | v0.8.0 | RBAC (backend: JWT auth + user/group mgmt; frontend: login + admin panels) | ✅ Complete |
 | 16 | v0.9.0 | Federation HA (events log, state sync, health monitoring, agent failover) | ✅ Complete |
-| 17+ | — | Enhanced monitoring, CLI tooling, additional backends | 🔮 Future |
+| 17 | v1.0.0 | Enhanced monitoring & alerting (alert rules, webhook retry, Slack/Teams, history tracking) | ✅ Complete |
+| 18+ | — | CLI tooling, additional backends, advanced analytics | 🔮 Future |
 
 ---
 
@@ -356,14 +357,62 @@ dashboard/src/
 - agent/updater: 11 (2 skip on Windows)
 
 ### Git / Release Status
-**Current Dev:** v0.9.0 — Phase 16 complete (Federation HA + state sync + health monitoring)
-**Latest Release:** v0.5.0 — Phase 12 (failure notifications)
-**Tags:** v0.1.0, v0.2.0, v0.3.0, v0.4.0, v0.5.0 released on GitHub; v0.9.0 tagged locally
+**Current Release:** v1.0.0 — Phase 17 complete (Enhanced monitoring & alerting)
+**Previous Release:** v0.9.0 — Phase 16 (Federation HA + state sync + health monitoring)
+**All Releases:** v0.1.0–v0.5.0 on GitHub, v0.9.0 intermediate, v1.0.0 current
 **Remote:** https://github.com/castrokren/ArcVault
-**Branch:** main (v0.5.0) → feature/phase-16-federation-ha (v0.9.0 dev)
+**Branch:** main (v1.0.0) — Phase 17 merged and released
 **Build:** Version injected via ldflags: `-X main.Version={{.Version}}`
 
 ---
+
+### Phase 17: Enhanced Monitoring & Alerting (v1.0.0)
+
+**Overview:** Production-grade alert system with configurable per-job rules, multi-channel delivery (webhook, email, Slack, Teams), automatic retry with exponential backoff, and persistent alert history tracking. Enables operators to set custom thresholds for job failures, excessive runtimes, and missed schedules.
+
+**Files Added:**
+- `coordinator/notifications/retry.go` — RetryDispatch with exponential backoff (5s → 15s → 45s)
+- `coordinator/notifications/slack.go` — SlackNotifier using blocks API
+- `coordinator/notifications/teams.go` — TeamsNotifier using Adaptive Cards
+- `coordinator/db/alert_rules.go` — AlertRule/AlertHistory structs + CRUD functions
+- `coordinator/server/alert_rules.go` — API handlers for rule management (GET/POST/PUT/DELETE)
+- `coordinator/server/alert_history.go` — API handlers for history viewing + manual retry
+- `dashboard/src/views/Alerts.vue` — Dashboard with rule creation, history table, auto-refresh
+- `coordinator/notifications/slack_test.go`, `teams_test.go`, `retry_test.go` — Comprehensive tests
+
+**Files Modified:**
+- `coordinator/db/db.go` — Added `alert_rules` and `alert_history` tables to migrate()
+- `coordinator/config/config.go` — Added SlackConfig, TeamsConfig, AlertHistoryRetentionDays
+- `coordinator/notifications/notifier.go` — Wired Slack/Teams into NewDispatcher()
+- `coordinator/server/job_results.go` — Added started_at accuracy + duration_exceeded detection
+- `coordinator/server/scheduler.go` — Added checkMissedSchedules() + alert history pruning
+- `coordinator/server/server.go` — Registered alert rules/history routes
+- `dashboard/src/api.js` — Added alert CRUD and history endpoints
+- `dashboard/src/router/index.js` — Added /alerts route
+- `dashboard/src/App.vue` — Added Alerts nav link
+
+**Design Decisions:**
+- Alert rules stored in DB — allows rule updates without restart
+- 3 configurable rule types: on_failure (existing), duration_exceeded (new), missed_schedule (new)
+- Retry is async (goroutine) — never blocks job result handler
+- Slack/Teams use incoming webhooks — no OAuth, no app installation required
+- Alert history retained 30 days by default (configurable)
+- Missed schedule detection avoids repeat-firing by checking alert_history
+- Scheduler tasks run daily (2 AM for federation events, 3 AM for alerts)
+- Frontend auto-refreshes history every 30 seconds
+
+**Testing:**
+- All coordinator tests passing (db, notifications, server, updater)
+- RetryDispatch tests verify 3-attempt retry with backoff timing
+- Slack/Teams notifier tests verify HTTP POST payload structure
+- Alert rules tests verify CRUD operations and type validation
+- Integration: Full workflow tested from job completion → alert firing → history tracking
+
+**Release Notes:**
+- v1.0.0 released on GitHub with full release notes
+- All tests passing, production-ready deployment
+- Backward compatible with Phase 16 (federation HA)
+- Full API documentation in code comments
 
 ---
 
