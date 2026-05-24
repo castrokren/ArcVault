@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** May 22, 2026 | **v1.0.0** | **Phase 17 IMPLEMENTATION IN PROGRESS**
+**Last updated:** May 22, 2026 | **v1.0.0** | **PRODUCTION READY**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -11,7 +11,7 @@
 ✅ Phase 16 (frontend): FederationHealth.vue dashboard with auto-refresh  
 ✅ Phase 16 (agent): Coordinator list failover with exponential backoff  
 ✅ Phase 16 (gaps): Agent homing persisted, heartbeat detector live, stale banners wired to lag composable  
-🚀 Phase 17 (IN PROGRESS): Enhanced monitoring & alerting
+✅ Phase 17 (COMPLETE): Enhanced monitoring & alerting
   - Job start time accuracy fix (recorded in job_runs table)
   - Alert rules engine (per-job configurable rules: on_failure, duration_exceeded, missed_schedule)
   - Webhook retry with exponential backoff (3 attempts: 5s → 15s → 45s)
@@ -19,8 +19,8 @@
   - Alert history tracking (30-day retention by default)
   - Scheduler: Missed schedule detector + history pruning
   - Frontend: Alerts.vue dashboard with rule creation/deletion & retry controls  
-📊 Backend implementation 95% complete (10 of 12 tasks done)  
-🎯 Next: Full test suite, smoke test, final commit to v1.0.0
+✅ All tests passing | v1.0.0 released on GitHub  
+🎯 Next: Deploy to production, configure alert rules
 
 ## Core Commands
 ```bash

@@ -57,11 +57,11 @@ type FederationConfig struct {
 }
 
 func GetConfigPath() (string, error) {
-	home, err := os.UserHomeDir()
+	exe, err := os.Executable()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".arcvault", "config.json"), nil
+	return filepath.Join(filepath.Dir(exe), "config.json"), nil
 }
 
 func Save(cfg *Config) error {

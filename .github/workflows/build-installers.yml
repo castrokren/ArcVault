@@ -1,0 +1,241 @@
+name: Build Phase 18 Installers
+
+on:
+  push:
+    tags:
+      - 'v*'
+    paths:
+      - 'installer/**'
+      - 'cmd/setup/**'
+      - '.goreleaser.yaml'
+      - '.github/workflows/build-installers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-windows:
+    name: Build Windows Installer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.25'
+
+      - name: Install NSIS
+        run: |
+          choco install nsis -y
+          echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build binaries
+        run: |
+          go build -o coordinator.exe ./coordinator
+          go build -o agent.exe ./agent
+          go build -o cmd/setup/arcvault-setup.exe ./cmd/setup
+
+      - name: Build Windows installer
+        run: |
+          makensis /V4 installer/windows/arcvault.nsi
+          Rename-Item -Path "ArcVault-Setup.exe" -NewName "ArcVault-Setup-${{ github.ref_name }}-windows-amd64.exe"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: windows-installer
+          path: ArcVault-Setup-*-windows-amd64.exe
+
+  build-macos:
+    name: Build macOS Installer
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.25'
+
+      - name: Build binaries
+        run: |
+          GOARCH=${{ matrix.arch }} go build -o coordinator ./coordinator
+          GOARCH=${{ matrix.arch }} go build -o agent ./agent
+          GOARCH=${{ matrix.arch }} go build -o cmd/setup/arcvault-setup ./cmd/setup
+
+      - name: Create component packages
+        run: |
+          mkdir -p /tmp/arcvault-pkg
+
+          pkgbuild \
+            --root . \
+            --identifier com.arcvault.coordinator \
+            --version ${{ github.ref_name }} \
+            --install-location /Applications/ArcVault \
+            --scripts installer/macos \
+            /tmp/arcvault-pkg/coordinator.pkg
+
+          pkgbuild \
+            --root . \
+            --identifier com.arcvault.agent \
+            --version ${{ github.ref_name }} \
+            --install-location /Applications/ArcVault \
+            --scripts installer/macos \
+            /tmp/arcvault-pkg/agent.pkg
+
+      - name: Build distribution package
+        run: |
+          productbuild \
+            --distribution installer/macos/distribution.xml \
+            --resources installer/macos \
+            --package-path /tmp/arcvault-pkg \
+            ArcVault-Setup-${{ github.ref_name }}-macos-${{ matrix.arch }}.pkg
+
+      - name: Sign and notarize (future)
+        run: |
+          echo "Code signing and notarization would happen here"
+          echo "Requires Apple Developer Certificate and notarization credentials"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: macos-installer-${{ matrix.arch }}
+          path: ArcVault-Setup-*-macos-${{ matrix.arch }}.pkg
+
+  build-linux:
+    name: Build Linux Installers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.25'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ruby ruby-dev
+          sudo gem install fpm
+
+      - name: Build binaries
+        run: |
+          go build -o dist/coordinator ./coordinator
+          go build -o dist/agent ./agent
+          go build -o dist/arcvault-setup ./cmd/setup
+          mkdir -p dist
+
+      - name: Build .deb package
+        run: |
+          fpm -s dir -t deb \
+            -n arcvault \
+            -v ${{ github.ref_name }} \
+            --description "User-friendly backup orchestration system" \
+            --maintainer "ArcVault Team" \
+            --url "https://github.com/castrokren/ArcVault" \
+            -a amd64 \
+            --after-install installer/linux/postinst \
+            --before-remove installer/linux/prerm \
+            dist/coordinator=/usr/local/bin/coordinator \
+            dist/agent=/usr/local/bin/agent \
+            dist/arcvault-setup=/usr/local/bin/arcvault-setup
+
+      - name: Build .rpm package
+        run: |
+          fpm -s dir -t rpm \
+            -n arcvault \
+            -v ${{ github.ref_name }} \
+            --description "User-friendly backup orchestration system" \
+            --maintainer "ArcVault Team" \
+            --url "https://github.com/castrokren/ArcVault" \
+            -a x86_64 \
+            --after-install installer/linux/postinst \
+            --before-remove installer/linux/prerm \
+            dist/coordinator=/usr/local/bin/coordinator \
+            dist/agent=/usr/local/bin/agent \
+            dist/arcvault-setup=/usr/local/bin/arcvault-setup
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: linux-installers
+          path: |
+            *.deb
+            *.rpm
+
+  create-release:
+    name: Create Release with Installers
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: release-artifacts
+
+      - name: Prepare release notes
+        run: |
+          cat > RELEASE_NOTES.md << 'EOF'
+          # ArcVault Phase 18 Release
+
+          ## What's New
+          - User-friendly native GUI installers for all platforms
+          - Component selection (Coordinator, Agent, or Both)
+          - Interactive setup wizard with auto-config
+          - Cross-platform service management
+          - Browser opens to dashboard after install
+
+          ## Download
+
+          ### Windows
+          - **ArcVault-Setup-${{ github.ref_name }}-windows-amd64.exe** — Double-click to install
+
+          ### macOS
+          - **ArcVault-Setup-${{ github.ref_name }}-macos-amd64.pkg** — Intel Macs
+          - **ArcVault-Setup-${{ github.ref_name }}-macos-arm64.pkg** — Apple Silicon (M1/M2/M3)
+
+          ### Linux
+          - **arcvault-${{ github.ref_name }}-1.x86_64.rpm** — Red Hat/Fedora/Rocky
+          - **arcvault_${{ github.ref_name }}_amd64.deb** — Debian/Ubuntu
+
+          ## Installation
+
+          **Windows:** Download .exe, double-click, follow wizard
+          **macOS:** Download .pkg, mount, follow native installer
+          **Linux:** `apt install ./arcvault_*.deb` or `rpm -i arcvault-*.rpm`, then run setup wizard
+
+          ## Testing
+          - [ ] Windows: Services running, dashboard accessible
+          - [ ] macOS: Services running, launchd registered
+          - [ ] Linux: systemd services running, config in ~/.arcvault
+
+          ## Support
+          - Issues: https://github.com/castrokren/ArcVault/issues
+          - Docs: https://github.com/castrokren/ArcVault/wiki
+          EOF
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release-artifacts/**/*
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
