@@ -81,12 +81,15 @@ func runAgent() {
 	go heartbeat.Start(hbCfg)
 
 	// Start job runner in background
-	r := runner.New(runner.Config{
+	r, err := runner.New(runner.Config{
 		AgentID:        cfg.AgentID,
 		CoordinatorURL: cfg.CoordinatorURL,
 		AuthToken:      cfg.AuthToken,
 		PollInterval:   30 * time.Second,
 	}, runner.RealExecutor)
+	if err != nil {
+		log.Fatalf("failed to initialize runner: %v", err)
+	}
 	go r.Start()
 
 	// Start WebSocket client for receiving coordinator commands (e.g. update_command).
