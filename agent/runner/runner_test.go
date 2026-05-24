@@ -93,7 +93,10 @@ func TestRunner_claimsAPendingJob(t *testing.T) {
 		PollInterval:   50 * time.Millisecond,
 	}
 
-	r := New(cfg, echoExecutor)
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
 	go r.Start()
 	defer r.Stop()
 
@@ -128,7 +131,10 @@ func TestRunner_postsResultAfterExecution(t *testing.T) {
 		PollInterval:   50 * time.Millisecond,
 	}
 
-	r := New(cfg, echoExecutor)
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
 	go r.Start()
 	defer r.Stop()
 
@@ -159,7 +165,10 @@ func TestRunner_marksJobCompletedOnSuccess(t *testing.T) {
 		PollInterval:   50 * time.Millisecond,
 	}
 
-	r := New(cfg, echoExecutor)
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
 	go r.Start()
 	defer r.Stop()
 
@@ -193,7 +202,10 @@ func TestRunner_marksJobFailedOnNonZeroExitCode(t *testing.T) {
 		PollInterval:   50 * time.Millisecond,
 	}
 
-	r := New(cfg, failExecutor) // always returns exit code 1
+	r, err := New(cfg, failExecutor) // always returns exit code 1
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
 	go r.Start()
 	defer r.Stop()
 
@@ -224,7 +236,10 @@ func TestRunner_doesNothingWhenNoJobsPending(t *testing.T) {
 		PollInterval:   50 * time.Millisecond,
 	}
 
-	r := New(cfg, echoExecutor)
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
 	go r.Start()
 	defer r.Stop()
 
