@@ -30,16 +30,11 @@ export function useAuth() {
     return null
   }
 
-  // Save token to appropriate storage
+  // Save token to appropriate storage — always persist
   function saveToken(token, remember) {
     rememberMe.value = remember
-    localStorage.setItem('arcvault_remember_me', remember ? '1' : '0')
-
-    if (remember) {
-      localStorage.setItem('arcvault_jwt', token)
-    } else {
-      localStorage.removeItem('arcvault_jwt')
-    }
+    localStorage.setItem('arcvault_remember_me', '1')
+    localStorage.setItem('arcvault_jwt', token)
   }
 
   // Clear all auth state
@@ -98,17 +93,20 @@ export function useAuth() {
       }
 
       const data = await response.json()
-      const { token, user } = data
+      const { token, role, must_change_password } = data
 
-      // Save token
-      saveToken(token, remember)
+      // Build user object from login response fields
+      const user = { username, role, must_change_password }
+
+      // Always save token (remember me is always on per UX requirement)
+      saveToken(token, true)
 
       // Set user
       currentUser.value = user
       isAuthenticated.value = true
       localStorage.setItem('arcvault_user', JSON.stringify(user))
 
-      return { success: true, user }
+      return { success: true, user, mustChangePassword: must_change_password }
     } catch (err) {
       return { success: false, error: err.message }
     }
@@ -140,7 +138,7 @@ export function useAuth() {
       if (!token) throw new Error('Not authenticated')
 
       const response = await fetch('/api/auth/change-password', {
-        method: 'POST',
+        method: 'PUT',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
