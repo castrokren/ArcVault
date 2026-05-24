@@ -1,0 +1,12 @@
+#!/bin/bash
+set -e
+
+# Stop services if they're running
+systemctl stop arcvault-coordinator 2>/dev/null || true
+systemctl stop arcvault-agent 2>/dev/null || true
+
+# Disable services
+systemctl disable arcvault-coordinator 2>/dev/null || true
+systemctl disable arcvault-agent 2>/dev/null || true
+
+exit 0
