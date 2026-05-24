@@ -1,0 +1,73 @@
+#!/bin/bash
+set -e
+
+# ArcVault macOS Post-Install Script
+# Installs launchd services and opens setup wizard
+
+INSTALL_DIR="/Applications/ArcVault"
+BIN_DIR="/usr/local/bin"
+
+# Create symlinks to binaries
+ln -sf "$INSTALL_DIR/coordinator" "$BIN_DIR/coordinator" || true
+ln -sf "$INSTALL_DIR/agent" "$BIN_DIR/agent" || true
+ln -sf "$INSTALL_DIR/arcvault-setup" "$BIN_DIR/arcvault-setup" || true
+
+# Create launchd plist for Coordinator (template, not started yet)
+cat > /Library/LaunchDaemons/com.arcvault.coordinator.plist <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.arcvault.coordinator</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/coordinator</string>
+        <string>start</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/var/log/arcvault-coordinator.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/arcvault-coordinator-error.log</string>
+</dict>
+</plist>
+EOF
+
+# Create launchd plist for Agent (template, not started yet)
+cat > /Library/LaunchDaemons/com.arcvault.agent.plist <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.arcvault.agent</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/agent</string>
+        <string>start</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/var/log/arcvault-agent.log</string>
+    <key>StandardErrorPath</key>
+    <string>/var/log/arcvault-agent-error.log</string>
+</dict>
+</plist>
+EOF
+
+# Fix permissions
+chmod 644 /Library/LaunchDaemons/com.arcvault.coordinator.plist
+chmod 644 /Library/LaunchDaemons/com.arcvault.agent.plist
+chmod 755 "$BIN_DIR/arcvault-setup"
+
+# Launch the setup wizard
+/usr/local/bin/arcvault-setup &
+
+exit 0
