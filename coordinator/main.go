@@ -48,6 +48,17 @@ func main() {
 		if err := cmd.CheckUpdateCommand(Version); err != nil {
 			log.Fatalf("check-update failed: %v", err)
 		}
+	case "run-service":
+		// Called by Windows SCM — wraps StartCommand inside svc.Run() so the
+		// Service Control Manager gets the handshake it requires.
+		cfg, err := config.Load()
+		if err != nil {
+			log.Fatalf("failed to load config: %v", err)
+		}
+		os.Setenv("ARCVAULT_VERSION", Version)
+		if err := service.RunService(cfg, static.FS()); err != nil {
+			log.Fatalf("service error: %v", err)
+		}
 	case "install-service":
 		if err := service.Install(); err != nil {
 			log.Fatalf("install-service failed: %v", err)

@@ -1,7 +1,5 @@
 import { ref, onUnmounted } from 'vue'
 
-const WS_URL = 'ws://localhost:443/ws'
-
 export function useWebSocket() {
   const connected = ref(false)
   const lastEvent = ref(null)
@@ -9,16 +7,20 @@ export function useWebSocket() {
   let reconnectTimer = null
 
   function getToken() {
-    return localStorage.getItem('arcvault_token') || ''
+    return localStorage.getItem('arcvault_jwt') || localStorage.getItem('arcvault_token') || ''
+  }
+
+  function getWsUrl() {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${proto}//${window.location.host}/ws`
   }
 
   function connect() {
     const token = getToken()
     if (!token) return
 
-    // gorilla/websocket doesn't support WS subprotocol auth,
-    // so we pass the token as a query param
-    ws = new WebSocket(`${WS_URL}?token=${encodeURIComponent(token)}`)
+    // Pass the token as a query param (gorilla/websocket doesn't support subprotocol auth)
+    ws = new WebSocket(`${getWsUrl()}?token=${encodeURIComponent(token)}`)
 
     ws.onopen = () => {
       connected.value = true

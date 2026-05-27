@@ -29,6 +29,7 @@ func install(exePath string) error {
 			Description: AgentDescription,
 			StartType:   mgr.StartAutomatic,
 		},
+		"run-service", // must use run-service — SCM requires svc.Run()
 	)
 	if err != nil {
 		return fmt.Errorf("could not create service: %w", err)

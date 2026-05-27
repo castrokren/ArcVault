@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="1">
+  <title>ArcVault Installer</title>
+  <options customize="allow" require-scripts="false"/>
+
+  <welcome file="welcome.html"/>
+  <license file="license.html"/>
+
+  <pkg-ref id="com.arcvault.coordinator" version="1.1.0" installKBytes="50000" auth="admin">
+    coordinator.pkg
+  </pkg-ref>
+
+  <pkg-ref id="com.arcvault.agent" version="1.1.0" installKBytes="50000" auth="admin">
+    agent.pkg
+  </pkg-ref>
+
+  <choices-outline>
+    <line choice="com.arcvault.coordinator"/>
+    <line choice="com.arcvault.agent"/>
+  </choices-outline>
+
+  <choice id="com.arcvault.coordinator" title="Coordinator (Server)" description="Install ArcVault Coordinator server" start_selected="true">
+    <pkg-ref id="com.arcvault.coordinator"/>
+  </choice>
+
+  <choice id="com.arcvault.agent" title="Agent (Client)" description="Install ArcVault Agent for backup execution" start_selected="false">
+    <pkg-ref id="com.arcvault.agent"/>
+  </choice>
+</installer-gui-script>
