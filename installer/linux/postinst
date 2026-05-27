@@ -1,0 +1,10 @@
+#!/bin/bash
+set -e
+
+echo "ArcVault Post-Installation Setup"
+echo "=================================="
+
+# Run the setup wizard
+/usr/local/bin/arcvault-setup
+
+exit 0

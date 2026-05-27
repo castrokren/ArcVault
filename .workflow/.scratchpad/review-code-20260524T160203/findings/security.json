@@ -1,0 +1,52 @@
+{
+  "dimension": "Security",
+  "findings": [
+    {
+      "id": "SEC-001",
+      "severity": "High",
+      "category": "injection",
+      "file": "agent/runner/runner.go",
+      "lines": [92, 144, 170],
+      "title": "URL construction vulnerable to injection",
+      "description": "AgentID and jobID are embedded directly in URLs using string formatting without URL encoding. If these values contain special characters (/, ?, &, #), they could be misinterpreted or break URL parsing.",
+      "example": "AgentID with value 'agent/admin' would create: /api/jobs?agent_id=agent/admin&status=pending",
+      "fix": "Use url.QueryEscape() for query parameters or url.PathEscape() for path segments. Better: use url.URL builder.",
+      "recommendation": "Replace with: url.URL{Scheme: \"https\", Host: host, Path: \"/api/jobs\", RawQuery: url.Values{\"agent_id\": {r.cfg.AgentID}}.Encode()}",
+      "impact": "Potential URL injection or parameter pollution attack if AgentID/jobID are user-controlled."
+    },
+    {
+      "id": "SEC-002",
+      "severity": "High",
+      "category": "sensitive-data",
+      "file": "agent/runner/runner.go",
+      "lines": [97, 149, 175],
+      "title": "Authorization token sent without HTTPS enforcement",
+      "description": "Bearer token is sent in HTTP requests without enforcing HTTPS. Code doesn't validate that CoordinatorURL uses HTTPS scheme.",
+      "fix": "Validate CoordinatorURL scheme is 'https'. Consider detecting http:// and raising error or warning.",
+      "impact": "Token could be intercepted if coordinator URL is misconfigured to use HTTP.",
+      "relatedTest": "Test that http:// URLs are rejected in Config validation"
+    },
+    {
+      "id": "SEC-003",
+      "severity": "Medium",
+      "category": "sensitive-data",
+      "file": "agent/runner/runner.go",
+      "lines": [56, 67],
+      "title": "PollInterval logged but could contain sensitive timing info",
+      "description": "While logging poll interval is not directly sensitive, any configuration logged could leak information about deployment topology.",
+      "fix": "Avoid logging configuration values. Log only: runner started/stopped with neutral wording.",
+      "impact": "Low - mainly defensive practice."
+    },
+    {
+      "id": "SEC-004",
+      "severity": "Low",
+      "category": "auth",
+      "file": "agent/runner/runner.go",
+      "lines": [50],
+      "title": "Stop channel should be protected",
+      "description": "The stop channel (line 50) is unbuffered and not protected with mutex. Multiple goroutines calling Stop() simultaneously could panic.",
+      "fix": "Use sync.Once to ensure channel closed only once, or add mutex protection.",
+      "impact": "Low - unlikely in practice but defensive programming."
+    }
+  ]
+}
