@@ -96,6 +96,7 @@ func runAgent() {
 	wsClient := &agentws.Client{
 		AgentID:        cfg.AgentID,
 		CoordinatorURL: cfg.CoordinatorURL,
+		Coordinators:   cfg.Coordinators,
 		AuthToken:      cfg.AuthToken,
 	}
 	go wsClient.Start()

@@ -34,6 +34,20 @@ jobs:
           choco install nsis -y
           echo "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build dashboard
+        run: |
+          cd dashboard
+          npm ci
+          npm run build
+          cd ..
+          Remove-Item -Recurse -Force coordinator\static\dist\* -ErrorAction SilentlyContinue
+          Copy-Item -Recurse dashboard\dist\* coordinator\static\dist\ -Force
+
       - name: Build binaries
         run: |
           go build -o coordinator.exe ./coordinator
@@ -66,6 +80,17 @@ jobs:
         uses: actions/setup-go@v4
         with:
           go-version: '1.25'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build dashboard
+        run: |
+          cd dashboard && npm ci && npm run build && cd ..
+          rm -rf coordinator/static/dist/*
+          cp -r dashboard/dist/. coordinator/static/dist/
 
       - name: Build binaries
         run: |
@@ -131,12 +156,23 @@ jobs:
           sudo apt-get install -y ruby ruby-dev
           sudo gem install fpm
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build dashboard
+        run: |
+          cd dashboard && npm ci && npm run build && cd ..
+          rm -rf coordinator/static/dist/*
+          cp -r dashboard/dist/. coordinator/static/dist/
+
       - name: Build binaries
         run: |
+          mkdir -p dist
           go build -o dist/coordinator ./coordinator
           go build -o dist/agent ./agent
           go build -o dist/arcvault-setup ./cmd/setup
-          mkdir -p dist
 
       - name: Build .deb package
         run: |

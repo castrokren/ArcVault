@@ -116,9 +116,12 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	if token == "" {
 		token = r.URL.Query().Get("token")
 	}
+	// Accept admin token OR any valid JWT (issued after Phase 15 login).
 	if token != s.cfg.AdminToken {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
+		if _, err := ValidateJWT(token, s.cfg.JWTSecret); err != nil {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
