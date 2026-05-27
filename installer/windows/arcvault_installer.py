@@ -464,6 +464,13 @@ class ArcVaultInstaller:
             if not binary_src.exists():
                 raise Exception(f"Binary not found: {binary_src}")
 
+            # Stop existing service before copying (prevents WinError 32 file-in-use)
+            subprocess.run(
+                ["sc", "stop", service_name],
+                capture_output=True, text=True, shell=True
+            )
+            time.sleep(2)  # Give the service time to release the file lock
+
             # Copy to install directory
             binary_dst = self.install_path / binary_name
             shutil.copy(binary_src, binary_dst)
