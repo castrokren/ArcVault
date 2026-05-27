@@ -124,6 +124,7 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /api/auth/logout", s.JWTMiddleware(s.handleLogout))
 	s.router.HandleFunc("GET /api/auth/me", s.JWTMiddleware(s.handleAuthMe))
 	s.router.HandleFunc("PUT /api/auth/change-password", s.JWTMiddleware(s.handleChangePassword))
+	s.router.HandleFunc("POST /api/auth/refresh", s.JWTMiddleware(s.handleRefreshToken))
 
 	// User management endpoints (admin only)
 	s.router.HandleFunc("GET /api/users", s.JWTMiddleware(s.handleListUsers))

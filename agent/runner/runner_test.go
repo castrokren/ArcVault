@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -43,7 +44,7 @@ func (f *fakeCoordinator) server(t *testing.T) *httptest.Server {
 	// GET /api/jobs?agent_id=...&status=pending
 	mux.HandleFunc("GET /api/jobs", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(f.jobs)
+		json.NewEncoder(w).Encode(map[string]interface{}{"data": f.jobs})
 	})
 
 	// PATCH /api/jobs/{id}/status
@@ -93,7 +94,10 @@ func TestRunner_claimsAPendingJob(t *testing.T) {
 		PollInterval:   50 * time.Millisecond,
 	}
 
-	r := New(cfg, echoExecutor)
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
 	go r.Start()
 	defer r.Stop()
 
@@ -128,7 +132,10 @@ func TestRunner_postsResultAfterExecution(t *testing.T) {
 		PollInterval:   50 * time.Millisecond,
 	}
 
-	r := New(cfg, echoExecutor)
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
 	go r.Start()
 	defer r.Stop()
 
@@ -159,7 +166,10 @@ func TestRunner_marksJobCompletedOnSuccess(t *testing.T) {
 		PollInterval:   50 * time.Millisecond,
 	}
 
-	r := New(cfg, echoExecutor)
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
 	go r.Start()
 	defer r.Stop()
 
@@ -193,7 +203,10 @@ func TestRunner_marksJobFailedOnNonZeroExitCode(t *testing.T) {
 		PollInterval:   50 * time.Millisecond,
 	}
 
-	r := New(cfg, failExecutor) // always returns exit code 1
+	r, err := New(cfg, failExecutor) // always returns exit code 1
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
 	go r.Start()
 	defer r.Stop()
 
@@ -224,7 +237,10 @@ func TestRunner_doesNothingWhenNoJobsPending(t *testing.T) {
 		PollInterval:   50 * time.Millisecond,
 	}
 
-	r := New(cfg, echoExecutor)
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
 	go r.Start()
 	defer r.Stop()
 
@@ -240,6 +256,8 @@ func TestRunner_doesNothingWhenNoJobsPending(t *testing.T) {
 
 // --- test executors ---
 
+// --- test executors ---
+
 // echoExecutor simulates a successful backup (exit code 0)
 func echoExecutor(job Job) (exitCode int, output string) {
 	return 0, "ok"
@@ -248,4 +266,267 @@ func echoExecutor(job Job) (exitCode int, output string) {
 // failExecutor simulates a failed backup (exit code 1)
 func failExecutor(job Job) (exitCode int, output string) {
 	return 1, "error: source not found"
+}
+
+// --- Wave 3: Unit tests with httptest ---
+
+func TestFetchPendingJobs_Success(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/jobs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]string{
+				{
+					"id":            "job-001",
+					"agent_id":      "agent-01",
+					"source_path":   "C:\\src",
+					"dest_path":     "D:\\backup",
+					"status":        "pending",
+				},
+			},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cfg := Config{
+		AgentID:        "agent-01",
+		CoordinatorURL: srv.URL,
+		AuthToken:      "test-token",
+		PollInterval:   30 * time.Second,
+	}
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
+
+	jobs, err := r.fetchPendingJobs()
+	if err != nil {
+		t.Fatalf("fetchPendingJobs failed: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Errorf("expected 1 job, got %d", len(jobs))
+	}
+	if jobs[0].ID != "job-001" {
+		t.Errorf("expected job ID 'job-001', got %q", jobs[0].ID)
+	}
+}
+
+func TestFetchPendingJobs_NetworkTimeout(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/jobs", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(5 * time.Second) // simulate slow server
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{"data": []map[string]string{}})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cfg := Config{
+		AgentID:        "agent-01",
+		CoordinatorURL: srv.URL,
+		AuthToken:      "test-token",
+		PollInterval:   30 * time.Second,
+		Client: &http.Client{
+			Timeout: 1 * time.Second,
+		},
+	}
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
+
+	_, err = r.fetchPendingJobs()
+	if err == nil {
+		t.Fatal("expected timeout error, got none")
+	}
+}
+
+func TestFetchPendingJobs_InvalidJSON(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/jobs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("not json"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cfg := Config{
+		AgentID:        "agent-01",
+		CoordinatorURL: srv.URL,
+		AuthToken:      "test-token",
+		PollInterval:   30 * time.Second,
+	}
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
+
+	_, err = r.fetchPendingJobs()
+	if err == nil {
+		t.Fatal("expected JSON decode error, got none")
+	}
+}
+
+func TestFetchPendingJobs_ServerError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/jobs", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("internal error"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cfg := Config{
+		AgentID:        "agent-01",
+		CoordinatorURL: srv.URL,
+		AuthToken:      "test-token",
+		PollInterval:   30 * time.Second,
+	}
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
+
+	_, err = r.fetchPendingJobs()
+	if err == nil {
+		t.Fatal("expected error, got none")
+	}
+	if !strings.Contains(err.Error(), "internal error") {
+		t.Errorf("expected error message to contain 'internal error', got %q", err.Error())
+	}
+}
+
+func TestUpdateStatus_MarshalError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("PATCH /api/jobs/{id}/status", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("server error"))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cfg := Config{
+		AgentID:        "agent-01",
+		CoordinatorURL: srv.URL,
+		AuthToken:      "test-token",
+		PollInterval:   30 * time.Second,
+	}
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
+
+	err = r.updateStatus("job-001", "running")
+	if err == nil {
+		t.Fatal("expected error from server, got none")
+	}
+}
+
+func TestJobValidation_MissingFields(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/jobs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"data": []map[string]string{
+				{
+					"id":            "",
+					"agent_id":      "agent-01",
+					"source_path":   "C:\\src",
+					"dest_path":     "D:\\backup",
+					"status":        "pending",
+				},
+				{
+					"id":            "job-002",
+					"agent_id":      "agent-01",
+					"source_path":   "",
+					"dest_path":     "D:\\backup",
+					"status":        "pending",
+				},
+				{
+					"id":            "job-003",
+					"agent_id":      "agent-01",
+					"source_path":   "C:\\src",
+					"dest_path":     "D:\\backup",
+					"status":        "pending",
+				},
+			},
+		})
+	})
+
+	statusUpdateCount := 0
+	mux.HandleFunc("PATCH /api/jobs/{id}/status", func(w http.ResponseWriter, r *http.Request) {
+		statusUpdateCount++
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux.HandleFunc("POST /api/jobs/{id}/results", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+	})
+
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	cfg := Config{
+		AgentID:        "agent-01",
+		CoordinatorURL: srv.URL,
+		AuthToken:      "test-token",
+		PollInterval:   30 * time.Second,
+	}
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
+
+	r.poll()
+
+	if statusUpdateCount != 2 {
+		t.Errorf("expected 2 status updates (running and completed for valid job), got %d", statusUpdateCount)
+	}
+}
+
+func TestStop_ConcurrentCalls(t *testing.T) {
+	cfg := Config{
+		AgentID:        "agent-01",
+		CoordinatorURL: "http://localhost:9999",
+		AuthToken:      "test-token",
+		PollInterval:   30 * time.Second,
+	}
+	r, err := New(cfg, echoExecutor)
+	if err != nil {
+		t.Fatalf("failed to create runner: %v", err)
+	}
+
+	done := make(chan bool)
+	for i := 0; i < 3; i++ {
+		go func() {
+			defer func() {
+				if recover() != nil {
+					t.Error("Stop() panicked on concurrent call")
+				}
+				done <- true
+			}()
+			r.Stop()
+		}()
+	}
+
+	for i := 0; i < 3; i++ {
+		<-done
+	}
+}
+
+func TestHTTPSEnforcement(t *testing.T) {
+	cfg := Config{
+		AgentID:        "agent-01",
+		CoordinatorURL: "http://coordinator.example.com:8080",
+		AuthToken:      "test-token",
+		PollInterval:   30 * time.Second,
+	}
+	_, err := New(cfg, echoExecutor)
+	if err == nil {
+		t.Fatal("expected error for non-HTTPS URL, got none")
+	}
+	if !strings.Contains(err.Error(), "must use HTTPS") {
+		t.Errorf("expected error message to contain 'must use HTTPS', got %q", err.Error())
+	}
 }

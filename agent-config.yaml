@@ -1,6 +1,4 @@
-agent_id: agent-01
-hostname: my-machine
-os: windows
-coordinator_url: http://localhost:443
-auth_token: 78a715f1fede7c93d4e35c7e1dee166e204f7b703375e361833df3d3d89238bc
-version: 0.1.0
+agent_id: "test-agent-001"
+coordinator_url: "http://localhost:8080"
+auth_token: "06fe887221a85f208de07ae3251dd05226ceae7e4c544b0b253eac4626d28fbb"
+poll_interval: "5s"

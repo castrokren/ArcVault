@@ -48,7 +48,7 @@ export const refreshToken = () =>
   request('POST', '/api/auth/refresh')
 
 export const changePassword = (currentPassword, newPassword) =>
-  request('POST', '/api/auth/change-password', {
+  request('PUT', '/api/auth/change-password', {
     current_password: currentPassword,
     new_password: newPassword,
   })
@@ -61,7 +61,7 @@ export const createUser = (username, password, role) =>
   request('POST', '/api/users', { username, password, role })
 
 export const updateUserRole = (id, role) =>
-  request('PUT', `/api/users/${id}`, { role })
+  request('PUT', `/api/users/${id}/role`, { role })
 
 export const deleteUser = (id) =>
   request('DELETE', `/api/users/${id}`)

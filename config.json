@@ -1,0 +1,8 @@
+{
+  "port": 8080,
+  "database_path": "C:/Users/kren/.arcvault/arcvault.db",
+  "admin_token": "arcvault_admin_token_test_dev",
+  "jwt_secret": "arcvault_jwt_secret_test_dev",
+  "environment": "development",
+  "alert_history_retention_days": 30
+}
