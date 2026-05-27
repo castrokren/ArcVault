@@ -226,7 +226,7 @@ Write-Host ""
 Write-BuildInfo "Step 7: Compiling installer with PyInstaller..."
 Write-Host "This may take 2-3 minutes..."
 
-pyinstaller arcvault.spec --distpath dist
+pyinstaller arcvault.spec --distpath deployment
 
 if ($LASTEXITCODE -eq 0) {
     Write-BuildSuccess "PyInstaller compilation successful"
@@ -241,7 +241,7 @@ if ($LASTEXITCODE -eq 0) {
 Write-Host ""
 Write-BuildInfo "Step 8: Verifying final installer..."
 
-$installerPath = "dist\ArcVault-Setup-1.1.0-windows-amd64.exe"
+$installerPath = "deployment\ArcVault-Setup-1.1.0-windows-amd64.exe"
 
 if (Test-Path $installerPath) {
     $size = (Get-Item $installerPath).Length / 1MB
