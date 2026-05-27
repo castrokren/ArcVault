@@ -34,6 +34,17 @@ Patterns and fixes worth preserving across sessions. Distilled from `MEMORY.md` 
 
 - **Missed schedule deduplication is necessary** — without checking alert_history, missed schedule alerts fire repeatedly; always check before appending
 
+## PowerShell Build Scripts
+
+- **Avoid custom function names that shadow PowerShell builtins** — `Write-Error`, `Write-Info`, `Write-Success` conflict with built-in cmdlets and cause garbled output where function bodies get printed instead of executed. Use plain `Write-Host` with `-ForegroundColor` inline, or prefix custom functions clearly (e.g. `Write-BuildInfo`). Even prefixed names can break if the file encoding is corrupted by external tools (e.g. `sed` on Linux).
+- **Don't pass `--onefile` to PyInstaller when using a `.spec` file** — the spec file already encodes the output mode; passing `--onefile` alongside it throws `makespec options not valid when a .spec file is given`.
+- **Keep build scripts simple and flat** — the cleanest version of `build-windows-installer.ps1` uses no custom functions, inline `Write-Host` calls, and a single `Set-Location` at the top to ensure relative paths resolve correctly regardless of where the script is invoked from.
+
+## Installer (Windows)
+
+- **Stop the service before copying binaries** — `shutil.copy` throws `WinError 32` if `coordinator.exe` or `agent.exe` is locked by a running service. Always run `sc stop <service>` + `time.sleep(2)` before copying in `arcvault_installer.py`.
+- **Deployment packages belong in `deployment/`** — the PyInstaller `--distpath` flag controls where the final `.exe` lands; set it to `deployment` not `dist`.
+
 ## Known Technical Debt (from MEMORY.md)
 
 - Email notifier does not support TLS client certificate authentication
