@@ -2,15 +2,15 @@
 block_cipher = None
 
 a = Analysis(
-    ['installer\windows\arcvault_installer.py'],
+    ['installer\\windows\\arcvault_installer.py'],
     pathex=[],
     binaries=[
-        ('dist\coordinator.exe', '.'),
-        ('dist\agent.exe', '.'),
-        ('dist\arcvault-setup.exe', '.'),
+        ('dist\\coordinator.exe', '.'),
+        ('dist\\agent.exe', '.'),
+        ('dist\\arcvault-setup.exe', '.'),
     ],
     datas=[
-        ('installer\windows\', 'installer\windows'),
+        ('installer\\windows\\', 'installer\\windows'),
     ],
     hiddenimports=['tkinter'],
     hookspath=[],
