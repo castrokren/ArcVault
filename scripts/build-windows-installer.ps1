@@ -23,59 +23,59 @@ $colors = @{
     Info = 'Cyan'
 }
 
-function Write-Success {
+function Write-BuildSuccess {
     param([string]$Message)
-    Write-Host "✓ $Message" -ForegroundColor $colors.Success
+    Write-Host "✓ $Message" -ForegroundColor Green
 }
 
-function Write-Error {
+function Write-BuildError {
     param([string]$Message)
-    Write-Host "✗ $Message" -ForegroundColor $colors.Error
+    Write-Host "✗ $Message" -ForegroundColor Red
 }
 
-function Write-Info {
+function Write-BuildInfo {
     param([string]$Message)
-    Write-Host "ℹ $Message" -ForegroundColor $colors.Info
+    Write-Host "ℹ $Message" -ForegroundColor Cyan
 }
 
 # ============================================================================
 # STEP 1: Verify Prerequisites
 # ============================================================================
 Write-Host ""
-Write-Info "Step 1: Verifying prerequisites..."
+Write-BuildInfo "Step 1: Verifying prerequisites..."
 Write-Host ""
 
 # Check Python
 $pythonVersion = python --version 2>&1
 if ($LASTEXITCODE -eq 0) {
-    Write-Success "Python found: $pythonVersion"
+    Write-BuildSuccess "Python found: $pythonVersion"
 } else {
-    Write-Error "Python not found. Install from https://www.python.org/"
+    Write-BuildError "Python not found. Install from https://www.python.org/"
     exit 1
 }
 
 # Check Go
 $goVersion = go version
 if ($LASTEXITCODE -eq 0) {
-    Write-Success "Go found: $goVersion"
+    Write-BuildSuccess "Go found: $goVersion"
 } else {
-    Write-Error "Go not found. Install from https://go.dev/dl/"
+    Write-BuildError "Go not found. Install from https://go.dev/dl/"
     exit 1
 }
 
 # Check PyInstaller
 $pyinstallerVersion = pyinstaller --version 2>&1
 if ($LASTEXITCODE -eq 0) {
-    Write-Success "PyInstaller found: $pyinstallerVersion"
+    Write-BuildSuccess "PyInstaller found: $pyinstallerVersion"
 } else {
     Write-Host ""
-    Write-Info "Installing PyInstaller..."
+    Write-BuildInfo "Installing PyInstaller..."
     pip install pyinstaller
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Failed to install PyInstaller"
+        Write-BuildError "Failed to install PyInstaller"
         exit 1
     }
-    Write-Success "PyInstaller installed"
+    Write-BuildSuccess "PyInstaller installed"
 }
 
 # ============================================================================
@@ -83,7 +83,7 @@ if ($LASTEXITCODE -eq 0) {
 # ============================================================================
 if ($CleanBuild) {
     Write-Host ""
-    Write-Info "Step 2: Cleaning previous build..."
+    Write-BuildInfo "Step 2: Cleaning previous build..."
 
     if (Test-Path "build") {
         Write-Host "Removing build directory..."
@@ -100,18 +100,18 @@ if ($CleanBuild) {
         Remove-Item -Force "arcvault.spec" -ErrorAction SilentlyContinue
     }
 
-    Write-Success "Clean build ready"
+    Write-BuildSuccess "Clean build ready"
 }
 
 # ============================================================================
 # STEP 3: Create Build Directories
 # ============================================================================
 Write-Host ""
-Write-Info "Step 3: Creating build directories..."
+Write-BuildInfo "Step 3: Creating build directories..."
 
 if (-not (Test-Path "dist")) {
     New-Item -ItemType Directory -Path "dist" -Force | Out-Null
-    Write-Success "Created dist directory"
+    Write-BuildSuccess "Created dist directory"
 }
 
 # ============================================================================
@@ -119,7 +119,7 @@ if (-not (Test-Path "dist")) {
 # ============================================================================
 if (-not $SkipBinaries) {
     Write-Host ""
-    Write-Info "Step 4: Building Go binaries..."
+    Write-BuildInfo "Step 4: Building Go binaries..."
 
     $binaries = @(
         @{ Name = "coordinator"; Path = ".\coordinator" },
@@ -133,30 +133,30 @@ if (-not $SkipBinaries) {
 
         if ($LASTEXITCODE -eq 0) {
             $size = (Get-Item "dist\$($binary.Name).exe").Length / 1MB
-            Write-Success "Built: $($binary.Name).exe ($('{0:F1}' -f $size) MB)"
+            Write-BuildSuccess "Built: $($binary.Name).exe ($('{0:F1}' -f $size) MB)"
         } else {
-            Write-Error "Failed to build $($binary.Name)"
+            Write-BuildError "Failed to build $($binary.Name)"
             exit 1
         }
     }
 } else {
     Write-Host ""
-    Write-Info "Step 4: Skipping Go binaries (already built)"
+    Write-BuildInfo "Step 4: Skipping Go binaries (already built)"
 }
 
 # ============================================================================
 # STEP 5: Verify Go Binaries
 # ============================================================================
 Write-Host ""
-Write-Info "Step 5: Verifying binaries..."
+Write-BuildInfo "Step 5: Verifying binaries..."
 
 $requiredBinaries = @("coordinator.exe", "agent.exe", "arcvault-setup.exe")
 foreach ($binary in $requiredBinaries) {
     if (Test-Path "dist\$binary") {
         $size = (Get-Item "dist\$binary").Length / 1MB
-        Write-Success "Found: $binary ($('{0:F1}' -f $size) MB)"
+        Write-BuildSuccess "Found: $binary ($('{0:F1}' -f $size) MB)"
     } else {
-        Write-Error "Missing: $binary"
+        Write-BuildError "Missing: $binary"
         exit 1
     }
 }
@@ -165,7 +165,7 @@ foreach ($binary in $requiredBinaries) {
 # STEP 6: Create PyInstaller Spec File
 # ============================================================================
 Write-Host ""
-Write-Info "Step 6: Creating PyInstaller spec file..."
+Write-BuildInfo "Step 6: Creating PyInstaller spec file..."
 
 $specContent = @'
 # -*- mode: python ; coding: utf-8 -*-
@@ -217,21 +217,21 @@ exe = EXE(
 '@
 
 $specContent | Out-File -FilePath "arcvault.spec" -Encoding UTF8
-Write-Success "Created: arcvault.spec"
+Write-BuildSuccess "Created: arcvault.spec"
 
 # ============================================================================
 # STEP 7: Compile with PyInstaller
 # ============================================================================
 Write-Host ""
-Write-Info "Step 7: Compiling installer with PyInstaller..."
+Write-BuildInfo "Step 7: Compiling installer with PyInstaller..."
 Write-Host "This may take 2-3 minutes..."
 
-pyinstaller arcvault.spec --onefile --distpath dist
+pyinstaller arcvault.spec --distpath dist
 
 if ($LASTEXITCODE -eq 0) {
-    Write-Success "PyInstaller compilation successful"
+    Write-BuildSuccess "PyInstaller compilation successful"
 } else {
-    Write-Error "PyInstaller compilation failed"
+    Write-BuildError "PyInstaller compilation failed"
     exit 1
 }
 
@@ -239,18 +239,18 @@ if ($LASTEXITCODE -eq 0) {
 # STEP 8: Verify Final Installer
 # ============================================================================
 Write-Host ""
-Write-Info "Step 8: Verifying final installer..."
+Write-BuildInfo "Step 8: Verifying final installer..."
 
 $installerPath = "dist\ArcVault-Setup-1.1.0-windows-amd64.exe"
 
 if (Test-Path $installerPath) {
     $size = (Get-Item $installerPath).Length / 1MB
-    Write-Success "Installer created successfully!"
-    Write-Success "File: $(Split-Path -Leaf $installerPath)"
-    Write-Success "Size: $('{0:F1}' -f $size) MB"
-    Write-Success "Path: $(Get-Item $installerPath | Select-Object -ExpandProperty FullName)"
+    Write-BuildSuccess "Installer created successfully!"
+    Write-BuildSuccess "File: $(Split-Path -Leaf $installerPath)"
+    Write-BuildSuccess "Size: $('{0:F1}' -f $size) MB"
+    Write-BuildSuccess "Path: $(Get-Item $installerPath | Select-Object -ExpandProperty FullName)"
 } else {
-    Write-Error "Installer not found at $installerPath"
+    Write-BuildError "Installer not found at $installerPath"
     exit 1
 }
 
@@ -272,3 +272,4 @@ Write-Host "     git add installer/windows/ arcvault.spec"
 Write-Host "     git commit -m 'Phase 18: Python-based Windows installer'"
 Write-Host "  4. Release v1.1.0"
 Write-Host ""
+                       

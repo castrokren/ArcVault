@@ -103,6 +103,7 @@ const updateStore = reactive({
 
 // Provide updateStore to child components
 provide('updateStore', updateStore)
+provide('connectWs', connect)
 
 onMounted(() => {
   applyTheme(theme.value)
