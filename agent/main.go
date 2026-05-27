@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -24,6 +25,12 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "run-service":
+		// Called by Windows SCM — wraps runAgent inside svc.Run() so the
+		// Service Control Manager gets the handshake it requires.
+		if err := service.RunService(runAgent); err != nil {
+			log.Fatalf("service error: %v", err)
+		}
 	case "install-service":
 		if err := service.Install(); err != nil {
 			log.Fatalf("install-service failed: %v", err)
@@ -44,7 +51,15 @@ func main() {
 func runAgent() {
 	log.Println("ArcVault Agent starting...")
 
-	cfg, err := config.Load("agent-config.yaml")
+	// Resolve config path relative to the exe so this works when SCM
+	// starts the service with a different working directory (C:\Windows\system32).
+	exe, err := os.Executable()
+	if err != nil {
+		log.Fatalf("could not determine executable path: %v", err)
+	}
+	cfgPath := filepath.Join(filepath.Dir(exe), "agent-config.yaml")
+
+	cfg, err := config.Load(cfgPath)
 	if err != nil {
 		log.Fatalf("failed to load config: %v", err)
 	}
@@ -66,18 +81,22 @@ func runAgent() {
 	go heartbeat.Start(hbCfg)
 
 	// Start job runner in background
-	r := runner.New(runner.Config{
+	r, err := runner.New(runner.Config{
 		AgentID:        cfg.AgentID,
 		CoordinatorURL: cfg.CoordinatorURL,
 		AuthToken:      cfg.AuthToken,
 		PollInterval:   30 * time.Second,
 	}, runner.RealExecutor)
+	if err != nil {
+		log.Fatalf("failed to initialize runner: %v", err)
+	}
 	go r.Start()
 
 	// Start WebSocket client for receiving coordinator commands (e.g. update_command).
 	wsClient := &agentws.Client{
 		AgentID:        cfg.AgentID,
 		CoordinatorURL: cfg.CoordinatorURL,
+		Coordinators:   cfg.Coordinators,
 		AuthToken:      cfg.AuthToken,
 	}
 	go wsClient.Start()

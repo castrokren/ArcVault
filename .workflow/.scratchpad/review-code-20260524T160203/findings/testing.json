@@ -1,0 +1,71 @@
+{
+  "dimension": "Testing",
+  "findings": [
+    {
+      "id": "TEST-001",
+      "severity": "High",
+      "category": "coverage",
+      "file": "agent/runner/runner.go",
+      "lines": [1, 189],
+      "title": "No visible test file for runner package",
+      "description": "runner.go exists but no corresponding runner_test.go file found. Critical error paths are untested.",
+      "uncoveredScenarios": [
+        "fetchPendingJobs() with network error",
+        "fetchPendingJobs() with invalid JSON response",
+        "fetchPendingJobs() with HTTP errors (5xx)",
+        "process() when claim fails",
+        "process() when executor fails",
+        "process() when postResult fails",
+        "process() when updateStatus fails",
+        "Stop() called multiple times concurrently",
+        "Configuration with invalid CoordinatorURL"
+      ],
+      "suggestion": "Create runner_test.go with mock HTTP server tests for all error paths.",
+      "impact": "High - error handling reliability is unknown."
+    },
+    {
+      "id": "TEST-002",
+      "severity": "High",
+      "category": "boundary-test",
+      "file": "agent/runner/runner.go",
+      "lines": [116, 139],
+      "title": "No testing of job state transitions",
+      "description": "The state machine (pending → running → completed/failed) is not tested. No verification that states transition correctly.",
+      "missingTests": [
+        "Job succeeds (exit 0) → marked as 'completed'",
+        "Job fails (exit 1) → marked as 'failed'",
+        "updateStatus fails but process continues",
+        "postResult fails but final status still attempted"
+      ],
+      "suggestion": "Mock http.Client and test each state transition with different response codes.",
+      "impact": "Jobs could end up in incorrect states without detection."
+    },
+    {
+      "id": "TEST-003",
+      "severity": "Medium",
+      "category": "coverage",
+      "file": "agent/runner/runner.go",
+      "lines": [78, 88],
+      "title": "poll() error handling not tested",
+      "description": "poll() logs but continues on fetchPendingJobs() error. No test verifies this behavior.",
+      "testCases": [
+        "fetchPendingJobs() returns error → poll() logs and returns",
+        "fetchPendingJobs() returns empty list → no jobs processed",
+        "fetchPendingJobs() returns multiple jobs → all processed"
+      ],
+      "impact": "Medium - error recovery path is unclear."
+    },
+    {
+      "id": "TEST-004",
+      "severity": "Medium",
+      "category": "test-isolation",
+      "file": "agent/runner/runner.go",
+      "lines": [55, 76],
+      "title": "Lack of mock for HTTP client in tests",
+      "description": "No mock http.Client visible. Testing would require real network calls or hacking with test hooks.",
+      "suggestion": "Pass http.Client interface (or create one) as dependency injection in Config for testability.",
+      "benefit": "Tests can run without network, reliably mock any HTTP scenario.",
+      "impact": "Medium - testability is reduced without proper mocking."
+    }
+  ]
+}
