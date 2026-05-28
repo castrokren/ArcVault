@@ -62,7 +62,7 @@
         <label>Dest Path</label>
         <input v-model="form.dest_path" placeholder="D:\backup" />
         <label>Schedule <span class="optional">(optional)</span></label>
-        <input v-model="form.schedule" placeholder="0 2 * * *" />
+        <ScheduleBuilder v-model="form.schedule" />
       </div>
       <div class="form-actions">
         <button class="primary" @click="createJob" :disabled="creating">
@@ -143,6 +143,7 @@
 import { ref, computed, onMounted, watch, inject } from 'vue'
 import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups } from '../api.js'
 import Pagination from '../components/Pagination.vue'
+import ScheduleBuilder from '../components/ScheduleBuilder.vue'
 import { useFederationLag } from '../composables/useFederationLag.js'
 
 const props = defineProps(['lastEvent'])

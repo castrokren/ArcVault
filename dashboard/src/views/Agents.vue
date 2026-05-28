@@ -236,121 +236,52 @@ onMounted(load)
 </script>
 
 <style scoped>
-.page-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
-.page-header h1 { margin: 0; }
-.page-header button {
-  padding: 0.4rem 1rem;
-  background: #4f8ef7;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.stale-banner {
-  background: rgba(255, 167, 38, 0.12);
-  border: 1px solid rgba(255, 167, 38, 0.4);
-  color: #ffa726;
-  padding: 0.5rem 0.85rem;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  margin-bottom: 1rem;
-}
-
-.error { color: #e55; margin-bottom: 1rem; }
-.empty { color: #888; margin: 2rem 0; }
-
-.filters { margin-bottom: 1.5rem; }
-
-.search-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 1rem;
-  border-radius: 4px;
-  border: 1px solid #2a2a3e;
-  background: #0f0f1a;
-  color: #fff;
-  font-size: 0.95rem;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #4f8ef7;
-  box-shadow: 0 0 0 2px rgba(79, 142, 247, 0.1);
-}
-
-.filter-chips { display: flex; gap: 0.5rem; }
-
-.chip {
-  padding: 0.4rem 1rem;
-  border-radius: 999px;
-  border: 1px solid #2a2a3e;
-  background: transparent;
-  color: #aaa;
-  cursor: pointer;
-  font-size: 0.85rem;
-  transition: all 0.2s;
-}
-
-.chip:hover { border-color: #4f8ef7; color: #4f8ef7; }
-.chip.active { background: #4f8ef7; border-color: #4f8ef7; color: #fff; }
-
-.table { width: 100%; border-collapse: collapse; }
-.table th, .table td {
-  text-align: left;
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid #2a2a3e;
-}
-.table th { color: #888; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; }
-
-.mono { font-family: monospace; font-size: 0.9rem; }
-
-.badge {
-  display: inline-block;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-.badge.online  { background: #1a3a1a; color: #4caf50; }
-.badge.offline { background: #3a1a1a; color: #e55; }
+/* Global design system covers: page-header, stale-banner, error, empty,
+   filters, search-input, filter-chips, chip, table, mono, badge */
 
 .update-badge {
   display: inline-block;
   margin-left: 0.4rem;
-  padding: 0.1rem 0.4rem;
-  background: #3a2a10;
-  color: #f39c12;
+  padding: 0.15rem 0.45rem;
+  background: var(--bg-warning);
+  color: var(--color-warning);
   border-radius: 4px;
-  font-size: 0.75rem;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
   font-weight: 600;
 }
 
-.actions-cell { display: flex; gap: 0.4rem; align-items: center; }
+.actions-cell {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
 
 .btn-update-agent {
-  padding: 0.3rem 0.8rem;
-  background: #f39c12;
-  color: #fff;
+  padding: 0.25rem 0.75rem;
+  background: var(--color-warning);
+  color: var(--bg-base);
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
   font-weight: 600;
+  transition: filter 0.15s;
 }
-.btn-update-agent:hover { background: #e08e00; }
+.btn-update-agent:hover { filter: brightness(1.1); }
 
 .btn-rollback-agent {
-  padding: 0.3rem 0.8rem;
+  padding: 0.25rem 0.75rem;
   background: transparent;
-  color: #e6a817;
-  border: 1px solid #e6a817;
+  color: var(--color-warning);
+  border: 1px solid rgba(245, 158, 11, 0.4);
   border-radius: 4px;
   cursor: pointer;
-  font-size: 0.8rem;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
   font-weight: 600;
   transition: background 0.15s;
 }
-.btn-rollback-agent:hover { background: rgba(230, 168, 23, 0.15); }
+.btn-rollback-agent:hover { background: var(--bg-warning); }
 </style>

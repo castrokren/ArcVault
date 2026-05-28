@@ -2,8 +2,8 @@
 name: ArcVault Decisions
 category: memory
 priority: high
-last_updated: 2026-05-26
-last_accessed: 2026-05-26
+last_updated: 2026-05-27
+last_accessed: 2026-05-27
 stale_after_days: 90
 auto_summarize: true
 archive_policy: keep
@@ -51,6 +51,15 @@ Key decisions made during development. Check here before making architectural ch
 - **Auto-refresh pattern** — composables poll on interval (e.g. useFederationLag 15s, history 30s); not WebSocket-pushed
 - **Visible-but-disabled nav** — operator/viewer see admin links but they're disabled with title text; no hidden routes
 - **Smart job form** — user toggles Single Agent ↔ Group mode; validates based on selection before API call
+
+## Dashboard Design System (added 2026-05-27)
+
+- **Single source of truth for tokens** — all CSS custom properties live in `dashboard/src/style.css`; components use only `var(--token-name)` with no fallbacks
+- **Typography trio** — Syne (display/headings), Outfit (body/UI), JetBrains Mono (code/IDs); loaded via Google Fonts in `index.html`
+- **Global vs. scoped** — shared classes (`.table`, `.badge`, `.btn`, `.chip`, `.modal-*`, `.form-group`, `.pagination`) are defined globally in `style.css`; scoped component CSS is only for view-specific overrides
+- **Theme switching** — `[data-theme="light"]` / `[data-theme="dark"]` on `document.documentElement`; all tokens have both light and dark values in `style.css`
+- **Dark palette** — base `#07090e`, surface `#0c0f18`, card `#11141f`, elevated `#171b29`; accent `#00d4aa` (teal-green)
+- **HelloWorld.vue is dead code** — Vite scaffold component, not mounted anywhere; safe to delete if cleaning up
 
 ## Updates & Rollback
 

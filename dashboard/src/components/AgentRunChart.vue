@@ -164,7 +164,7 @@ export default {
 <style scoped>
 /* ── Layout ───────────────────────────────────────────────── */
 .agent-run-chart {
-  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 .arc-header {
@@ -174,16 +174,17 @@ export default {
   margin-bottom: 12px;
 }
 .arc-label {
-  font-size: 10px;
+  font-family: var(--font-body);
+  font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--text-muted, #6b6b8a);
+  color: var(--text-muted);
 }
 .arc-window {
-  font-size: 10px;
-  color: var(--text-muted, #6b6b8a);
-  letter-spacing: 0.08em;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  color: var(--text-muted);
 }
 
 /* Loading / empty */
@@ -191,20 +192,23 @@ export default {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: var(--text-muted, #6b6b8a);
-  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
   padding: 20px 0;
 }
 .arc-loading-dot {
   width: 6px; height: 6px;
   border-radius: 50%;
-  background: var(--accent, #4f8ef7);
+  background: var(--accent);
   animation: blink 1s step-start infinite;
+  flex-shrink: 0;
 }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.15} }
 .arc-empty {
-  color: var(--text-muted, #6b6b8a);
-  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
   padding: 20px 0;
   text-align: center;
 }
@@ -217,25 +221,25 @@ export default {
 }
 
 .arc-card {
-  background: var(--card-bg, #1a1a2e);
-  border: 1px solid var(--border, #2e2e4a);
-  border-radius: 4px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
   padding: 14px 16px 12px;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
-.arc-card:hover          { border-color: var(--accent, #4f8ef7); }
-.arc-card--selected      { border-color: var(--accent, #4f8ef7); background: var(--surface-active, #1e2240); }
+.arc-card:hover          { border-color: var(--accent-border); background: var(--bg-elevated); }
+.arc-card--selected      { border-color: var(--accent-border); background: var(--bg-elevated); }
 
 .arc-agent-id {
-  font-size: 11px;
+  font-size: 0.72rem;
   font-weight: 700;
-  color: var(--accent, #4f8ef7);
+  color: var(--accent);
   margin-bottom: 2px;
 }
 .arc-agent-host {
-  font-size: 10px;
-  color: var(--text-muted, #6b6b8a);
+  font-size: 0.68rem;
+  color: var(--text-muted);
   margin-bottom: 10px;
   white-space: nowrap;
   overflow: hidden;
@@ -251,35 +255,25 @@ export default {
   overflow: visible;
 }
 .bar-ok {
-  fill: var(--success, #3ecf8e);
+  fill: var(--color-success);
   transition: opacity 0.1s;
 }
 .bar-fail {
-  fill: var(--fail, #ff4d6d);
+  fill: var(--color-error);
   transition: opacity 0.1s;
 }
-.arc-card:hover .bar-ok   { opacity: 0.85; }
-.arc-card:hover .bar-fail { opacity: 0.85; }
+.arc-card:hover .bar-ok   { opacity: 0.8; }
+.arc-card:hover .bar-fail { opacity: 0.8; }
 
 /* ── Footer stats ─────────────────────────────────────────── */
 .arc-footer {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  font-size: 0.68rem;
   padding-top: 6px;
-  border-top: 1px solid var(--border, #2e2e4a);
+  border-top: 1px solid var(--border-subtle);
 }
-.arc-total    { color: var(--text-muted, #6b6b8a); }
-.arc-ok-val   { color: var(--success, #3ecf8e); font-weight: 700; display: flex; align-items: center; gap: 2px; }
-.arc-fail-val { color: var(--fail, #ff4d6d);    font-weight: 700; display: flex; align-items: center; gap: 2px; }
-
-/* ── Light theme ──────────────────────────────────────────── */
-[data-theme="light"] .arc-card {
-  --card-bg: #ffffff;
-  --border: #e0e0ec;
-  --text-muted: #888899;
-  --surface-active: #eeeef8;
-  --success: #1ea87a;
-  --fail: #e03050;
-}
+.arc-total    { color: var(--text-muted); }
+.arc-ok-val   { color: var(--color-success); font-weight: 700; display: flex; align-items: center; gap: 2px; }
+.arc-fail-val { color: var(--color-error);   font-weight: 700; display: flex; align-items: center; gap: 2px; }
 </style>
