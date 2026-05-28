@@ -81,47 +81,54 @@ const pageButtons = computed(() => {
   align-items: center;
   justify-content: space-between;
   margin-top: 1.25rem;
-  font-size: 0.85rem;
-  color: #aaa;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.record-count {
+  color: var(--text-muted);
 }
 
 .controls {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.2rem;
 }
 
 .page-btn {
   min-width: 2rem;
   height: 2rem;
   padding: 0 0.4rem;
-  border: 1px solid #2a2a3e;
-  border-radius: 4px;
+  border: 1px solid var(--border-default);
+  border-radius: 5px;
   background: transparent;
-  color: #aaa;
+  color: var(--text-secondary);
   cursor: pointer;
-  font-size: 0.85rem;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
   transition: all 0.15s;
 }
 
 .page-btn:hover:not(:disabled) {
-  border-color: #4f8ef7;
-  color: #4f8ef7;
+  border-color: var(--accent-border);
+  color: var(--accent);
 }
 
 .page-btn.active {
-  background: #4f8ef7;
-  border-color: #4f8ef7;
-  color: #fff;
+  background: var(--accent-dim);
+  border-color: var(--accent-border);
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .page-btn:disabled {
-  opacity: 0.35;
+  opacity: 0.3;
   cursor: default;
 }
 
 .ellipsis {
   padding: 0 0.25rem;
-  color: #555;
+  color: var(--text-muted);
 }
 </style>
