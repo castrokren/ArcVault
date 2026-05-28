@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** May 22, 2026 | **v1.0.0** | **PRODUCTION READY**
+**Last updated:** May 28, 2026 | **v1.0.3** | **PRODUCTION READY**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -20,7 +20,18 @@
   - Scheduler: Missed schedule detector + history pruning
   - Frontend: Alerts.vue dashboard with rule creation/deletion & retry controls  
 ✅ All tests passing | v1.0.0 released on GitHub  
-🎯 Next: Deploy to production, configure alert rules
+✅ Phase 18 (frontend): Comprehensive dashboard design system overhaul — all 21 Vue files redesigned, new token system, animated login, rebuilt components  
+✅ Services redeployed and verified (2026-05-27)  
+✅ v1.0.1 bugfixes applied (2026-05-28):
+  - Jobs page agent dropdown broken when no groups exist (nil slice JSON null + wrong PaginatedResponse key)
+  - Update check endpoint returned plain text on error instead of JSON  
+✅ v1.0.3 (2026-05-28): Schedule builder UI — ScheduleBuilder.vue component (Interval/Daily/Weekly/Monthly/Custom modes, live cron preview) wired into Jobs and Templates forms
+✅ v1.0.2 (2026-05-28): Delete agents feature
+  - DELETE /api/agents/{id} endpoint (admin only, 409 blocks if running jobs)
+  - Cleans up tokens + group memberships on delete; historical jobs preserved
+  - Dashboard: Delete button + confirmation modal in Agents.vue (admin-only, local view)
+  - 6 new tests in agent_delete_test.go; full suite passing
+🎯 Next: Robocopy/rsync flags, cancel backups, backup progress indicator
 
 ## Core Commands
 ```bash
@@ -98,10 +109,5 @@ sudo launchctl start com.arcvault.coordinator   # macOS
 ## Reference
 - **Project instructions & routing:** [CLAUDE.md](CLAUDE.md)
 - **Phase history & architecture:** [MEMORY.md](MEMORY.md) (detailed design decisions, technical stack, full roadmap)
-- **Current branch:** feature/phase-15-rbac (Phase 16 complete + gaps closed, ready to merge or branch for Phase 17)
-- **Latest release:** https://github.com/castrokren/ArcVault/releases/tag/v0.9.0
-
-## Development Tips
-- **PowerShell:** Line continuation uses backtick `` ` ``, not backslash
-- **Tests:** Run `go test ./...` to verify all tests pass
-- **Dashboard:** Embedded at compile time; see `coordinator/static/`
+- **Current branch:** main
+- **Latest r

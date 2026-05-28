@@ -50,7 +50,8 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 		info, err = updater.CheckLatestRelease(currentVersion)
 		if err != nil {
 			log.Printf("Failed to check latest release: %v", err)
-			http.Error(w, fmt.Sprintf("failed to check updates: %v", err), http.StatusInternalServerError)
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to check updates: %v", err)})
 			return
 		}
 

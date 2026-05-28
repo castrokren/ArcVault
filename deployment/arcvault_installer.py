@@ -215,8 +215,11 @@ class InstallRunner:
             self._step_fail(0, str(exc))
             return
 
-        # Step 1 — download
+        # Step 1 — download (stop service first to release file lock)
         self._step_start(1, steps[1])
+        subprocess.run(["sc", "stop", COORD_SVC],
+                       capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        time.sleep(2)
         try:
             self._download(COORD_URL, COORD_BIN)
             self._step_done(1)
@@ -303,8 +306,11 @@ class InstallRunner:
             self._step_fail(0, str(exc))
             return
 
-        # Step 1 — download
+        # Step 1 — download (stop service first to release file lock)
         self._step_start(1, steps[1])
+        subprocess.run(["sc", "stop", AGENT_SVC],
+                       capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        time.sleep(2)
         try:
             self._download(AGENT_URL, AGENT_BIN)
             self._step_done(1)

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -182,4 +183,71 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(NewPaginatedResponse(agents, total, p.Page, p.Limit))
+}
+
+// handleDeleteAgent handles DELETE /api/agents/{id} — admin only.
+// Blocks deletion if the agent has any currently running jobs.
+// Cleans up tokens and group memberships on success.
+// Historical jobs are left intact (they retain run history).
+func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
+	agentID := r.PathValue("id")
+	if agentID == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "missing agent id"})
+		return
+	}
+
+	// Verify the agent exists.
+	var exists int
+	err := s.db.Conn().QueryRow(`SELECT COUNT(*) FROM agents WHERE id = ?`, agentID).Scan(&exists)
+	if err != nil || exists == 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "agent not found"})
+		return
+	}
+
+	// Block deletion if there are running jobs on this agent.
+	var running int
+	if err := s.db.Conn().QueryRow(
+		`SELECT COUNT(*) FROM jobs WHERE agent_id = ? AND status = 'running'`, agentID,
+	).Scan(&running); err != nil && err != sql.ErrNoRows {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to check running jobs"})
+		return
+	}
+	if running > 0 {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{"error": "agent has running jobs — stop all jobs before deleting"})
+		return
+	}
+
+	// Clean up tokens for this agent.
+	if _, err := s.db.Conn().Exec(`DELETE FROM tokens WHERE agent_id = ?`, agentID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to clean up agent tokens"})
+		return
+	}
+
+	// Clean up group memberships for this agent.
+	if _, err := s.db.Conn().Exec(`DELETE FROM agent_group_members WHERE agent_id = ?`, agentID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to clean up agent group memberships"})
+		return
+	}
+
+	// Delete the agent.
+	if _, err := s.db.Conn().Exec(`DELETE FROM agents WHERE id = ?`, agentID); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "failed to delete agent"})
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
