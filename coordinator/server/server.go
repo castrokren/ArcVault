@@ -147,8 +147,9 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /api/agents/{id}/heartbeat", s.authMiddleware(s.handleHeartbeat))
 	s.router.HandleFunc("POST /api/jobs/{id}/results", s.authMiddleware(s.handlePostJobResults))
 
-	// Agent list (viewer+)
+	// Agent list (viewer+) and delete (admin only)
 	s.router.HandleFunc("GET /api/agents", s.viewerRoute(s.handleListAgents))
+	s.router.HandleFunc("DELETE /api/agents/{id}", s.adminRoute(s.handleDeleteAgent))
 
 	// Jobs endpoints
 	s.router.HandleFunc("POST /api/jobs", s.operatorRoute(s.handleCreateJob))

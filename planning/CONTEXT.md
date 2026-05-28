@@ -1,6 +1,6 @@
 # Planning Workspace
 
-**Last updated:** May 22, 2026
+**Last updated:** May 28, 2026
 
 ## What happens here
 
@@ -26,29 +26,47 @@ Deciding what to build next in ArcVault. Breaking phases into ordered tasks. Tra
 | 14 | Agent update system & bidirectional rollback |
 | 15 (backend) | RBAC infrastructure: JWT authentication, user management, agent groups |
 | 15 (frontend) | RBAC UI: Login, password change, user mgmt, group mgmt, smart job dispatch |
-| 16 | Federation HA: events log, state sync (root→spoke), health monitoring, agent failover |
+| 16 | Federation HA: events log, state sync, health monitoring, agent failover |
+| 17 | Enhanced monitoring & alerting: alert rules engine, Slack/Teams, webhook retry, history tracking |
+| 18 (frontend) | Full dashboard design system overhaul — all 21 Vue files, new token system, animated login |
 
-## Current phase
+## Current state
 
-**Phase 16 — Federation HA & State Consistency (Complete - v0.9.0)** ✅
-- Append-only federation_events log with per-coordinator monotonic sequence ✅
-- State sync endpoints: GET /api/federation/sync, POST /api/federation/sync/ack ✅
-- Health monitoring: GET /api/federation/health with status, lag, agent count ✅
-- Agent failover: coordinator list with round-robin + exponential backoff ✅
-- Frontend: FederationHealth.vue with auto-refresh, OKLCH colors, lag indicators ✅
-- Tests: 8 test cases, all passing ✅
-- Branch pushed, v0.9.0 tag created ✅
+**v1.0.2 — Production** (as of May 28, 2026)
+
+- v1.0.0 shipped with Phase 17 complete (111 tests passing)
+- Dashboard design overhaul shipped to production (2026-05-27)
+- v1.0.1 bugfixes applied (2026-05-28): agent dropdown nil slice, update check plain-text error
+- v1.0.2 (2026-05-28): Delete agents — `DELETE /api/agents/{id}`, confirmation modal, 6 tests
 
 ## Candidate next phases
 
-- **Phase 17 — Enhanced Federation:** Spoke auto-resync integration, heartbeat timeout detection, agent homing persistence
-- **Phase 18 — API Documentation:** OpenAPI/Swagger spec generation from routes
-- **Phase 19 — Audit logging:** Track user actions and changes
-- **Phase 20 — Advanced backends:** S3, Azure Blob, additional sync targets
+| Candidate | Value | Effort |
+|-----------|-------|--------|
+| CLI tooling (headless ops, scripting) | High — enables automation without dashboard | Medium |
+| OpenAPI / Swagger spec | Medium — useful for API consumers | Low |
+| Audit logging (user action tracking) | Medium — compliance use cases | Medium |
+| Additional sync backends (S3, Azure Blob) | High — core use case expansion | High |
+| Advanced reporting / compliance export | Medium | Medium |
+
+## Small improvements queued
+
+- `started_at` column on `job_runs` for accurate notification durations
+- Password reset via email
+- User search/filter in admin panel
+- Email TLS client certificate auth support
+
+## User-requested features — ordered easiest → hardest (2026-05-28)
+
+1. ~~**Delete agents**~~ ✅ Done (2026-05-28)
+2. ~~**Schedule builder UI**~~ ✅ Done (2026-05-28) — ScheduleBuilder.vue with Off/Interval/Daily/Weekly/Monthly/Custom modes, live preview, wired into Jobs + Templates
+3. **Robocopy/rsync flags** *(Medium)* — add flags column to jobs DB schema, pass flags through API and agent execution, multi-select UI in job form
+4. **Cancel scheduled/running backups** *(Medium–Hard)* — canceling a pending job is a status update; canceling a running job requires a kill signal from coordinator → agent over WebSocket
+5. **Backup progress indicator** *(Hard)* — agent must emit byte/file-count events mid-execution, coordinator broadcasts via WebSocket, frontend renders live progress
 
 ## Process
 
-1. Check root CONTEXT.md for current phase and open items
-2. Pick the next candidate phase, write a design doc in `files/`
-3. Break it into concrete tasks before writing any code
-4. Switch to the Building workspace to implement
+1. Finish v1.0.1 GitHub release
+2. Pick a candidate phase above, write a design doc in `planning/`
+3. Break into concrete tasks before writing any code
+4. Switch to Building workspace to implement
