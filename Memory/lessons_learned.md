@@ -2,8 +2,8 @@
 name: ArcVault Lessons Learned
 category: memory
 priority: medium
-last_updated: 2026-05-26
-last_accessed: 2026-05-26
+last_updated: 2026-05-27
+last_accessed: 2026-05-27
 stale_after_days: 90
 auto_summarize: true
 archive_policy: keep
@@ -29,6 +29,9 @@ Patterns and fixes worth preserving across sessions. Distilled from `MEMORY.md` 
 
 - **WebSocket updates must preserve filter state** — early versions reset search/filter on WebSocket push; fix: check filter state before re-rendering, preserve user selections
 - **Auto-refresh composables** — 15–30s intervals work well for dashboard data; avoids WebSocket complexity for non-critical polling
+- **`[data-theme]` inside `<style scoped>` NEVER works** — Vue scoped CSS adds `data-v-XXXX` to every selector, so `[data-theme="dark"]` becomes `[data-theme="dark"][data-v-XXXX]` which cannot match `<html data-theme="dark">`. Theme overrides MUST go in the global `style.css`, not in scoped component styles. Multiple components (Users.vue, Groups.vue, ChangePasswordModal.vue) had this silent bug.
+- **Hardcoded colors in scoped CSS break theming** — scoped specificity can override global CSS variable definitions. Prefer removing duplicate class definitions from scoped CSS entirely and relying on global `style.css` for shared classes (`.table`, `.badge`, `.chip`, etc.)
+- **Old token names linger invisibly** — some components used `--bg-primary`, `--bg-secondary`, `--border-color`, `--accent-color` (never defined in our design system). Always audit for these when touching a component; they silently produce no color (transparent/inherited).
 
 ## Federation
 

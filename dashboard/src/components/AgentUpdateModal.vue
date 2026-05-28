@@ -207,99 +207,146 @@ onUnmounted(clearTimers)
 <style scoped>
 .modal-overlay {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.7);
+  background: rgba(0,0,0,0.65);
   display: flex; justify-content: center; align-items: center;
   z-index: 1000;
 }
 
 .modal {
-  background: #1e1e2e;
-  border: 1px solid #333;
-  border-radius: 8px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
   width: 480px;
+  max-width: 95vw;
   max-height: 90vh;
   overflow-y: auto;
-  color: #fff;
 }
 
-.modal-content { padding: 2rem; }
+.modal-content { padding: 1.75rem 2rem; }
 .modal-content.center { text-align: center; }
 
-h2 { margin: 0 0 1.5rem; font-size: 1.4rem; }
-p  { margin: 0.4rem 0; color: #ccc; line-height: 1.6; }
+h2 {
+  margin: 0 0 1.25rem;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+p  { margin: 0.4rem 0; color: var(--text-secondary); line-height: 1.6; font-family: var(--font-body); font-size: 0.9rem; }
 
 .version-info {
-  background: #111;
-  border: 1px solid #333;
-  border-radius: 4px;
-  padding: 1rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 0.85rem 1rem;
   margin: 1rem 0;
-  font-family: monospace;
-  font-size: 0.9rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
 }
+.version-info p { font-family: var(--font-mono); color: var(--text-secondary); }
+.version-info strong { color: var(--text-primary); }
 
 .warning {
-  background: #3c2c2c;
-  border-left: 3px solid #f39c12;
-  padding: 1rem;
+  background: var(--bg-warning);
+  border-left: 3px solid var(--color-warning);
+  padding: 0.85rem 1rem;
   border-radius: 4px;
   margin: 1rem 0;
-  font-size: 0.9rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--color-warning);
 }
-.warning strong { display: block; margin-bottom: 0.4rem; }
-.warning p { margin: 0; }
+.warning strong { display: block; margin-bottom: 0.3rem; color: var(--color-warning); }
+.warning p { margin: 0; color: var(--color-warning); opacity: 0.85; font-family: var(--font-body); }
 
-.modal-actions { display: flex; gap: 1rem; justify-content: flex-end; margin-top: 1.5rem; }
+.modal-actions { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; }
 .center-actions { justify-content: center; }
 
 .btn-cancel, .btn-update, .btn-close {
-  padding: 0.6rem 1.4rem;
-  border: none; border-radius: 4px;
-  cursor: pointer; font-size: 0.95rem; font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.45rem 1.1rem;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  font-weight: 600;
+  transition: filter 0.15s;
 }
-.btn-cancel { background: #333; color: #ccc; }
-.btn-cancel:hover { background: #444; }
-.btn-update, .btn-close { background: #4f8ef7; color: #fff; }
-.btn-update:hover, .btn-close:hover { background: #3a7fd6; }
+.btn-cancel {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+}
+.btn-cancel:hover { background: var(--bg-elevated); color: var(--text-primary); border-color: var(--border-strong); }
+.btn-update, .btn-close { background: var(--accent); color: var(--bg-base); }
+.btn-update:hover, .btn-close:hover { filter: brightness(1.1); }
 
 /* Steps */
-.steps-container { margin: 1.5rem 0; }
-.step { display: flex; gap: 1rem; margin: 1rem 0; align-items: flex-start; }
+.steps-container { margin: 1.25rem 0; }
+.step { display: flex; gap: 1rem; margin: 0.85rem 0; align-items: flex-start; }
 
 .step-indicator {
   display: flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px;
-  border: 2px solid #444; border-radius: 50%;
-  color: #aaa; font-weight: bold; flex-shrink: 0;
+  width: 30px; height: 30px;
+  border: 2px solid var(--border-strong);
+  border-radius: 50%;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 700;
+  flex-shrink: 0;
 }
-.step.active .step-indicator { border-color: #4f8ef7; color: #4f8ef7; }
-.step.done .step-indicator  { border-color: #4caf50; background: #4caf50; color: #fff; }
+.step.active .step-indicator { border-color: var(--accent); color: var(--accent); }
+.step.done .step-indicator   { border-color: var(--color-success); background: var(--color-success); color: var(--bg-base); }
 
 .spinner { animation: spin 1s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.check { font-size: 1.2rem; }
+.check { font-size: 1rem; }
 
-.step-name { font-weight: 500; color: #fff; padding-top: 0.25rem; }
+.step-name {
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  padding-top: 0.3rem;
+}
 
 /* Progress bar */
 .progress-bar-container { margin: 1rem 0; }
-.progress-bar { height: 8px; background: #333; border-radius: 4px; overflow: hidden; }
+.progress-bar { height: 6px; background: var(--bg-elevated); border-radius: 3px; overflow: hidden; }
 .progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #4f8ef7, #3a7fd6);
+  background: var(--accent);
+  border-radius: 3px;
   transition: width 0.3s ease;
 }
 
-/* Success / error */
-.success-icon { font-size: 3rem; color: #4caf50; margin: 1rem 0; }
-.error-icon   { font-size: 3rem; color: #f44336; margin: 1rem 0; }
-
-.spinner-large {
-  font-size: 3rem; margin: 1rem 0;
-  animation: spin 1s linear infinite;
-  color: #4f8ef7;
+/* Success / error icons */
+.success-icon {
+  font-size: 2.5rem;
+  color: var(--color-success);
+  margin: 0.75rem 0;
+}
+.error-icon {
+  font-size: 2.5rem;
+  color: var(--color-error);
+  margin: 0.75rem 0;
 }
 
-.countdown { font-size: 0.85rem; color: #888; }
+.spinner-large {
+  font-size: 2.5rem;
+  margin: 0.75rem 0;
+  animation: spin 1s linear infinite;
+  color: var(--accent);
+}
+
+.countdown {
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
 </style>

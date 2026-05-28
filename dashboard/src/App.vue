@@ -1,24 +1,48 @@
 <template>
   <div class="app">
     <header class="nav">
-      <span class="nav-brand">ArcVault</span>
-      <nav>
-        <router-link to="/agents">Agents</router-link>
-        <router-link to="/jobs">Jobs</router-link>
-        <router-link to="/history">History</router-link>
-        <router-link to="/templates">Templates</router-link>
-        <router-link to="/alerts">Alerts</router-link>
-        <router-link
-          to="/users"
-          :class="{ disabled: !isAdmin }"
-          :title="!isAdmin ? 'Requires admin role' : ''"
-        >Users</router-link>
-        <router-link
-          to="/groups"
-          :class="{ disabled: !isAdmin }"
-          :title="!isAdmin ? 'Requires admin role' : ''"
-        >Groups</router-link>
+      <div class="nav-brand">
+        <svg class="nav-logo" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M10 2L17 6V10C17 13.87 13.94 17.5 10 18.5C6.06 17.5 3 13.87 3 10V6L10 2Z"
+            stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
+          <path d="M7 10L9.5 12.5L13 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="nav-brand-text">ArcVault</span>
+      </div>
+
+      <div class="nav-divider"></div>
+
+      <nav class="nav-links">
+        <router-link to="/agents">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="1.5" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="8.5" y="1.5" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="1.5" y="8.5" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/><rect x="8.5" y="8.5" width="4" height="4" rx="1" stroke="currentColor" stroke-width="1.3"/></svg>
+          Agents
+        </router-link>
+        <router-link to="/jobs">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4h10M2 7h6M2 10h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Jobs
+        </router-link>
+        <router-link to="/history">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.3"/><path d="M7 4.5V7l2 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          History
+        </router-link>
+        <router-link to="/templates">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="1.5" y="1.5" width="11" height="11" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M1.5 5.5h11" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 5.5v7" stroke="currentColor" stroke-width="1.3"/></svg>
+          Templates
+        </router-link>
+        <router-link to="/alerts">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5L1.5 10.5h11L7 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M7 6v2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="10" r="0.6" fill="currentColor"/></svg>
+          Alerts
+        </router-link>
+        <router-link to="/users" :class="{ disabled: !isAdmin }" :title="!isAdmin ? 'Requires admin role' : ''">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M2 12c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Users
+        </router-link>
+        <router-link to="/groups" :class="{ disabled: !isAdmin }" :title="!isAdmin ? 'Requires admin role' : ''">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="5" cy="5" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="9.5" cy="4.5" r="1.75" stroke="currentColor" stroke-width="1.3"/><path d="M1 12c0-2.21 1.79-4 4-4s4 1.79 4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.5 8c1.65 0 3 1.35 3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Groups
+        </router-link>
       </nav>
+
       <div class="nav-right">
         <button
           v-if="rollbackAvailable"
@@ -26,23 +50,36 @@
           title="Roll back coordinator to previous version"
           @click="showRollbackModal = true"
         >
-          ↩ Rollback
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6a4 4 0 1 1 4 4H3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 4v2h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Rollback
         </button>
+
         <button class="theme-toggle" @click="toggleTheme" :title="`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`">
-          <span v-if="theme === 'dark'">☀️</span>
-          <span v-else>🌙</span>
+          <!-- Sun -->
+          <svg v-if="theme === 'dark'" width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M7.5 1v1.5M7.5 12.5V14M14 7.5h-1.5M2.5 7.5H1M12.07 2.93l-1.06 1.06M4 11l-1.06 1.06M12.07 12.07l-1.06-1.06M4 4 2.93 2.93" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          <!-- Moon -->
+          <svg v-else width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M12 9a5 5 0 1 1-6-6 3.5 3.5 0 0 0 6 6z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
         </button>
-        <span class="ws-indicator" :class="{ connected: wsConnected }">
-          {{ wsConnected ? '● Live' : '○ Disconnected' }}
-        </span>
+
+        <div class="ws-indicator" :class="{ connected: wsConnected }" :title="wsConnected ? 'Live — WebSocket connected' : 'Disconnected'">
+          <span class="ws-dot"></span>
+          <span class="ws-label">{{ wsConnected ? 'Live' : 'Off' }}</span>
+        </div>
+
         <div v-if="auth.isAuthenticated.value" class="user-menu">
-          <span class="user-info">{{ auth.currentUser?.username }} ({{ auth.currentUser?.role }})</span>
-          <button class="btn-user-action" @click="showChangePasswordModal = true" title="Change password">
-            🔐
-          </button>
-          <button class="btn-user-action" @click="handleLogout" title="Logout">
-            🚪
-          </button>
+          <div class="user-avatar">{{ userInitials }}</div>
+          <span class="user-info">
+            <span class="user-name">{{ auth.currentUser?.username }}</span>
+            <span class="user-role">{{ auth.currentUser?.role }}</span>
+          </span>
+          <div class="user-actions">
+            <button class="icon-btn" @click="showChangePasswordModal = true" title="Change password">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="3" y="6" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M5 6V4.5a2 2 0 0 1 4 0V6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="9" r="0.75" fill="currentColor"/></svg>
+            </button>
+            <button class="icon-btn icon-btn--logout" @click="handleLogout" title="Logout">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 9.5l2.5-2.5L9 4.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M11.5 7H5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M5 2H2.5A1 1 0 0 0 1.5 3v8a1 1 0 0 0 1 1H5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            </button>
+          </div>
         </div>
       </div>
     </header>
@@ -91,6 +128,11 @@ const theme = ref(localStorage.getItem('arcvault-theme') || 'dark')
 const { connected: wsConnected, lastEvent, connect } = useWebSocket()
 
 const isAdmin = computed(() => auth.hasRole('admin'))
+
+const userInitials = computed(() => {
+  const name = auth.currentUser?.username || ''
+  return name.slice(0, 2).toUpperCase() || '?'
+})
 
 // Reactive update info store
 const updateStore = reactive({
@@ -171,119 +213,289 @@ async function handleLogout() {
 </script>
 
 <style scoped>
-.app { display: flex; flex-direction: column; min-height: 100vh; }
+/* ── App shell ───────────────────────────────────────────── */
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--bg-base);
+}
 
+/* ── Nav ─────────────────────────────────────────────────── */
 .nav {
   display: flex;
   align-items: center;
-  gap: 2rem;
-  padding: 0.75rem 1.5rem;
-  background: #1a1a2e;
-  color: #fff;
+  gap: 0;
+  height: var(--nav-height);
+  padding: 0 1.25rem;
+  background: var(--nav-bg);
+  border-bottom: 1px solid var(--nav-border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
 }
 
-.nav-brand { font-weight: 700; font-size: 1.2rem; letter-spacing: 0.05em; }
-
-.nav a {
-  color: #aaa;
+/* Brand */
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   text-decoration: none;
-  font-size: 0.95rem;
-  transition: color 0.2s;
+  flex-shrink: 0;
 }
-.nav a.router-link-active { color: #fff; border-bottom: 2px solid #4f8ef7; padding-bottom: 2px; }
-.nav a.disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 
+.nav-logo {
+  width: 20px;
+  height: 20px;
+  color: var(--accent);
+}
+
+.nav-brand-text {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1rem;
+  letter-spacing: 0.04em;
+  color: var(--text-primary);
+}
+
+.nav-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-default);
+  margin: 0 1.1rem;
+  flex-shrink: 0;
+}
+
+/* Nav links */
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  flex: 1;
+}
+
+.nav-links a {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 5px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.nav-links a svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.nav-links a:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.nav-links a:hover svg {
+  opacity: 1;
+}
+
+.nav-links a.router-link-active {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  font-weight: 600;
+}
+
+.nav-links a.router-link-active svg {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.nav-links a.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Right side */
 .nav-right {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.4rem;
+  flex-shrink: 0;
 }
 
+/* Rollback button */
 .btn-rollback-header {
-  padding: 0.3rem 0.8rem;
-  background: transparent;
-  color: #e6a817;
-  border: 1px solid #e6a817;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 600;
-  transition: background 0.15s;
-  white-space: nowrap;
-}
-.btn-rollback-header:hover { background: rgba(230, 168, 23, 0.15); }
-
-.theme-toggle {
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  font-size: 1.2rem;
-  padding: 0;
   display: flex;
   align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.75rem;
+  background: transparent;
+  color: var(--color-warning);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 5px;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: background 0.15s;
 }
 
-.theme-toggle:hover { opacity: 0.7; }
+.btn-rollback-header:hover {
+  background: var(--bg-warning);
+}
 
-.ws-indicator { font-size: 0.85rem; color: #e55; }
-.ws-indicator.connected { color: #4caf50; }
+/* Theme toggle */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
 
+.theme-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border-color: var(--border-default);
+}
+
+/* WS indicator */
+.ws-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  cursor: default;
+  user-select: none;
+}
+
+.ws-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-error);
+  flex-shrink: 0;
+}
+
+.ws-indicator.connected .ws-dot {
+  background: var(--color-success);
+  animation: ws-pulse 2s ease-in-out infinite;
+}
+
+@keyframes ws-pulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--color-success); }
+  50%       { opacity: 0.7; box-shadow: 0 0 0 3px transparent; }
+}
+
+.ws-label {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.ws-indicator.connected .ws-label {
+  color: var(--color-success);
+}
+
+/* User menu */
 .user-menu {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.5rem;
+  padding: 0.2rem 0.2rem 0.2rem 0.5rem;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  background: var(--bg-card);
+}
+
+.user-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
 }
 
 .user-info {
-  font-size: 0.9rem;
-  color: #aaa;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
 }
 
-.btn-user-action {
+.user-name {
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.user-role {
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+.user-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  margin-left: 0.2rem;
+}
+
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
   background: none;
   border: none;
-  color: inherit;
-  cursor: pointer;
-  font-size: 1.1rem;
-  padding: 0.25rem 0.5rem;
   border-radius: 4px;
-  transition: background 0.2s, opacity 0.2s;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
 }
 
-.btn-user-action:hover {
-  background: rgba(255, 255, 255, 0.1);
+.icon-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
 }
 
-main { padding: 1.5rem; flex: 1; }
-
-[data-theme="light"] {
-  --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --text-primary: #1a1a1a;
-  --text-secondary: #666666;
-  --border-color: #e0e0e0;
-  --card-bg: #fafafa;
+.icon-btn--logout:hover {
+  color: var(--color-error);
+  background: var(--bg-error);
 }
 
-[data-theme="light"] .app { background: #fff; color: #1a1a1a; }
-
-[data-theme="light"] .nav {
-  background: #f5f5f5;
-  color: #1a1a1a;
-  border-bottom: 1px solid #e0e0e0;
+/* Main content */
+main {
+  padding: 1.5rem 1.75rem;
+  flex: 1;
 }
-
-[data-theme="light"] .nav a { color: #666; }
-
-[data-theme="light"] .nav a.router-link-active { color: #1a1a1a; }
-
-[data-theme="light"] .user-info { color: #666; }
-
-[data-theme="light"] .btn-user-action:hover { background: rgba(0, 0, 0, 0.05); }
-
-[data-theme="light"] .ws-indicator { color: #e74c3c; }
-
-[data-theme="light"] .ws-indicator.connected { color: #27ae60; }
 </style>
