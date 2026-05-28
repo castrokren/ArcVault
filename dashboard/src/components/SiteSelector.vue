@@ -43,23 +43,25 @@ onUnmounted(() => clearInterval(timer))
 
 <style scoped>
 .site-selector select {
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  border: 1px solid #444;
-  background: #111;
-  color: #ccc;
-  font-size: 0.85rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 5px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
   cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.site-selector select:hover {
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
 .site-selector select:focus {
   outline: none;
-  border-color: #4f8ef7;
-}
-
-[data-theme="light"] .site-selector select {
-  background: #fff;
-  border-color: #ccc;
-  color: #333;
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-dim);
 }
 </style>

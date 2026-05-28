@@ -2,8 +2,8 @@
 name: ArcVault Patterns
 category: memory
 priority: medium
-last_updated: 2026-05-26
-last_accessed: 2026-05-26
+last_updated: 2026-05-27
+last_accessed: 2026-05-27
 stale_after_days: 90
 auto_summarize: true
 archive_policy: keep
@@ -39,7 +39,18 @@ Standard steps:
 3. Add nav link in `dashboard/src/App.vue`
 4. Wire API call from `dashboard/src/api.js`
 5. Apply role guard if admin-only (visible-but-disabled pattern)
-6. Support light/dark theme via CSS custom properties
+6. Use CSS variables from `style.css` for all colors — NO hardcoded hex values, NO fallback values in `var()`, NO `[data-theme]` inside `<style scoped>`
+
+## Pattern: Vue Component CSS Audit
+
+Appears in: 2026-05-27 design system overhaul
+
+When touching any `.vue` file's `<style scoped>`, check for:
+- Hardcoded hex colors (`#1a1a2e`, `#333`, etc.) → replace with `var(--token)`
+- Old token names (`--bg-primary`, `--border-color`, `--accent-color`) → never defined; replace with design system tokens
+- `var(--x, #fallback)` patterns → remove fallback, just use `var(--x)`
+- `[data-theme="dark"]` or `[data-theme="light"]` blocks inside `<style scoped>` → delete entirely (they never match); move any needed overrides to global `style.css`
+- Duplicate class definitions that are already in global `style.css` (`.table`, `.badge`, `.btn`, `.chip`, `.form-group`, `.modal-*`) → remove from scoped, let global win
 
 ## Pattern: New Notification Channel
 

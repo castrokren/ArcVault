@@ -92,10 +92,7 @@
           <input v-model="form.command" placeholder='robocopy D:\Docs E:\Backup /MIR' />
 
           <label>Schedule</label>
-          <div class="schedule-field">
-            <input v-model="form.schedule" placeholder="0 2 * * *" />
-            <span v-if="preview(form.schedule)" class="cron-preview">{{ preview(form.schedule) }}</span>
-          </div>
+          <ScheduleBuilder v-model="form.schedule" />
 
           <template v-if="editTarget">
             <label>Enabled</label>
@@ -123,6 +120,7 @@
 import { ref, onMounted } from 'vue'
 import { getTemplates, createTemplate, updateTemplate, deleteTemplate, runTemplate, cronPreview } from '../api.js'
 import Pagination from '../components/Pagination.vue'
+import ScheduleBuilder from '../components/ScheduleBuilder.vue'
 
 const result = ref({ data: [], total: 0, page: 1, pages: 0, limit: 25 })
 const page = ref(1)
