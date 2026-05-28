@@ -418,23 +418,24 @@ dashboard/src/
 
 ## Future Roadmap
 
-### Phase 16: Multi-Coordinator Federation (Next)
-- Coordinator-to-coordinator replication and agent load balancing
-- Failover and state consistency
-- Federation management UI in dashboard
+**Current version:** v1.0.1 (May 2026) — All phases through 18 complete.
 
-### Phase 17+: Future Enhancements
-- Enhanced monitoring and alerting (beyond webhooks)
-- CLI tooling for headless operations
-- Additional sync backends (S3, Azure Blob, etc.)
-- Advanced reporting and compliance export
+### Candidate Phase 19+ Features
 
-### Known Improvements for Later
-- Add started_at column to job_runs (for accurate notification durations)
+| Feature | Notes |
+|---------|-------|
+| CLI tooling | Headless operations, scripting without dashboard |
+| OpenAPI / Swagger spec | API documentation generation from routes |
+| Audit logging | Track user actions and config changes |
+| Additional sync backends | S3, Azure Blob, additional targets |
+| Advanced reporting | Compliance export, analytics |
+
+### Known Improvements Queued
+
+- `started_at` column on `job_runs` — accurate notification durations (deferred from Phase 17)
 - Email notifier: TLS client certificate authentication support
-- Webhook retry logic (currently single attempt only)
 - User search/filter in admin panel
-- Password reset via email (currently users can only change own password)
+- Password reset via email
 
 ---
 
