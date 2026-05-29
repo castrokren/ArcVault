@@ -88,6 +88,33 @@ func (s *Server) adminRoute(next http.HandlerFunc) http.HandlerFunc {
 	)
 }
 
+// adminTokenRoute allows either admin token (for CLI testing) or JWT with admin role
+func (s *Server) adminTokenRoute(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("Authorization")
+		if token == "" {
+			http.Error(w, "missing Authorization header", http.StatusUnauthorized)
+			return
+		}
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+
+		// Check for admin token first (for testing/CLI)
+		if token == s.cfg.AdminToken {
+			next(w, r)
+			return
+		}
+
+		// Fall back to JWT + role check
+		s.JWTMiddleware(
+			RequirePasswordChange("/api/auth/change-password")(
+				RequireRole("admin")(next),
+			),
+		)(w, r)
+	}
+}
+
 // operatorRoute wraps a handler with JWT, password change check, and operator+ role requirement
 func (s *Server) operatorRoute(next http.HandlerFunc) http.HandlerFunc {
 	return s.JWTMiddleware(
@@ -146,16 +173,18 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /api/agents/register", s.authMiddleware(s.handleRegister))
 	s.router.HandleFunc("POST /api/agents/{id}/heartbeat", s.authMiddleware(s.handleHeartbeat))
 	s.router.HandleFunc("POST /api/jobs/{id}/results", s.authMiddleware(s.handlePostJobResults))
-
+	s.router.HandleFunc("POST /api/jobs/{id}/progress", s.authMiddleware(s.handleProgress))
+	s.router.HandleFunc("GET /api/jobs/{id}/progress", s.viewerRoute(s.handleGetProgress))
 	// Agent list (viewer+) and delete (admin only)
 	s.router.HandleFunc("GET /api/agents", s.viewerRoute(s.handleListAgents))
 	s.router.HandleFunc("DELETE /api/agents/{id}", s.adminRoute(s.handleDeleteAgent))
 
 	// Jobs endpoints
-	s.router.HandleFunc("POST /api/jobs", s.operatorRoute(s.handleCreateJob))
-	s.router.HandleFunc("GET /api/jobs", s.viewerRoute(s.handleListJobs))
-	s.router.HandleFunc("GET /api/jobs/{id}", s.viewerRoute(s.handleGetJob))
-	s.router.HandleFunc("DELETE /api/jobs/{id}", s.adminRoute(s.handleDeleteJob))
+	s.router.HandleFunc("POST /api/jobs", s.adminTokenRoute(s.handleCreateJob))
+	s.router.HandleFunc("GET /api/jobs", s.adminTokenRoute(s.handleListJobs))
+	s.router.HandleFunc("GET /api/jobs/{id}", s.adminTokenRoute(s.handleGetJob))
+	s.router.HandleFunc("DELETE /api/jobs/{id}", s.adminTokenRoute(s.handleDeleteJob))
+	s.router.HandleFunc("POST /api/jobs/{id}/cancel", s.adminTokenRoute(s.handleCancelJob))
 	s.router.HandleFunc("PATCH /api/jobs/{id}/status", s.operatorRoute(s.handleUpdateJobStatus))
 	s.router.HandleFunc("GET /api/jobs/{id}/runs", s.viewerRoute(s.handleGetJobRuns))
 	s.router.HandleFunc("GET /api/job-runs", s.viewerRoute(s.handleListAllJobRuns))

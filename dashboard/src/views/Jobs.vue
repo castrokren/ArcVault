@@ -64,6 +64,7 @@
         <label>Schedule <span class="optional">(optional)</span></label>
         <ScheduleBuilder v-model="form.schedule" />
       </div>
+      <SyncFlagsBuilder v-model="form.sync_flags" />
       <div class="form-actions">
         <button class="primary" @click="createJob" :disabled="creating">
           {{ creating ? 'Creating...' : 'Create' }}
@@ -119,7 +120,12 @@
           <td class="mono">{{ job.agent_id }}</td>
           <td class="mono">{{ job.source_path }}</td>
           <td class="mono">{{ job.dest_path }}</td>
-          <td><span class="badge" :class="job.status">{{ job.status }}</span></td>
+          <td>
+            <div v-if="job.status === 'running'" class="progress-cell">
+              <ProgressBar :percentage="getJobProgress(job.id)" />
+            </div>
+            <span v-else class="badge" :class="job.status">{{ job.status }}</span>
+          </td>
           <td>{{ formatDate(job.created_at) }}</td>
           <td v-if="!selectedSite">
             <button class="danger-sm" @click="removeJob(job.id)">Delete</button>
@@ -143,7 +149,9 @@
 import { ref, computed, onMounted, watch, inject } from 'vue'
 import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups } from '../api.js'
 import Pagination from '../components/Pagination.vue'
+import ProgressBar from '../components/ProgressBar.vue'
 import ScheduleBuilder from '../components/ScheduleBuilder.vue'
+import SyncFlagsBuilder from '../components/SyncFlagsBuilder.vue'
 import { useFederationLag } from '../composables/useFederationLag.js'
 
 const props = defineProps(['lastEvent'])
@@ -172,8 +180,9 @@ const statusFilter = ref('all')
 
 const agents = ref([])
 const groups = ref([])
+const progressMap = ref({})
 
-const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '' })
+const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', sync_flags: {} })
 
 async function load() {
   loading.value = true
@@ -244,9 +253,13 @@ async function createJob() {
     if (!payload.schedule) delete payload.schedule
     if (form.value.dispatchMode === 'agent') delete payload.group_id
     if (form.value.dispatchMode === 'group') delete payload.agent_id
+    // Remove sync_flags if all fields are empty (backward compatibility)
+    if (!payload.sync_flags || Object.values(payload.sync_flags).every(v => !v || (Array.isArray(v) && v.length === 0))) {
+      delete payload.sync_flags
+    }
 
     await apiCreateJob(payload)
-    form.value = { dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '' }
+    form.value = { dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', sync_flags: {} }
     showForm.value = false
     page.value = 1
     await load()
@@ -286,7 +299,7 @@ async function loadAgentsAndGroups() {
       getAgents(),
       getGroups(),
     ])
-    agents.value = agentsData.agents || []
+    agents.value = agentsData.data || []
     groups.value = groupsData.groups || []
   } catch (e) {
     console.error('Failed to load agents and groups:', e)
@@ -305,7 +318,29 @@ watch(() => props.lastEvent, (ev) => {
 onMounted(() => {
   load()
   loadAgentsAndGroups()
+
+  // Connect to WebSocket for real-time progress updates
+  const token = localStorage.getItem('token')
+  if (token) {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?token=${token}`)
+
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data)
+      if (msg.type === 'progress') {
+        progressMap.value[msg.payload.job_id] = msg.payload.percentage
+      }
+    }
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error)
+    }
+  }
 })
+
+function getJobProgress(jobId) {
+  return progressMap.value[jobId] || 0
+}
 </script>
 
 <style scoped>
@@ -475,6 +510,12 @@ button.primary {
 .badge.running   { background: #1a2a3a; color: #4f8ef7; }
 .badge.completed { background: #1a3a1a; color: #4caf50; }
 .badge.failed    { background: #3a1a1a; color: #e55; }
+
+.progress-cell {
+  min-width: 150px;
+  display: flex;
+  align-items: center;
+}
 
 button.danger-sm {
   padding: 0.2rem 0.6rem;
