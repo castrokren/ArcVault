@@ -50,9 +50,13 @@ jobs:
 
       - name: Build binaries
         run: |
+          $ErrorActionPreference = "Stop"
           go build -o coordinator.exe ./coordinator
           go build -o agent.exe ./agent
           go build -o cmd/setup/arcvault-setup.exe ./cmd/setup
+          if (-not (Test-Path coordinator.exe)) { throw "coordinator.exe not built" }
+          if (-not (Test-Path agent.exe)) { throw "agent.exe not built" }
+          if (-not (Test-Path cmd/setup/arcvault-setup.exe)) { throw "arcvault-setup.exe not built" }
 
       - name: Prepare installer files
         run: |
