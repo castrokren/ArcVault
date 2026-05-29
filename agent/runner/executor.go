@@ -23,7 +23,8 @@ func RealExecutor(job Job) (exitCode int, output string) {
 		}
 	} else if runtime.GOOS == "windows" {
 		// robocopy exit codes: 0-7 are success/warning, 8+ are errors
-		cmd = exec.Command("robocopy", job.SourcePath, job.DestPath, "/E", "/LOG+:NUL")
+		// Flags: /E (recurse), /R:0 (no retries), /W:0 (no wait), /NP (no progress), /NFL /NDL (suppress logs)
+		cmd = exec.Command("robocopy", job.SourcePath, job.DestPath, "/E", "/R:0", "/W:0", "/NP", "/NFL", "/NDL")
 	} else {
 		// rsync: -a archive, -v verbose, trailing slash copies contents
 		src := strings.TrimRight(job.SourcePath, "/") + "/"
