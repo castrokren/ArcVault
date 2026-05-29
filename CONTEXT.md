@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** May 29, 2026 | **v1.1.0** | **PRODUCTION READY + CRITICAL HOT FIX**
+**Last updated:** May 29, 2026 | **v0.2.1** | **PRODUCTION READY**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -57,7 +57,19 @@
   - Testing: Verified jobs transition PENDING→RUNNING→COMPLETED with actual file copying
   - Deployment: Run .\scripts\rebuild-and-restart.ps1
   - Files changed: coordinator/server/jobs.go, agent/runner/executor.go, FIX_SUMMARY.md, memory/phase21a4_lessons_learned.md
-🎯 Next: Phase 22 (Integration testing & stress tests)
+✅ v0.2.1 (2026-05-29): Scheduled jobs fix + self-update verification
+  - Issue: Scheduled jobs executed immediately instead of waiting for scheduled time
+  - Root cause 1: Jobs created with status="pending" even when schedule field set (should be "scheduled")
+  - Root cause 2: Jobs created after startup not registered with cron scheduler
+  - Fix 1: Set status="scheduled" in handleCreateJob when Schedule != nil (coordinator/server/jobs.go lines 81-96, 171-186)
+  - Fix 2: Added late-binding cron registration via registerJobSchedule() called after job insert (lines 127, 216)
+  - Fix 3: Added global jobCron + jobCronMu in scheduler.go for post-startup job registration (lines 23-26, 142)
+  - Fix 4: Changed reset logic from "pending" → "scheduled" in triggerScheduledJobs (line 50)
+  - GitHub Actions: Updated deprecated artifact actions v3 → v4 in build-installers.yml
+  - Self-update: Verified coordinator check-update finds v0.2.1 on second PC (asset naming: coordinator_windows_amd64.exe)
+  - Tests: Updated 3 scheduler tests to expect "scheduled" status for jobs with schedule
+  - Release: v0.2.1 tagged, installer + binary uploaded to GitHub
+🎯 Next: Verify update flow on second PC + Phase 22 (Integration testing & stress tests)
 
 ## Core Commands
 ```bash
