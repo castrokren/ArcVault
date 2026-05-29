@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** May 28, 2026 | **v1.0.4** | **PRODUCTION READY**
+**Last updated:** May 28, 2026 | **v1.1.0** | **PRODUCTION READY**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -37,7 +37,17 @@
   - Integration: Wired into Jobs form via v-model, API payload includes/omits sync_flags correctly
   - Tests: 70 total (32 backend + 29 component unit + 9 integration)
   - Bug fixes: Undefined array handling, API response structure (agentsData.data), form state reset
-🎯 Next: Cancel backups, backup progress indicator
+✅ Phase 20 (COMPLETE): Job cancellation + progress tracking (initial)
+  - Cancel endpoint + status workflow
+  - Initial progress column schema
+✅ Phase 21a-3 (COMPLETE 2026-05-28): Real-time job progress tracking
+  - Backend: POST /api/jobs/{id}/progress (percentage, logs, status) + GET endpoint with log history
+  - Database: Auto-create job_runs on job insertion via trigger; UpdateProgressAndLogs writes to job_runs + job_logs
+  - Frontend: ProgressBar.vue component (4px green bar, smooth transitions); Jobs.vue WebSocket listener for real-time updates
+  - Architecture: Agent → POST progress → DB broadcast → WebSocket → Frontend (no polling needed)
+  - Tests: 15/15 progress tests passing; full suite 125+ tests passing
+  - PR: phase/21a-3-progress-tracking (ready for review)
+🎯 Next: Phase 21a-4 (Job detail modal with full logs display)
 
 ## Core Commands
 ```bash
