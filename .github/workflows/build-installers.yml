@@ -60,7 +60,7 @@ jobs:
           Rename-Item -Path "ArcVault-Setup.exe" -NewName "ArcVault-Setup-${{ github.ref_name }}-windows-amd64.exe"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: windows-installer
           path: ArcVault-Setup-*-windows-amd64.exe
@@ -132,7 +132,7 @@ jobs:
           echo "Requires Apple Developer Certificate and notarization credentials"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: macos-installer-${{ matrix.arch }}
           path: ArcVault-Setup-*-macos-${{ matrix.arch }}.pkg
@@ -205,7 +205,7 @@ jobs:
             dist/arcvault-setup=/usr/local/bin/arcvault-setup
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: linux-installers
           path: |
@@ -221,7 +221,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: release-artifacts
 
