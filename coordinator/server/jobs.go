@@ -236,7 +236,7 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	offset := (p.Page - 1) * p.Limit
 	queryArgs := append(args, p.Limit, offset)
 	rows, err := s.db.Conn().Query(
-		"SELECT id, agent_id, name, source_path, dest_path, schedule, status, progress, created_at FROM jobs"+where+
+		"SELECT id, agent_id, name, source_path, dest_path, schedule, sync_flags, status, progress, created_at FROM jobs"+where+
 			" ORDER BY created_at DESC LIMIT ? OFFSET ?",
 		queryArgs...,
 	)
@@ -250,12 +250,21 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var j Job
 		var schedule *string
+		var syncFlagsJSON *string
 		var progressJSON *string
-		if err := rows.Scan(&j.ID, &j.AgentID, &j.Name, &j.SourcePath, &j.DestPath, &schedule, &j.Status, &progressJSON, &j.CreatedAt); err != nil {
+		if err := rows.Scan(&j.ID, &j.AgentID, &j.Name, &j.SourcePath, &j.DestPath, &schedule, &syncFlagsJSON, &j.Status, &progressJSON, &j.CreatedAt); err != nil {
 			http.Error(w, "failed to scan job", http.StatusInternalServerError)
 			return
 		}
 		j.Schedule = schedule
+
+		// Deserialize sync_flags JSON if present
+		if syncFlagsJSON != nil {
+			var syncFlags map[string]interface{}
+			if err := json.Unmarshal([]byte(*syncFlagsJSON), &syncFlags); err == nil {
+				j.SyncFlags = syncFlags
+			}
+		}
 
 		// Deserialize progress JSON if present
 		if progressJSON != nil {
