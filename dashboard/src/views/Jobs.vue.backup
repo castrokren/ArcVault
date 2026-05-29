@@ -64,6 +64,7 @@
         <label>Schedule <span class="optional">(optional)</span></label>
         <ScheduleBuilder v-model="form.schedule" />
       </div>
+      <SyncFlagsBuilder v-model="form.sync_flags" />
       <div class="form-actions">
         <button class="primary" @click="createJob" :disabled="creating">
           {{ creating ? 'Creating...' : 'Create' }}
@@ -113,16 +114,21 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="job in jobs" :key="job.id">
+        <tr v-for="job in jobs" :key="job.id" class="job-row">
           <td class="mono">{{ job.id }}</td>
           <td>{{ job.name }}</td>
           <td class="mono">{{ job.agent_id }}</td>
           <td class="mono">{{ job.source_path }}</td>
           <td class="mono">{{ job.dest_path }}</td>
-          <td><span class="badge" :class="job.status">{{ job.status }}</span></td>
+          <td>
+            <div v-if="job.status === 'running'" class="progress-cell">
+              <ProgressBar :percentage="getJobProgress(job.id)" />
+            </div>
+            <span v-else class="badge" :class="job.status">{{ job.status }}</span>
+          </td>
           <td>{{ formatDate(job.created_at) }}</td>
-          <td v-if="!selectedSite">
-            <button class="action-btn" @click="viewLogs(job.id)">Logs</button>
+          <td v-if="!selectedSite" class="actions-cell">
+            <button class="action-btn view-logs" @click="openJobModal(job)">Logs</button>
             <button class="danger-sm" @click="removeJob(job.id)">Delete</button>
           </td>
         </tr>
@@ -138,39 +144,24 @@
       @page-change="goToPage"
     />
 
-    <!-- Logs Modal -->
-    <div v-if="showLogsModal" class="modal-overlay" @click.self="showLogsModal = false">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>Job Logs: {{ logsJobName }}</h3>
-          <button class="close-btn" @click="showLogsModal = false">✕</button>
-        </div>
-        <div class="modal-body">
-          <div v-if="logsLoading" class="loading">Loading logs...</div>
-          <div v-else-if="logsError" class="error">{{ logsError }}</div>
-          <div v-else-if="!latestRun" class="empty">No runs found for this job.</div>
-          <div v-else class="logs-container">
-            <div class="run-info">
-              <div><strong>Run ID:</strong> <span class="mono">{{ latestRun.id }}</span></div>
-              <div><strong>Exit Code:</strong> <span :class="{ 'exit-success': latestRun.exit_code === 0, 'exit-fail': latestRun.exit_code !== 0 }">{{ latestRun.exit_code ?? '—' }}</span></div>
-              <div><strong>Finished:</strong> {{ latestRun.finished_at ? formatDate(latestRun.finished_at) : '—' }}</div>
-            </div>
-            <pre class="logs-output">{{ latestRun.output || '(no output)' }}</pre>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="secondary" @click="showLogsModal = false">Close</button>
-        </div>
-      </div>
-    </div>
+    <!-- Job Detail Modal -->
+    <JobDetailModal
+      v-if="selectedJob"
+      :job="selectedJob"
+      :is-open="modalOpen"
+      @close="closeJobModal"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch, inject } from 'vue'
-import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups, getJobRuns } from '../api.js'
+import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups } from '../api.js'
 import Pagination from '../components/Pagination.vue'
+import ProgressBar from '../components/ProgressBar.vue'
+import JobDetailModal from '../components/JobDetailModal.vue'
 import ScheduleBuilder from '../components/ScheduleBuilder.vue'
+import SyncFlagsBuilder from '../components/SyncFlagsBuilder.vue'
 import { useFederationLag } from '../composables/useFederationLag.js'
 
 const props = defineProps(['lastEvent'])
@@ -196,18 +187,14 @@ const creating = ref(false)
 const formError = ref(null)
 const searchQuery = ref('')
 const statusFilter = ref('all')
+const modalOpen = ref(false)
+const selectedJob = ref(null)
 
 const agents = ref([])
 const groups = ref([])
+const progressMap = ref({})
 
-const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '' })
-
-// Logs modal state
-const showLogsModal = ref(false)
-const logsJobName = ref('')
-const logsLoading = ref(false)
-const logsError = ref(null)
-const latestRun = ref(null)
+const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', sync_flags: {} })
 
 async function load() {
   loading.value = true
@@ -278,9 +265,13 @@ async function createJob() {
     if (!payload.schedule) delete payload.schedule
     if (form.value.dispatchMode === 'agent') delete payload.group_id
     if (form.value.dispatchMode === 'group') delete payload.agent_id
+    // Remove sync_flags if all fields are empty (backward compatibility)
+    if (!payload.sync_flags || Object.values(payload.sync_flags).every(v => !v || (Array.isArray(v) && v.length === 0))) {
+      delete payload.sync_flags
+    }
 
     await apiCreateJob(payload)
-    form.value = { dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '' }
+    form.value = { dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', sync_flags: {} }
     showForm.value = false
     page.value = 1
     await load()
@@ -301,30 +292,16 @@ async function removeJob(id) {
   }
 }
 
-async function viewLogs(jobId) {
-  logsLoading.value = true
-  logsError.value = null
-  latestRun.value = null
+function openJobModal(job) {
+  console.log('openJobModal called with:', job)
+  selectedJob.value = job
+  modalOpen.value = true
+  console.log('After setting - selectedJob:', selectedJob.value, 'modalOpen:', modalOpen.value)
+}
 
-  // Find the job name for display
-  const job = jobs.value.find(j => j.id === jobId)
-  logsJobName.value = job?.name || jobId
-
-  try {
-    const runsData = await getJobRuns({ jobID: jobId, limit: 1 })
-    const runs = runsData.data || []
-
-    if (runs.length === 0) {
-      latestRun.value = null
-    } else {
-      latestRun.value = runs[0]
-    }
-  } catch (e) {
-    logsError.value = e.message
-  } finally {
-    logsLoading.value = false
-    showLogsModal.value = true
-  }
+function closeJobModal() {
+  modalOpen.value = false
+  selectedJob.value = null
 }
 
 function formatDate(d) {
@@ -347,7 +324,7 @@ async function loadAgentsAndGroups() {
       getGroups(),
     ])
     agents.value = agentsData.data || []
-    groups.value = groupsData.data || []
+    groups.value = groupsData.groups || []
   } catch (e) {
     console.error('Failed to load agents and groups:', e)
   }
@@ -365,7 +342,29 @@ watch(() => props.lastEvent, (ev) => {
 onMounted(() => {
   load()
   loadAgentsAndGroups()
+
+  // Connect to WebSocket for real-time progress updates
+  const token = localStorage.getItem('token')
+  if (token) {
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws?token=${token}`)
+
+    ws.onmessage = (event) => {
+      const msg = JSON.parse(event.data)
+      if (msg.type === 'progress') {
+        progressMap.value[msg.payload.job_id] = msg.payload.percentage
+      }
+    }
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error)
+    }
+  }
 })
+
+function getJobProgress(jobId) {
+  return progressMap.value[jobId] || 0
+}
 </script>
 
 <style scoped>
@@ -477,224 +476,4 @@ button.primary {
 }
 
 .error { color: #e55; margin: 0.5rem 0; }
-.empty { color: #888; margin: 2rem 0; }
-
-.filters { margin-bottom: 1.5rem; }
-
-.search-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 1rem;
-  border-radius: 4px;
-  border: 1px solid #2a2a3e;
-  background: #0f0f1a;
-  color: #fff;
-  font-size: 0.95rem;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #4f8ef7;
-  box-shadow: 0 0 0 2px rgba(79, 142, 247, 0.1);
-}
-
-.filter-chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-
-.chip {
-  padding: 0.4rem 1rem;
-  border-radius: 999px;
-  border: 1px solid #2a2a3e;
-  background: transparent;
-  color: #aaa;
-  cursor: pointer;
-  font-size: 0.85rem;
-  transition: all 0.2s;
-}
-
-.chip:hover { border-color: #4f8ef7; color: #4f8ef7; }
-.chip.active { background: #4f8ef7; border-color: #4f8ef7; color: #fff; }
-
-.table { width: 100%; border-collapse: collapse; }
-.table th, .table td {
-  text-align: left;
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid #2a2a3e;
-}
-.table th { color: #888; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; }
-.mono { font-family: monospace; font-size: 0.85rem; }
-
-.badge {
-  display: inline-block;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-.badge.pending   { background: #2a2a1a; color: #f0b429; }
-.badge.running   { background: #1a2a3a; color: #4f8ef7; }
-.badge.completed { background: #1a3a1a; color: #4caf50; }
-.badge.failed    { background: #3a1a1a; color: #e55; }
-
-button.danger-sm {
-  padding: 0.2rem 0.6rem;
-  background: #3a1a1a;
-  color: #e55;
-  border: 1px solid #e55;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-
-.action-btn {
-  padding: 0.2rem 0.6rem;
-  background: #1a3a4a;
-  color: #4f8ef7;
-  border: 1px solid #4f8ef7;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.8rem;
-  transition: all 0.15s ease;
-}
-
-.action-btn:hover {
-  background: #2a4a5a;
-  color: #fff;
-}
-
-/* Logs Modal */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: #1e1e2e;
-  border: 1px solid #333;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 900px;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem;
-  border-bottom: 1px solid #333;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  color: #888;
-  font-size: 1.5rem;
-  cursor: pointer;
-  padding: 0;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.close-btn:hover {
-  color: #fff;
-}
-
-.modal-body {
-  flex: 1;
-  overflow: auto;
-  padding: 1.5rem;
-}
-
-.logs-container {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.run-info {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  padding: 1rem;
-  background: #252535;
-  border-radius: 4px;
-  font-size: 0.9rem;
-}
-
-.run-info div {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.run-info strong {
-  color: #aaa;
-}
-
-.exit-success {
-  color: #4caf50;
-  font-weight: 600;
-}
-
-.exit-fail {
-  color: #e55;
-  font-weight: 600;
-}
-
-.logs-output {
-  background: #0f0f1a;
-  border: 1px solid #333;
-  border-radius: 4px;
-  padding: 1rem;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  max-height: 400px;
-  overflow: auto;
-  color: #ccc;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.modal-footer {
-  padding: 1rem 1.5rem;
-  border-top: 1px solid #333;
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
-.modal-footer button.secondary {
-  padding: 0.4rem 1rem;
-  background: #333;
-  color: #aaa;
-  border: 1px solid #444;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-.modal-footer button.secondary:hover {
-  background: #404040;
-  color: #fff;
-}
-</style>
+.empty { color: #888; margin

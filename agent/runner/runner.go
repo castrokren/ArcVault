@@ -15,13 +15,14 @@ import (
 
 // Job represents a pending job returned by the coordinator.
 type Job struct {
-	ID         string `json:"id"`
-	AgentID    string `json:"agent_id"`
-	Name       string `json:"name"`
-	SourcePath string `json:"source_path"`
-	DestPath   string `json:"dest_path"`
-	Command    string `json:"command"`
-	Status     string `json:"status"`
+	ID         string      `json:"id"`
+	AgentID    string      `json:"agent_id"`
+	Name       string      `json:"name"`
+	SourcePath string      `json:"source_path"`
+	DestPath   string      `json:"dest_path"`
+	Command    string      `json:"command"`
+	Status     string      `json:"status"`
+	SyncFlags  *SyncFlags  `json:"sync_flags,omitempty"`
 }
 
 // Executor is a function that runs a job and returns exit code + output.

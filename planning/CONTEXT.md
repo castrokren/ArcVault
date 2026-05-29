@@ -1,6 +1,6 @@
 # Planning Workspace
 
-**Last updated:** May 28, 2026
+**Last updated:** May 29, 2026
 
 ## What happens here
 
@@ -32,12 +32,15 @@ Deciding what to build next in ArcVault. Breaking phases into ordered tasks. Tra
 
 ## Current state
 
-**v1.0.2 — Production** (as of May 28, 2026)
+**v1.1.0 — Production** (as of May 29, 2026)
 
 - v1.0.0 shipped with Phase 17 complete (111 tests passing)
 - Dashboard design overhaul shipped to production (2026-05-27)
 - v1.0.1 bugfixes applied (2026-05-28): agent dropdown nil slice, update check plain-text error
 - v1.0.2 (2026-05-28): Delete agents — `DELETE /api/agents/{id}`, confirmation modal, 6 tests
+- **Phase 21a** (May 28-29):
+  - 21a-1 to 21a-3: Real-time job progress tracking — POST/GET endpoints, ProgressBar component, WebSocket integration (15/15 tests)
+  - 21a-4 (May 29): **Logs button** in Jobs table UI — button displayed, placeholder handler in place, build pipeline notes captured
 
 ## Candidate next phases
 
@@ -60,7 +63,8 @@ Deciding what to build next in ArcVault. Breaking phases into ordered tasks. Tra
 
 1. ~~**Delete agents**~~ ✅ Done (2026-05-28)
 2. ~~**Schedule builder UI**~~ ✅ Done (2026-05-28) — ScheduleBuilder.vue with Off/Interval/Daily/Weekly/Monthly/Custom modes, live preview, wired into Jobs + Templates
-3. **Robocopy/rsync flags** *(Medium)* — add flags column to jobs DB schema, pass flags through API and agent execution, multi-select UI in job form
+3. ~~**Logs button in Jobs table**~~ ✅ Done (2026-05-29) — Button visible, placeholder handler wired, ready for log fetching implementation
+4. **Robocopy/rsync flags** *(Medium)* — add flags column to jobs DB schema, pass flags through API and agent execution, multi-select UI in job form
 4. **Cancel scheduled/running backups** *(Medium–Hard)* — canceling a pending job is a status update; canceling a running job requires a kill signal from coordinator → agent over WebSocket
 5. **Backup progress indicator** *(Hard)* — agent must emit byte/file-count events mid-execution, coordinator broadcasts via WebSocket, frontend renders live progress
 
