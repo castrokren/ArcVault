@@ -175,6 +175,7 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /api/jobs/{id}/results", s.authMiddleware(s.handlePostJobResults))
 	s.router.HandleFunc("POST /api/jobs/{id}/progress", s.authMiddleware(s.handleProgress))
 	s.router.HandleFunc("GET /api/jobs/{id}/progress", s.viewerRoute(s.handleGetProgress))
+	s.router.HandleFunc("GET /api/jobs/{id}/logs", s.viewerRoute(s.handleGetJobLogs))
 	// Agent list (viewer+) and delete (admin only)
 	s.router.HandleFunc("GET /api/agents", s.viewerRoute(s.handleListAgents))
 	s.router.HandleFunc("DELETE /api/agents/{id}", s.adminRoute(s.handleDeleteAgent))

@@ -547,3 +547,56 @@ func (d *DB) GetProgress(jobID string) (*ProgressData, error) {
 		LogCount:       logCount,
 	}, nil
 }
+
+// JobLogsPage holds paginated log lines for a job
+type JobLogsPage struct {
+	Logs  []string `json:"logs"`
+	Total int      `json:"total"`
+}
+
+// GetJobLogsWithPagination retrieves paginated logs for a job
+// Returns logs in chronological order (oldest first)
+// page is 1-indexed
+func (d *DB) GetJobLogsWithPagination(jobID string, page, limit int) (*JobLogsPage, error) {
+	// Get total log count
+	var total int
+	err := d.conn.QueryRow(
+		`SELECT COUNT(*) FROM job_logs WHERE job_id = ?`,
+		jobID,
+	).Scan(&total)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate offset for 1-indexed page
+	offset := (page - 1) * limit
+
+	// Fetch paginated logs in chronological order
+	rows, err := d.conn.Query(
+		`SELECT line FROM job_logs WHERE job_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?`,
+		jobID, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []string
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			return nil, err
+		}
+		logs = append(logs, line)
+	}
+
+	// Ensure empty slice instead of nil for JSON marshaling
+	if logs == nil {
+		logs = []string{}
+	}
+
+	return &JobLogsPage{
+		Logs:  logs,
+		Total: total,
+	}, rows.Err()
+}
