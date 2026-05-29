@@ -13,7 +13,7 @@ import (
 
 // Version is injected at build time via ldflags: -X main.Version=vX.Y.Z
 // Fallback for local dev builds and when ldflags injection is not performed.
-var Version = "v0.2.0"
+var Version = "v0.2.1"
 
 func main() {
 	if len(os.Args) < 2 {
