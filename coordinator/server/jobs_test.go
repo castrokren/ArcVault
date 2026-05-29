@@ -70,8 +70,9 @@ func TestCreateJob_returnsCreatedWithJobJSON(t *testing.T) {
 	if job.DestPath != "D:\\backup" {
 		t.Errorf("expected dest_path 'D:\\backup', got %q", job.DestPath)
 	}
-	if job.Status != "pending" {
-		t.Errorf("expected status 'pending', got %q", job.Status)
+	// Job has a schedule, so status should be "scheduled" (waiting for cron to fire)
+	if job.Status != "scheduled" {
+		t.Errorf("expected status 'scheduled' for job with schedule, got %q", job.Status)
 	}
 }
 
@@ -210,6 +211,54 @@ func TestCreateJob_groupDispatchWithMembers(t *testing.T) {
 		}
 		if job["status"] != "pending" {
 			t.Errorf("job %d: expected status 'pending', got %q", i, job["status"])
+		}
+	}
+}
+
+func TestCreateJob_groupDispatchWithScheduleHasScheduledStatus(t *testing.T) {
+	s := newTestServer(t)
+
+	// Create a group with 2 members
+	group, err := s.db.CreateGroup("test-group", "Test group")
+	if err != nil {
+		t.Fatalf("failed to create group: %v", err)
+	}
+
+	for i := 1; i <= 2; i++ {
+		agentID := "agent-0" + string(rune('0'+i))
+		if err := s.db.AddAgentToGroup(group.ID, agentID); err != nil {
+			t.Fatalf("failed to add agent to group: %v", err)
+		}
+	}
+
+	// Create job with group_id AND schedule
+	body := fmt.Sprintf(`{"group_id":%d,"name":"scheduled-batch-backup","source_path":"C:\\src","dest_path":"D:\\backup","schedule":"0 2 * * *"}`, group.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	s.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]interface{}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("response is not valid JSON: %v", err)
+	}
+
+	// Verify all jobs in the group have "scheduled" status
+	jobsList := resp["jobs"].([]interface{})
+	if len(jobsList) != 2 {
+		t.Errorf("expected 2 jobs, got %d", len(jobsList))
+	}
+
+	for i, jobItem := range jobsList {
+		job := jobItem.(map[string]interface{})
+		if job["status"] != "scheduled" {
+			t.Errorf("job %d: expected status 'scheduled' (has schedule), got %q", i, job["status"])
 		}
 	}
 }

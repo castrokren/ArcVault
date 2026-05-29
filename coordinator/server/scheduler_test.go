@@ -11,7 +11,27 @@ import (
 
 // --- job scheduler ---
 
-func TestScheduler_resetsScheduledJobToPending(t *testing.T) {
+func TestScheduler_createsScheduledJobWithScheduledStatus(t *testing.T) {
+	s := newTestServer(t)
+
+	// create a scheduled job (with schedule)
+	body := `{"agent_id":"agent-01","name":"scheduled-backup","source_path":"C:\\src","dest_path":"D:\\backup","schedule":"* * * * *"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+
+	var created Job
+	json.NewDecoder(rr.Body).Decode(&created)
+
+	// scheduled job should start with "scheduled" status, not "pending"
+	if created.Status != "scheduled" {
+		t.Errorf("expected scheduled job to start with status 'scheduled', got %q", created.Status)
+	}
+}
+
+func TestScheduler_resetsScheduledJobToScheduled(t *testing.T) {
 	s := newTestServer(t)
 
 	// create a scheduled job and mark it completed
@@ -35,7 +55,7 @@ func TestScheduler_resetsScheduledJobToPending(t *testing.T) {
 	// trigger scheduler manually
 	s.triggerScheduledJobs()
 
-	// job should be back to pending
+	// job should be back to "scheduled" (waiting for next cron tick)
 	req3 := httptest.NewRequest(http.MethodGet, "/api/jobs/"+created.ID, nil)
 	req3.Header.Set("Authorization", authHeader())
 	rr3 := httptest.NewRecorder()
@@ -44,8 +64,8 @@ func TestScheduler_resetsScheduledJobToPending(t *testing.T) {
 	var job Job
 	json.NewDecoder(rr3.Body).Decode(&job)
 
-	if job.Status != "pending" {
-		t.Errorf("expected status 'pending' after scheduler tick, got %q", job.Status)
+	if job.Status != "scheduled" {
+		t.Errorf("expected status 'scheduled' after scheduler tick, got %q", job.Status)
 	}
 }
 
@@ -157,8 +177,8 @@ func TestScheduler_broadcastsEventWhenJobRescheduled(t *testing.T) {
 	if !ok {
 		t.Fatal("expected payload to be an object")
 	}
-	if payload["status"] != "pending" {
-		t.Errorf("expected payload.status 'pending', got %q", payload["status"])
+	if payload["status"] != "scheduled" {
+		t.Errorf("expected payload.status 'scheduled', got %q", payload["status"])
 	}
 }
 

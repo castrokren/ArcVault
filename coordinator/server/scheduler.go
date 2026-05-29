@@ -19,6 +19,10 @@ var (
 	templateEntryMu  sync.Mutex
 	templateEntryMap = map[string]cron.EntryID{}
 	templateCron     *cron.Cron
+
+	// jobCronMu guards jobCron, which is accessed when registering new scheduled jobs
+	jobCronMu sync.Mutex
+	jobCron   *cron.Cron
 )
 
 // triggerScheduledJobs resets completed/failed scheduled jobs back to pending
@@ -47,18 +51,49 @@ func (s *Server) triggerScheduledJobs() {
 
 	for _, id := range jobIDs {
 		_, err := s.db.Conn().Exec(
-			`UPDATE jobs SET status = 'pending' WHERE id = ?`, id,
+			`UPDATE jobs SET status = 'scheduled' WHERE id = ?`, id,
 		)
 		if err != nil {
 			log.Printf("Scheduler: failed to reset job %s: %v", id, err)
 			continue
 		}
-		log.Printf("Scheduler: reset job %s to pending", id)
+		log.Printf("Scheduler: reset job %s to scheduled", id)
 		s.hub.Broadcast(Event{
 			Type:    "job.updated",
-			Payload: map[string]string{"id": id, "status": "pending"},
+			Payload: map[string]string{"id": id, "status": "scheduled"},
 		})
 	}
+}
+
+// registerJobSchedule registers a single job with the cron scheduler.
+// Called when a new scheduled job is created after startup.
+// Safe to call if jobCron is nil (before StartScheduler is called).
+func (s *Server) registerJobSchedule(jobID string, schedule string) error {
+	jobCronMu.Lock()
+	defer jobCronMu.Unlock()
+
+	if jobCron == nil {
+		// Scheduler not running yet, will be loaded at startup
+		return nil
+	}
+
+	_, err := jobCron.AddFunc(schedule, func() {
+		log.Printf("Scheduler: cron tick for job %s (registered post-startup)", jobID)
+		s.db.Conn().Exec(
+			`UPDATE jobs SET status = 'pending' WHERE id = ? AND status NOT IN ('pending', 'running')`,
+			jobID,
+		)
+		s.hub.Broadcast(Event{
+			Type:    "job.updated",
+			Payload: map[string]string{"id": jobID, "status": "pending"},
+		})
+	})
+	if err != nil {
+		log.Printf("Scheduler: invalid cron expression %q for job %s: %v", schedule, jobID, err)
+		return fmt.Errorf("invalid cron expression: %v", err)
+	}
+	log.Printf("Scheduler: registered cron schedule for job %s: %s", jobID, schedule)
+	return nil
 }
 
 // checkMissedSchedules checks for scheduled jobs that haven't run within their threshold.
@@ -138,6 +173,7 @@ func (s *Server) checkMissedSchedules() {
 func (s *Server) StartScheduler() {
 	c := cron.New()
 	templateCron = c
+	jobCron = c // make jobCron available globally so new jobs can be registered
 
 	// load all scheduled jobs and register them with robfig/cron
 	rows, err := s.db.Conn().Query(

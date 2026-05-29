@@ -78,6 +78,12 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 
 	// Single agent dispatch
 	if input.AgentID != "" {
+		// If job has a schedule, start with "scheduled" status so it doesn't run until cron fires
+		status := "pending"
+		if input.Schedule != nil {
+			status = "scheduled"
+		}
+
 		job := Job{
 			ID:         newJobID(),
 			AgentID:    input.AgentID,
@@ -86,7 +92,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 			DestPath:   input.DestPath,
 			Schedule:   input.Schedule,
 			SyncFlags:  input.SyncFlags,
-			Status:     "pending",
+			Status:     status,
 			CreatedAt:  time.Now().UTC().Format(time.RFC3339),
 		}
 
@@ -115,6 +121,11 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		// Append to federation_events log for state sync.
 		payload, _ := json.Marshal(job)
 		s.db.AppendFederationEvent(s.coordinatorID, "job_created", string(payload))
+
+		// If job has a schedule, register it with the cron scheduler
+		if job.Schedule != nil && *job.Schedule != "" {
+			s.registerJobSchedule(job.ID, *job.Schedule)
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
@@ -168,6 +179,12 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 			syncFlagsJSON = &jsonStr
 		}
 
+		// If job has a schedule, start with "scheduled" status so it doesn't run until cron fires
+		status := "pending"
+		if input.Schedule != nil {
+			status = "scheduled"
+		}
+
 		job := Job{
 			ID:         newJobID(),
 			AgentID:    agentID,
@@ -176,7 +193,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 			DestPath:   input.DestPath,
 			Schedule:   input.Schedule,
 			SyncFlags:  input.SyncFlags,
-			Status:     "pending",
+			Status:     status,
 			CreatedAt:  createdAt,
 		}
 
@@ -190,6 +207,13 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		jobs = append(jobs, job)
+	}
+
+	// If jobs have a schedule, register them with the cron scheduler
+	if input.Schedule != nil && *input.Schedule != "" {
+		for _, job := range jobs {
+			s.registerJobSchedule(job.ID, *input.Schedule)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
