@@ -426,5 +426,177 @@ CREATE TABLE IF NOT EXISTS job_runs (
 		attempts    INTEGER NOT NULL DEFAULT 1,
 		last_error  TEXT
 	)`)
+	// Idempotent: add sync_flags column to jobs for Phase 19 advanced backup options.
+	d.conn.Exec(`ALTER TABLE jobs ADD COLUMN sync_flags TEXT`)
+	// Idempotent: add progress column to jobs for Phase 20 real-time progress tracking.
+	d.conn.Exec(`ALTER TABLE jobs ADD COLUMN progress TEXT`)
+	// Idempotent: add progress column to job_runs for Phase 21 progress tracking.
+	d.conn.Exec(`ALTER TABLE job_runs ADD COLUMN progress INTEGER NOT NULL DEFAULT 0`)
+	// Idempotent: add status column to job_runs for Phase 21 progress status tracking.
+	d.conn.Exec(`ALTER TABLE job_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'running'`)
+	// Idempotent: create job_logs table for Phase 21 backup output logging.
+	d.conn.Exec(`CREATE TABLE IF NOT EXISTS job_logs (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	job_id     TEXT NOT NULL,
+	line       TEXT NOT NULL,
+	created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+	FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+)`)
+	// Idempotent: create indexes on job_logs for query performance.
+	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_job_logs_job_id ON job_logs(job_id)`)
+	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_job_logs_created_at ON job_logs(created_at)`)
+	// Idempotent: create trigger to auto-create job_runs when job is inserted (Phase 21).
+	d.conn.Exec(`CREATE TRIGGER IF NOT EXISTS auto_job_run AFTER INSERT ON jobs
+	 BEGIN
+	   INSERT INTO job_runs (id, job_id, started_at) VALUES (
+	     'run-' || NEW.id,
+	     NEW.id,
+	     CURRENT_TIMESTAMP
+	   );
+	 END`)
 	return nil
+}
+
+// UpdateProgressAndLogs stores job progress percentage, log lines, and status
+func (d *DB) UpdateProgressAndLogs(jobID string, percentage int, logs []string, status string) error {
+	// Update progress and status in job_runs
+	_, err := d.conn.Exec(
+		`UPDATE job_runs SET progress = ?, status = ? WHERE job_id = ?`,
+		percentage, status, jobID,
+	)
+	if err != nil {
+		return err
+	}
+
+	// Insert log lines
+	for _, line := range logs {
+		_, err := d.conn.Exec(
+			`INSERT INTO job_logs (job_id, line) VALUES (?, ?)`,
+			jobID, line,
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ProgressData holds progress information for a job
+type ProgressData struct {
+	JobID          string
+	Percentage     int
+	Status         string
+	LastProgressAt *time.Time
+	Logs           []string
+	LogCount       int
+}
+
+// GetProgress retrieves progress data for a job
+func (d *DB) GetProgress(jobID string) (*ProgressData, error) {
+	var progress int
+	var status string
+	var lastProgressAt *time.Time
+
+	// Get latest progress from job_runs
+	err := d.conn.QueryRow(
+		`SELECT COALESCE(progress, 0), COALESCE(status, 'running'), started_at
+		 FROM job_runs WHERE job_id = ? ORDER BY started_at DESC LIMIT 1`,
+		jobID,
+	).Scan(&progress, &status, &lastProgressAt)
+	if err != nil {
+		return nil, err
+	}
+
+	// Get recent logs (last 50)
+	rows, err := d.conn.Query(
+		`SELECT line FROM job_logs WHERE job_id = ? ORDER BY created_at DESC LIMIT 50`,
+		jobID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []string
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			return nil, err
+		}
+		logs = append(logs, line)
+	}
+
+	// Reverse to get chronological order
+	for i, j := 0, len(logs)-1; i < j; i, j = i+1, j-1 {
+		logs[i], logs[j] = logs[j], logs[i]
+	}
+
+	// Count total logs
+	var logCount int
+	d.conn.QueryRow(
+		`SELECT COUNT(*) FROM job_logs WHERE job_id = ?`,
+		jobID,
+	).Scan(&logCount)
+
+	return &ProgressData{
+		JobID:          jobID,
+		Percentage:     progress,
+		Status:         status,
+		LastProgressAt: lastProgressAt,
+		Logs:           logs,
+		LogCount:       logCount,
+	}, nil
+}
+
+// JobLogsPage holds paginated log lines for a job
+type JobLogsPage struct {
+	Logs  []string `json:"logs"`
+	Total int      `json:"total"`
+}
+
+// GetJobLogsWithPagination retrieves paginated logs for a job
+// Returns logs in chronological order (oldest first)
+// page is 1-indexed
+func (d *DB) GetJobLogsWithPagination(jobID string, page, limit int) (*JobLogsPage, error) {
+	// Get total log count
+	var total int
+	err := d.conn.QueryRow(
+		`SELECT COUNT(*) FROM job_logs WHERE job_id = ?`,
+		jobID,
+	).Scan(&total)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate offset for 1-indexed page
+	offset := (page - 1) * limit
+
+	// Fetch paginated logs in chronological order
+	rows, err := d.conn.Query(
+		`SELECT line FROM job_logs WHERE job_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?`,
+		jobID, limit, offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var logs []string
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			return nil, err
+		}
+		logs = append(logs, line)
+	}
+
+	// Ensure empty slice instead of nil for JSON marshaling
+	if logs == nil {
+		logs = []string{}
+	}
+
+	return &JobLogsPage{
+		Logs:  logs,
+		Total: total,
+	}, rows.Err()
 }
