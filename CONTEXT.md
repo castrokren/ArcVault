@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** May 28, 2026 | **v1.0.3** | **PRODUCTION READY**
+**Last updated:** May 29, 2026 | **v1.1.0** | **PRODUCTION READY + CRITICAL HOT FIX**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -31,7 +31,33 @@
   - Cleans up tokens + group memberships on delete; historical jobs preserved
   - Dashboard: Delete button + confirmation modal in Agents.vue (admin-only, local view)
   - 6 new tests in agent_delete_test.go; full suite passing
-🎯 Next: Robocopy/rsync flags, cancel backups, backup progress indicator
+✅ Phase 19 (COMPLETE 2026-05-28): Robocopy/Rsync Advanced Flags
+  - Backend: SyncFlags struct (Mirror, MaxAge, MinAge, MaxSize, ExcludeFiles, ExcludeDirs) + validation + ToRobocopyArgs/ToRsyncArgs methods (32 tests, all passing)
+  - Frontend: SyncFlagsBuilder.vue component (collapsible Advanced Options, real-time command preview, form validation)
+  - Integration: Wired into Jobs form via v-model, API payload includes/omits sync_flags correctly
+  - Tests: 70 total (32 backend + 29 component unit + 9 integration)
+  - Bug fixes: Undefined array handling, API response structure (agentsData.data), form state reset
+✅ Phase 20 (COMPLETE): Job cancellation + progress tracking (initial)
+  - Cancel endpoint + status workflow
+  - Initial progress column schema
+✅ Phase 21a-3 (COMPLETE 2026-05-28): Real-time job progress tracking
+  - Backend: POST /api/jobs/{id}/progress (percentage, logs, status) + GET endpoint with log history
+  - Database: Auto-create job_runs on job insertion via trigger; UpdateProgressAndLogs writes to job_runs + job_logs
+  - Frontend: ProgressBar.vue component (4px green bar, smooth transitions); Jobs.vue WebSocket listener for real-time updates
+  - Architecture: Agent → POST progress → DB broadcast → WebSocket → Frontend (no polling needed)
+  - Tests: 15/15 progress tests passing; full suite 125+ tests passing
+  - PR: phase/21a-3-progress-tracking (ready for review)
+✅ Phase 21a-4 (COMPLETE 2026-05-29): Critical hot fix — Jobs stuck in pending
+  - Issue: After rebuild, jobs created but never executed (stuck in PENDING or RUNNING)
+  - Root cause 1: handleListJobs missing sync_flags in SQL SELECT — agents got incomplete job data
+  - Root cause 2: robocopy hanging with /LOG+:NUL flag — blocked agent from processing jobs
+  - Fix 1: Added sync_flags to SELECT, Scan, and JSON deserialization in coordinator/server/jobs.go (lines 239, 253, 262-267)
+  - Fix 2: Replaced robocopy flags with /R:0 /W:0 /NP /NFL /NDL in agent/runner/executor.go (line 26)
+  - Lessons learned documented in memory/phase21a4_lessons_learned.md
+  - Testing: Verified jobs transition PENDING→RUNNING→COMPLETED with actual file copying
+  - Deployment: Run .\scripts\rebuild-and-restart.ps1
+  - Files changed: coordinator/server/jobs.go, agent/runner/executor.go, FIX_SUMMARY.md, memory/phase21a4_lessons_learned.md
+🎯 Next: Phase 22 (Integration testing & stress tests)
 
 ## Core Commands
 ```bash
