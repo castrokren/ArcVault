@@ -44,11 +44,15 @@ func (s *Server) handleGetJobRuns(w http.ResponseWriter, r *http.Request) {
 	runs := []JobRun{}
 	for rows.Next() {
 		var run JobRun
+		var exitCode sql.NullInt64
 		var output sql.NullString
 		var finishedAt sql.NullString
-		if err := rows.Scan(&run.ID, &run.JobID, &run.ExitCode, &output, &finishedAt); err != nil {
+		if err := rows.Scan(&run.ID, &run.JobID, &exitCode, &output, &finishedAt); err != nil {
 			http.Error(w, "failed to scan run", http.StatusInternalServerError)
 			return
+		}
+		if exitCode.Valid {
+			run.ExitCode = int(exitCode.Int64)
 		}
 		if output.Valid {
 			run.Output = output.String
@@ -108,11 +112,15 @@ func (s *Server) handleListAllJobRuns(w http.ResponseWriter, r *http.Request) {
 	runs := []JobRun{}
 	for rows.Next() {
 		var run JobRun
+		var exitCode sql.NullInt64
 		var output sql.NullString
 		var finishedAt sql.NullString
-		if err := rows.Scan(&run.ID, &run.JobID, &run.ExitCode, &output, &finishedAt); err != nil {
+		if err := rows.Scan(&run.ID, &run.JobID, &exitCode, &output, &finishedAt); err != nil {
 			http.Error(w, "failed to scan run", http.StatusInternalServerError)
 			return
+		}
+		if exitCode.Valid {
+			run.ExitCode = int(exitCode.Int64)
 		}
 		if output.Valid {
 			run.Output = output.String
