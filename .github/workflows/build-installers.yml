@@ -54,6 +54,12 @@ jobs:
           go build -o agent.exe ./agent
           go build -o cmd/setup/arcvault-setup.exe ./cmd/setup
 
+      - name: Prepare installer files
+        run: |
+          Copy-Item coordinator.exe installer/windows/
+          Copy-Item agent.exe installer/windows/
+          Copy-Item cmd/setup/arcvault-setup.exe installer/windows/
+
       - name: Build Windows installer
         run: |
           makensis /V4 installer/windows/arcvault.nsi
