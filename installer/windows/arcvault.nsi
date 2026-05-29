@@ -8,7 +8,7 @@
 
 ; Product info
 !define PRODUCT_NAME "ArcVault"
-!define PRODUCT_VERSION "1.1.0"
+!define PRODUCT_VERSION "0.2.1"
 !define PRODUCT_PUBLISHER "ArcVault Team"
 !define PRODUCT_WEB_SITE "https://github.com/castrokren/ArcVault"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
