@@ -473,3 +473,238 @@ func TestDeleteJob_unknownIDReturns404(t *testing.T) {
 		t.Fatalf("expected 404, got %d", rr.Code)
 	}
 }
+
+// --- POST /api/jobs/{id}/cancel (Phase 20) ---
+
+func TestCancelJob_cancelRunningJobReturnsOK(t *testing.T) {
+	s := newTestServer(t)
+
+	// Create a job
+	body := `{"agent_id":"agent-01","name":"nightly-backup","source_path":"C:\\src","dest_path":"D:\\backup"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("failed to create job: %d", rr.Code)
+	}
+
+	var job Job
+	json.NewDecoder(rr.Body).Decode(&job)
+	jobID := job.ID
+
+	// Manually set status to "running" in database (simulates a running job)
+	s.db.Conn().Exec(`UPDATE jobs SET status = ? WHERE id = ?`, "running", jobID)
+
+	// Cancel the job
+	cancelReq := httptest.NewRequest(http.MethodPost, "/api/jobs/"+jobID+"/cancel", nil)
+	cancelReq.Header.Set("Authorization", authHeader())
+	cancelRR := httptest.NewRecorder()
+	s.router.ServeHTTP(cancelRR, cancelReq)
+
+	if cancelRR.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", cancelRR.Code, cancelRR.Body.String())
+	}
+
+	// Verify response contains the job with status="canceling"
+	var cancelledJob Job
+	if err := json.NewDecoder(cancelRR.Body).Decode(&cancelledJob); err != nil {
+		t.Fatalf("response is not valid JSON: %v", err)
+	}
+	if cancelledJob.Status != "canceling" {
+		t.Errorf("expected status 'canceling', got %q", cancelledJob.Status)
+	}
+
+	// Verify status was actually persisted to database (fetch the job again)
+	getReq := httptest.NewRequest(http.MethodGet, "/api/jobs/"+jobID, nil)
+	getReq.Header.Set("Authorization", authHeader())
+	getRR := httptest.NewRecorder()
+	s.router.ServeHTTP(getRR, getReq)
+
+	if getRR.Code != http.StatusOK {
+		t.Fatalf("failed to fetch job after cancel: %d", getRR.Code)
+	}
+
+	var persistedJob Job
+	if err := json.NewDecoder(getRR.Body).Decode(&persistedJob); err != nil {
+		t.Fatalf("response is not valid JSON: %v", err)
+	}
+	if persistedJob.Status != "canceling" {
+		t.Errorf("expected persisted status 'canceling', got %q", persistedJob.Status)
+	}
+}
+
+func TestCancelJob_cancelPendingJobReturnsBadRequest(t *testing.T) {
+	s := newTestServer(t)
+
+	// Create a job (status will be "pending" by default)
+	body := `{"agent_id":"agent-01","name":"nightly-backup","source_path":"C:\\src","dest_path":"D:\\backup"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+
+	var job Job
+	json.NewDecoder(rr.Body).Decode(&job)
+	jobID := job.ID
+
+	// Try to cancel a pending job
+	cancelReq := httptest.NewRequest(http.MethodPost, "/api/jobs/"+jobID+"/cancel", nil)
+	cancelReq.Header.Set("Authorization", authHeader())
+	cancelRR := httptest.NewRecorder()
+	s.router.ServeHTTP(cancelRR, cancelReq)
+
+	if cancelRR.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", cancelRR.Code)
+	}
+	if !bytes.Contains(cancelRR.Body.Bytes(), []byte("not running")) {
+		t.Errorf("expected 'not running' error message, got: %s", cancelRR.Body.String())
+	}
+}
+
+func TestCancelJob_cancelNonexistentJobReturns404(t *testing.T) {
+	s := newTestServer(t)
+
+	// Try to cancel a non-existent job
+	cancelReq := httptest.NewRequest(http.MethodPost, "/api/jobs/job-nonexistent/cancel", nil)
+	cancelReq.Header.Set("Authorization", authHeader())
+	cancelRR := httptest.NewRecorder()
+	s.router.ServeHTTP(cancelRR, cancelReq)
+
+	if cancelRR.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", cancelRR.Code)
+	}
+}
+
+func TestCancelJob_unauthenticatedReturns401(t *testing.T) {
+	s := newTestServer(t)
+
+	// Create a job
+	body := `{"agent_id":"agent-01","name":"nightly-backup","source_path":"C:\\src","dest_path":"D:\\backup"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+
+	var job Job
+	json.NewDecoder(rr.Body).Decode(&job)
+	jobID := job.ID
+
+	// Try to cancel without authentication
+	cancelReq := httptest.NewRequest(http.MethodPost, "/api/jobs/"+jobID+"/cancel", nil)
+	cancelRR := httptest.NewRecorder()
+	s.router.ServeHTTP(cancelRR, cancelReq)
+
+	if cancelRR.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", cancelRR.Code)
+	}
+}
+
+// --- POST /api/jobs/{id}/progress (Phase 20 progress tracking) ---
+
+func TestPostJobProgress_updatesProgressForRunningJob(t *testing.T) {
+	s := newTestServer(t)
+
+	// Create and start a job
+	body := `{"agent_id":"agent-01","name":"nightly-backup","source_path":"C:\\src","dest_path":"D:\\backup"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+
+	var job Job
+	json.NewDecoder(rr.Body).Decode(&job)
+	jobID := job.ID
+
+	// Set job to running
+	s.db.Conn().Exec(`UPDATE jobs SET status = ? WHERE id = ?`, "running", jobID)
+
+	// Post progress update (Phase 21a-3 format)
+	progressBody := `{
+		"percentage": 75,
+		"logs": ["Starting backup", "50% complete"],
+		"status": "running"
+	}`
+	progressReq := httptest.NewRequest(http.MethodPost, "/api/jobs/"+jobID+"/progress", bytes.NewBufferString(progressBody))
+	progressReq.Header.Set("Authorization", authHeader())
+	progressReq.Header.Set("Content-Type", "application/json")
+	progressRR := httptest.NewRecorder()
+	s.router.ServeHTTP(progressRR, progressReq)
+
+	if progressRR.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", progressRR.Code, progressRR.Body.String())
+	}
+
+	// Verify progress was stored in job_runs
+	var progress int
+	var status string
+	err := s.db.Conn().QueryRow(
+		`SELECT progress, status FROM job_runs WHERE job_id = ? ORDER BY started_at DESC LIMIT 1`,
+		jobID,
+	).Scan(&progress, &status)
+	if err != nil {
+		t.Fatalf("failed to query progress: %v", err)
+	}
+	if progress != 75 {
+		t.Errorf("expected 75%% progress, got %d", progress)
+	}
+	if status != "running" {
+		t.Errorf("expected running status, got %s", status)
+	}
+
+	// Verify logs were stored
+	var logCount int
+	s.db.Conn().QueryRow(
+		`SELECT COUNT(*) FROM job_logs WHERE job_id = ?`,
+		jobID,
+	).Scan(&logCount)
+	if logCount != 2 {
+		t.Errorf("expected 2 logs, got %d", logCount)
+	}
+}
+
+func TestPostJobProgress_nonexistentJobReturns404(t *testing.T) {
+	s := newTestServer(t)
+
+	progressBody := `{"percentage": 50, "logs": [], "status": "running"}`
+	progressReq := httptest.NewRequest(http.MethodPost, "/api/jobs/job-nonexistent/progress", bytes.NewBufferString(progressBody))
+	progressReq.Header.Set("Authorization", authHeader())
+	progressReq.Header.Set("Content-Type", "application/json")
+	progressRR := httptest.NewRecorder()
+	s.router.ServeHTTP(progressRR, progressReq)
+
+	if progressRR.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", progressRR.Code)
+	}
+}
+
+func TestPostJobProgress_unauthenticatedReturns401(t *testing.T) {
+	s := newTestServer(t)
+
+	// Create a job
+	body := `{"agent_id":"agent-01","name":"nightly-backup","source_path":"C:\\src","dest_path":"D:\\backup"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(body))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+
+	var job Job
+	json.NewDecoder(rr.Body).Decode(&job)
+	jobID := job.ID
+
+	// Try to post progress without authentication
+	progressBody := `{"files_processed": 10, "bytes_transferred": 1000, "total_files": 100, "total_bytes": 10000}`
+	progressReq := httptest.NewRequest(http.MethodPost, "/api/jobs/"+jobID+"/progress", bytes.NewBufferString(progressBody))
+	progressRR := httptest.NewRecorder()
+	s.router.ServeHTTP(progressRR, progressReq)
+
+	if progressRR.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", progressRR.Code)
+	}
+}

@@ -122,7 +122,6 @@
           <td><span class="badge" :class="job.status">{{ job.status }}</span></td>
           <td>{{ formatDate(job.created_at) }}</td>
           <td v-if="!selectedSite">
-            <button class="action-btn" @click="viewLogs(job.id)">Logs</button>
             <button class="danger-sm" @click="removeJob(job.id)">Delete</button>
           </td>
         </tr>
@@ -137,38 +136,12 @@
       :limit="limit"
       @page-change="goToPage"
     />
-
-    <!-- Logs Modal -->
-    <div v-if="showLogsModal" class="modal-overlay" @click.self="showLogsModal = false">
-      <div class="modal">
-        <div class="modal-header">
-          <h3>Job Logs: {{ logsJobName }}</h3>
-          <button class="close-btn" @click="showLogsModal = false">✕</button>
-        </div>
-        <div class="modal-body">
-          <div v-if="logsLoading" class="loading">Loading logs...</div>
-          <div v-else-if="logsError" class="error">{{ logsError }}</div>
-          <div v-else-if="!latestRun" class="empty">No runs found for this job.</div>
-          <div v-else class="logs-container">
-            <div class="run-info">
-              <div><strong>Run ID:</strong> <span class="mono">{{ latestRun.id }}</span></div>
-              <div><strong>Exit Code:</strong> <span :class="{ 'exit-success': latestRun.exit_code === 0, 'exit-fail': latestRun.exit_code !== 0 }">{{ latestRun.exit_code ?? '—' }}</span></div>
-              <div><strong>Finished:</strong> {{ latestRun.finished_at ? formatDate(latestRun.finished_at) : '—' }}</div>
-            </div>
-            <pre class="logs-output">{{ latestRun.output || '(no output)' }}</pre>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="secondary" @click="showLogsModal = false">Close</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch, inject } from 'vue'
-import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups, getJobRuns } from '../api.js'
+import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups } from '../api.js'
 import Pagination from '../components/Pagination.vue'
 import ScheduleBuilder from '../components/ScheduleBuilder.vue'
 import { useFederationLag } from '../composables/useFederationLag.js'
@@ -201,13 +174,6 @@ const agents = ref([])
 const groups = ref([])
 
 const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '' })
-
-// Logs modal state
-const showLogsModal = ref(false)
-const logsJobName = ref('')
-const logsLoading = ref(false)
-const logsError = ref(null)
-const latestRun = ref(null)
 
 async function load() {
   loading.value = true
@@ -301,32 +267,6 @@ async function removeJob(id) {
   }
 }
 
-async function viewLogs(jobId) {
-  logsLoading.value = true
-  logsError.value = null
-  latestRun.value = null
-
-  // Find the job name for display
-  const job = jobs.value.find(j => j.id === jobId)
-  logsJobName.value = job?.name || jobId
-
-  try {
-    const runsData = await getJobRuns({ jobID: jobId, limit: 1 })
-    const runs = runsData.data || []
-
-    if (runs.length === 0) {
-      latestRun.value = null
-    } else {
-      latestRun.value = runs[0]
-    }
-  } catch (e) {
-    logsError.value = e.message
-  } finally {
-    logsLoading.value = false
-    showLogsModal.value = true
-  }
-}
-
 function formatDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleString()
@@ -346,8 +286,8 @@ async function loadAgentsAndGroups() {
       getAgents(),
       getGroups(),
     ])
-    agents.value = agentsData.data || []
-    groups.value = groupsData.data || []
+    agents.value = agentsData.agents || []
+    groups.value = groupsData.groups || []
   } catch (e) {
     console.error('Failed to load agents and groups:', e)
   }
@@ -544,157 +484,5 @@ button.danger-sm {
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.8rem;
-}
-
-.action-btn {
-  padding: 0.2rem 0.6rem;
-  background: #1a3a4a;
-  color: #4f8ef7;
-  border: 1px solid #4f8ef7;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.8rem;
-  transition: all 0.15s ease;
-}
-
-.action-btn:hover {
-  background: #2a4a5a;
-  color: #fff;
-}
-
-/* Logs Modal */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal {
-  background: #1e1e2e;
-  border: 1px solid #333;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 900px;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem;
-  border-bottom: 1px solid #333;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.close-btn {
-  background: none;
-  border: none;
-  color: #888;
-  font-size: 1.5rem;
-  cursor: pointer;
-  padding: 0;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.close-btn:hover {
-  color: #fff;
-}
-
-.modal-body {
-  flex: 1;
-  overflow: auto;
-  padding: 1.5rem;
-}
-
-.logs-container {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.run-info {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-  padding: 1rem;
-  background: #252535;
-  border-radius: 4px;
-  font-size: 0.9rem;
-}
-
-.run-info div {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.run-info strong {
-  color: #aaa;
-}
-
-.exit-success {
-  color: #4caf50;
-  font-weight: 600;
-}
-
-.exit-fail {
-  color: #e55;
-  font-weight: 600;
-}
-
-.logs-output {
-  background: #0f0f1a;
-  border: 1px solid #333;
-  border-radius: 4px;
-  padding: 1rem;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  max-height: 400px;
-  overflow: auto;
-  color: #ccc;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.modal-footer {
-  padding: 1rem 1.5rem;
-  border-top: 1px solid #333;
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
-.modal-footer button.secondary {
-  padding: 0.4rem 1rem;
-  background: #333;
-  color: #aaa;
-  border: 1px solid #444;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
-
-.modal-footer button.secondary:hover {
-  background: #404040;
-  color: #fff;
 }
 </style>
