@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** May 28, 2026 | **v1.0.3** | **PRODUCTION READY**
+**Last updated:** May 28, 2026 | **v1.0.4** | **PRODUCTION READY**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -31,7 +31,13 @@
   - Cleans up tokens + group memberships on delete; historical jobs preserved
   - Dashboard: Delete button + confirmation modal in Agents.vue (admin-only, local view)
   - 6 new tests in agent_delete_test.go; full suite passing
-🎯 Next: Robocopy/rsync flags, cancel backups, backup progress indicator
+✅ Phase 19 (COMPLETE 2026-05-28): Robocopy/Rsync Advanced Flags
+  - Backend: SyncFlags struct (Mirror, MaxAge, MinAge, MaxSize, ExcludeFiles, ExcludeDirs) + validation + ToRobocopyArgs/ToRsyncArgs methods (32 tests, all passing)
+  - Frontend: SyncFlagsBuilder.vue component (collapsible Advanced Options, real-time command preview, form validation)
+  - Integration: Wired into Jobs form via v-model, API payload includes/omits sync_flags correctly
+  - Tests: 70 total (32 backend + 29 component unit + 9 integration)
+  - Bug fixes: Undefined array handling, API response structure (agentsData.data), form state reset
+🎯 Next: Cancel backups, backup progress indicator
 
 ## Core Commands
 ```bash
