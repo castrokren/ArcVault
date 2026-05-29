@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** May 28, 2026 | **v1.1.0** | **PRODUCTION READY**
+**Last updated:** May 29, 2026 | **v1.1.0** | **PRODUCTION READY + CRITICAL HOT FIX**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -47,7 +47,17 @@
   - Architecture: Agent → POST progress → DB broadcast → WebSocket → Frontend (no polling needed)
   - Tests: 15/15 progress tests passing; full suite 125+ tests passing
   - PR: phase/21a-3-progress-tracking (ready for review)
-🎯 Next: Phase 21a-4 (Job detail modal with full logs display)
+✅ Phase 21a-4 (COMPLETE 2026-05-29): Critical hot fix — Jobs stuck in pending
+  - Issue: After rebuild, jobs created but never executed (stuck in PENDING or RUNNING)
+  - Root cause 1: handleListJobs missing sync_flags in SQL SELECT — agents got incomplete job data
+  - Root cause 2: robocopy hanging with /LOG+:NUL flag — blocked agent from processing jobs
+  - Fix 1: Added sync_flags to SELECT, Scan, and JSON deserialization in coordinator/server/jobs.go (lines 239, 253, 262-267)
+  - Fix 2: Replaced robocopy flags with /R:0 /W:0 /NP /NFL /NDL in agent/runner/executor.go (line 26)
+  - Lessons learned documented in memory/phase21a4_lessons_learned.md
+  - Testing: Verified jobs transition PENDING→RUNNING→COMPLETED with actual file copying
+  - Deployment: Run .\scripts\rebuild-and-restart.ps1
+  - Files changed: coordinator/server/jobs.go, agent/runner/executor.go, FIX_SUMMARY.md, memory/phase21a4_lessons_learned.md
+🎯 Next: Phase 22 (Integration testing & stress tests)
 
 ## Core Commands
 ```bash

@@ -1,9 +1,18 @@
 # ArcVault Project Memory
 **Project Name:** ArcVault  
 **Type:** OS-agnostic Backup Orchestrator  
-**Current Status:** Phase 17 Complete (v1.0.0) — PRODUCTION READY  
-**Last Updated:** May 22, 2026  
+**Current Status:** Phase 21a-4 Complete (v1.1.0 Hot Fix) — CRITICAL BUGS FIXED  
+**Last Updated:** May 29, 2026  
 **Quick Status:** See [CONTEXT.md](CONTEXT.md) for status and quick reference
+
+### Phase 21a-4 Hot Fix: Jobs Stuck in Pending (RESOLVED)
+**Issue:** After Phase 21a-4 rebuild, jobs created but never executed. Root causes:
+1. **handleListJobs** missing `sync_flags` in SQL SELECT — agents received incomplete job data
+2. **robocopy** hanging with `/LOG+:NUL` flag — blocked agent from processing jobs sequentially
+
+**Fix:** Updated `coordinator/server/jobs.go` (sync_flags) and `agent/runner/executor.go` (robocopy flags). Lessons learned documented in [[phase21a4_lessons_learned]].
+
+**Rebuild command:** `.\scripts\rebuild-and-restart.ps1`
 
 ---
 
@@ -33,6 +42,7 @@ ArcVault solves key limitations in RoboBackup:
 | 15 | v0.8.0 | RBAC (backend: JWT auth + user/group mgmt; frontend: login + admin panels) | ✅ Complete |
 | 16 | v0.9.0 | Federation HA (events log, state sync, health monitoring, agent failover) | ✅ Complete |
 | 17 | v1.0.0 | Enhanced monitoring & alerting (alert rules, webhook retry, Slack/Teams, history tracking) | ✅ Complete |
+| 21a-4 | v1.1.0 | Hot fix: Jobs stuck in pending (missing sync_flags + robocopy hanging) | ✅ Complete |
 | 18+ | — | CLI tooling, additional backends, advanced analytics | 🔮 Future |
 
 ---
@@ -416,6 +426,38 @@ dashboard/src/
 
 ---
 
+### Phase 21a-4: Hot Fix — Jobs Stuck in Pending (v1.1.0)
+
+**Incident:** After Phase 21a-4 rebuild (Logs button), all jobs stuck in PENDING or RUNNING state. No backups executed.
+
+**Root Causes:**
+
+1. **Missing sync_flags in handleListJobs** (`coordinator/server/jobs.go`):
+   - SQL SELECT didn't include `sync_flags` column despite jobs being created WITH sync_flags
+   - Agents fetched incomplete job data, causing processing failures
+   - Fix: Added `sync_flags` to SELECT, Scan, and JSON deserialization (lines 239, 253, 262-267)
+
+2. **robocopy hanging in service mode** (`agent/runner/executor.go`):
+   - Command `/LOG+:NUL` caused robocopy to hang indefinitely in non-interactive Windows service environment
+   - Blocked agent from processing job queue sequentially
+   - Fix: Replaced with proper flags: `/R:0 /W:0 /NP /NFL /NDL` (line 26)
+
+**Testing Gap Discovered:**
+- Job status changes (PENDING→RUNNING) ≠ actual work completed
+- Verification must include disk-level file copying, not just API response
+
+**Prevention:** See [[phase21a4_lessons_learned]] for detailed lessons and checklist
+
+**Files Changed:**
+- `coordinator/server/jobs.go` — sync_flags handling
+- `agent/runner/executor.go` — robocopy flags
+- `FIX_SUMMARY.md` — deployment guide
+- `memory/phase21a4_lessons_learned.md` — lessons + prevention checklist
+
+**Deployment:** Run `.\scripts\rebuild-and-restart.ps1` to apply hot fix
+
+---
+
 ## Future Roadmap
 
 **Current version:** v1.0.1 (May 2026) — All phases through 18 complete.
@@ -440,6 +482,7 @@ dashboard/src/
 ---
 
 ## Related Memory Files
+- [[phase21a4_lessons_learned]] — Critical lessons from jobs-stuck-in-pending hot fix (SQL column matching, robocopy flags, sequential job processing)
 - [[phase-16-federation-ha]] — Detailed Phase 16 implementation (events log, sync endpoints, health dashboard, agent failover)
 - [[phase-15-frontend-rbac]] — Detailed Phase 15 frontend implementation (useAuth, Login, Users, Groups, smart job forms)
 - Memory/DEPLOYMENT_FIX_MEMORY.md — (unrelated: Multi-module deployment script fix, 2026-05-13)
