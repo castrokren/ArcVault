@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/user"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -286,23 +286,8 @@ func reviewSummary(components Component, config *SetupConfig) error {
 }
 
 func writeConfigurations(components Component, config *SetupConfig, installPath string) error {
-	configDir := filepath.Join(os.Getenv("HOME"), ".arcvault")
-	if configDir == filepath.Join("", ".arcvault") {
-		// Fallback if HOME is not set
-		u, err := user.Current()
-		if err != nil {
-			configDir = "/opt/arcvault/config"
-		} else {
-			configDir = filepath.Join(u.HomeDir, ".arcvault")
-		}
-	}
-
-	// Create config directory
-	if err := os.MkdirAll(configDir, 0700); err != nil {
-		return fmt.Errorf("failed to create config directory: %v", err)
-	}
-
-	// Write coordinator config if needed
+	// Write coordinator config to installation directory (where coordinator.exe lives)
+	// This is where the coordinator looks for config.json
 	if components == ComponentCoordinator || components == ComponentBoth {
 		coordConfig := CoordinatorConfig{
 			Port: config.CoordinatorPort,
@@ -314,7 +299,11 @@ func writeConfigurations(components Component, config *SetupConfig, installPath 
 			HTTPS: config.HTTPS,
 		}
 
-		configPath := filepath.Join(configDir, "coordinator-config.json")
+		configPath := filepath.Join(installPath, "config.json")
+		if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
+			return fmt.Errorf("failed to create config directory: %v", err)
+		}
+
 		data, err := json.MarshalIndent(coordConfig, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal coordinator config: %v", err)
@@ -327,7 +316,6 @@ func writeConfigurations(components Component, config *SetupConfig, installPath 
 		fmt.Printf("✓ Coordinator config written to %s\n", configPath)
 	}
 
-	// Write agent config if needed
 	if components == ComponentAgent || components == ComponentBoth {
 		agentConfig := AgentConfig{
 			CoordinatorURL: config.CoordinatorURL,
@@ -335,23 +323,90 @@ func writeConfigurations(components Component, config *SetupConfig, installPath 
 			AuthToken:      config.AgentToken,
 		}
 
-		configPath := filepath.Join(configDir, "agent-config.json")
-		data, err := json.MarshalIndent(agentConfig, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal agent config: %v", err)
+		// Write agent config to installation directory (same dir as agent.exe)
+		// The agent service runs as SYSTEM and needs config relative to its binary
+		agentConfigPath := filepath.Join(installPath, "agent-config.yaml")
+		if err := os.MkdirAll(installPath, 0700); err != nil {
+			return fmt.Errorf("failed to create install directory: %v", err)
 		}
 
-		if err := os.WriteFile(configPath, data, 0600); err != nil {
+		// Write as YAML (agent config.go expects yaml)
+		yamlContent := fmt.Sprintf("agent_id: %s\ncoordinator_url: %s\nauth_token: %s\n",
+			agentConfig.AgentID, agentConfig.CoordinatorURL, agentConfig.AuthToken)
+
+		if err := os.WriteFile(agentConfigPath, []byte(yamlContent), 0600); err != nil {
 			return fmt.Errorf("failed to write agent config: %v", err)
 		}
 
-		fmt.Printf("✓ Agent config written to %s\n", configPath)
+		fmt.Printf("✓ Agent config written to %s\n", agentConfigPath)
 	}
 
 	return nil
 }
 
-// Utility functions
+// installServices installs coordinator and/or agent as system services.
+// binDir is the directory containing the coordinator.exe / agent.exe binaries.
+func installServices(components Component, binDir string) error {
+	coordExe := filepath.Join(binDir, "coordinator.exe")
+	agentExe := filepath.Join(binDir, "agent.exe")
+
+	if components == ComponentCoordinator || components == ComponentBoth {
+		fmt.Println("Installing coordinator service...")
+
+		// Remove old service if present (ignore errors — may not exist)
+		exec.Command("sc", "stop", "ArcVaultCoordinator").Run()
+		exec.Command(coordExe, "uninstall-service").Run()
+
+		if err := runCmd(coordExe, "install-service"); err != nil {
+			return fmt.Errorf("failed to install coordinator service: %w", err)
+		}
+		// Set autostart
+		if err := runCmd("sc", "config", "ArcVaultCoordinator", "start=", "auto"); err != nil {
+			return fmt.Errorf("failed to set coordinator autostart: %w", err)
+		}
+		// Give coordinator a moment to initialise DB before agent tries to register
+		fmt.Println("Starting coordinator service...")
+		if err := runCmd("sc", "start", "ArcVaultCoordinator"); err != nil {
+			// Non-fatal — may already be running
+			fmt.Printf("  (note: %v)\n", err)
+		}
+		fmt.Println("✓ Coordinator service installed and started")
+	}
+
+	if components == ComponentAgent || components == ComponentBoth {
+		// If both on same machine, brief pause so coordinator DB is ready
+		if components == ComponentBoth {
+			fmt.Println("Waiting for coordinator to initialise...")
+			exec.Command("ping", "-n", "4", "127.0.0.1").Run() // ~3s delay, no Sleep import needed
+		}
+
+		fmt.Println("Installing agent service...")
+		exec.Command("sc", "stop", "ArcVaultAgent").Run()
+		exec.Command(agentExe, "uninstall-service").Run()
+
+		if err := runCmd(agentExe, "install-service"); err != nil {
+			return fmt.Errorf("failed to install agent service: %w", err)
+		}
+		if err := runCmd("sc", "config", "ArcVaultAgent", "start=", "auto"); err != nil {
+			return fmt.Errorf("failed to set agent autostart: %w", err)
+		}
+		fmt.Println("Starting agent service...")
+		if err := runCmd("sc", "start", "ArcVaultAgent"); err != nil {
+			fmt.Printf("  (note: %v)\n", err)
+		}
+		fmt.Println("✓ Agent service installed and started")
+	}
+
+	return nil
+}
+
+// runCmd runs a command and returns an error if it exits non-zero.
+func runCmd(name string, args ...string) error {
+	cmd := exec.Command(name, args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
 
 func generateToken(length int) (string, error) {
 	bytes := make([]byte, length/2)
