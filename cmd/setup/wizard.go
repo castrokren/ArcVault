@@ -354,19 +354,19 @@ func installServices(components Component, binDir string) error {
 		fmt.Println("Installing coordinator service...")
 
 		// Remove old service if present (ignore errors — may not exist)
-		exec.Command("sc", "stop", "ArcVaultCoordinator").Run()
+		exec.Command("sc", "stop", "arcvault-coordinator").Run()
 		exec.Command(coordExe, "uninstall-service").Run()
 
 		if err := runCmd(coordExe, "install-service"); err != nil {
 			return fmt.Errorf("failed to install coordinator service: %w", err)
 		}
 		// Set autostart
-		if err := runCmd("sc", "config", "ArcVaultCoordinator", "start=", "auto"); err != nil {
+		if err := runCmd("sc", "config", "arcvault-coordinator", "start=", "auto"); err != nil {
 			return fmt.Errorf("failed to set coordinator autostart: %w", err)
 		}
 		// Give coordinator a moment to initialise DB before agent tries to register
 		fmt.Println("Starting coordinator service...")
-		if err := runCmd("sc", "start", "ArcVaultCoordinator"); err != nil {
+		if err := runCmd("sc", "start", "arcvault-coordinator"); err != nil {
 			// Non-fatal — may already be running
 			fmt.Printf("  (note: %v)\n", err)
 		}
@@ -381,17 +381,17 @@ func installServices(components Component, binDir string) error {
 		}
 
 		fmt.Println("Installing agent service...")
-		exec.Command("sc", "stop", "ArcVaultAgent").Run()
+		exec.Command("sc", "stop", "arcvault-agent").Run()
 		exec.Command(agentExe, "uninstall-service").Run()
 
 		if err := runCmd(agentExe, "install-service"); err != nil {
 			return fmt.Errorf("failed to install agent service: %w", err)
 		}
-		if err := runCmd("sc", "config", "ArcVaultAgent", "start=", "auto"); err != nil {
+		if err := runCmd("sc", "config", "arcvault-agent", "start=", "auto"); err != nil {
 			return fmt.Errorf("failed to set agent autostart: %w", err)
 		}
 		fmt.Println("Starting agent service...")
-		if err := runCmd("sc", "start", "ArcVaultAgent"); err != nil {
+		if err := runCmd("sc", "start", "arcvault-agent"); err != nil {
 			fmt.Printf("  (note: %v)\n", err)
 		}
 		fmt.Println("✓ Agent service installed and started")
