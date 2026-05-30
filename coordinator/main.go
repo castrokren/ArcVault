@@ -38,10 +38,11 @@ func main() {
 		}
 	case "create-agent-token":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: coordinator create-agent-token <agent-id>")
+			fmt.Println("Usage: coordinator create-agent-token <agent-id> [--token-only]")
 			os.Exit(1)
 		}
-		if err := cmd.CreateAgentTokenCommand(os.Args[2]); err != nil {
+		tokenOnly := len(os.Args) > 3 && os.Args[3] == "--token-only"
+		if err := cmd.CreateAgentTokenCommand(os.Args[2], tokenOnly); err != nil {
 			log.Fatalf("create-agent-token failed: %v", err)
 		}
 	case "check-update":

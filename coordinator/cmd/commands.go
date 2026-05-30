@@ -139,7 +139,8 @@ func checkAndCache(currentVersion string) {
 
 // CreateAgentTokenCommand generates a new token for the given agent ID
 // and prints it. The token can then be used in agent-config.yaml.
-func CreateAgentTokenCommand(agentID string) error {
+// If tokenOnly is true, prints only the token string (for scripting).
+func CreateAgentTokenCommand(agentID string, tokenOnly bool) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
@@ -156,8 +157,12 @@ func CreateAgentTokenCommand(agentID string) error {
 		return fmt.Errorf("failed to create token: %w", err)
 	}
 
-	fmt.Printf("Agent token for %q:\n\n  %s\n\n", agentID, token)
-	fmt.Println("Add this to agent-config.yaml as auth_token.")
+	if tokenOnly {
+		fmt.Print(token)
+	} else {
+		fmt.Printf("Agent token for %q:\n\n  %s\n\n", agentID, token)
+		fmt.Println("Add this to agent-config.yaml as auth_token.")
+	}
 	return nil
 }
 
