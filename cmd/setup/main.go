@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 )
 
 // Version is injected at build time via ldflags: -X main.Version=vX.Y.Z
@@ -28,8 +30,15 @@ func RunSetupWizard() error {
 		return fmt.Errorf("component selection failed: %v", err)
 	}
 
-	// Step 2: Install Path (optional, use defaults)
-	installPath := getInstallPath()
+	// Step 2: Install path = directory containing this binary.
+	// When launched from NSIS (C:\Program Files\ArcVault\arcvault-setup.exe),
+	// this correctly resolves to C:\Program Files\ArcVault — the same
+	// directory as coordinator.exe and agent.exe.
+	exe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("could not determine install path: %v", err)
+	}
+	installPath := filepath.Dir(exe)
 
 	// Step 3: Collect Configuration
 	config, err := gatherConfiguration(components)
@@ -42,20 +51,32 @@ func RunSetupWizard() error {
 		return fmt.Errorf("setup cancelled by user")
 	}
 
-	// Step 5: Write Configurations
+	// Step 5: Write config files
 	if err := writeConfigurations(components, config, installPath); err != nil {
 		return fmt.Errorf("failed to write configurations: %v", err)
 	}
 
 	fmt.Println()
-	fmt.Println("✓ Configuration completed successfully!")
+	fmt.Println("✓ Configuration written successfully!")
 	fmt.Println()
 
-	// Step 6: Open Browser to Dashboard
-	url := fmt.Sprintf("http://localhost:%d", config.CoordinatorPort)
-	fmt.Printf("Opening dashboard: %s\n", url)
-	if err := OpenBrowser(url); err != nil {
-		fmt.Printf("Note: Could not open browser automatically. Visit %s in your browser.\n", url)
+	// Step 6: Install and start services
+	fmt.Println("Installing services...")
+	if err := installServices(components, installPath); err != nil {
+		return fmt.Errorf("failed to install services: %v", err)
+	}
+
+	fmt.Println()
+	fmt.Println("✓ Setup complete!")
+	fmt.Println()
+
+	// Step 7: Open dashboard in browser (coordinator only)
+	if components == ComponentCoordinator || components == ComponentBoth {
+		url := fmt.Sprintf("http://localhost:%d", config.CoordinatorPort)
+		fmt.Printf("Opening dashboard: %s\n", url)
+		if err := OpenBrowser(url); err != nil {
+			fmt.Printf("Note: Could not open browser automatically. Visit %s\n", url)
+		}
 	}
 
 	return nil
