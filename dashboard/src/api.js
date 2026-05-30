@@ -5,6 +5,16 @@ function getToken() {
   return localStorage.getItem('arcvault_jwt') || localStorage.getItem('arcvault_token') || ''
 }
 
+function handle401() {
+  // Clear stored auth state and redirect to login
+  localStorage.removeItem('arcvault_jwt')
+  localStorage.removeItem('arcvault_token')
+  localStorage.removeItem('arcvault_user')
+  localStorage.removeItem('arcvault_remember_me')
+  // Use hash routing — the app uses createWebHashHistory
+  window.location.hash = '#/login'
+}
+
 async function request(method, path, body = null) {
   const opts = {
     method,
@@ -16,6 +26,12 @@ async function request(method, path, body = null) {
   if (body) opts.body = JSON.stringify(body)
 
   const res = await fetch(`${BASE_URL}${path}`, opts)
+
+  if (res.status === 401) {
+    handle401()
+    throw new Error('Session expired. Please log in again.')
+  }
+
   if (!res.ok) {
     const text = await res.text()
     throw new Error(`${method} ${path} → ${res.status}: ${text}`)
