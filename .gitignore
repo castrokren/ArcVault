@@ -1,11 +1,8 @@
-
 dist/
 .claude/
 
-# Built binaries (match only files, not directories)
-coordinator.exe
-coordinator
-agent.exe
-agent/agent.exe
-/agent
-/coordinator
+# Built binaries - match only files, not directories containing source code
+*.exe
+installer-test-output.txt
+test-results.txt
+installer-inputs.txt
