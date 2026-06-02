@@ -5,10 +5,12 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 )
 
@@ -54,6 +56,10 @@ func Init(dbPath string) (*DB, error) {
 	database := &DB{conn: conn}
 	if err := database.migrate(); err != nil {
 		return nil, fmt.Errorf("migration failed: %w", err)
+	}
+
+	if err := database.EnsureDefaultAdmin(); err != nil {
+		return nil, fmt.Errorf("failed to ensure default admin: %w", err)
 	}
 
 	return database, nil
@@ -454,6 +460,37 @@ CREATE TABLE IF NOT EXISTS job_runs (
 	     CURRENT_TIMESTAMP
 	   );
 	 END`)
+	return nil
+}
+
+// EnsureDefaultAdmin creates a default admin user if no users exist.
+// The default credentials are admin/changeme with must_change_password=1.
+// This runs on every startup but is a no-op if any users already exist.
+func (d *DB) EnsureDefaultAdmin() error {
+	var count int
+	err := d.conn.QueryRow(`SELECT COUNT(*) FROM users`).Scan(&count)
+	if err != nil {
+		// Table may not exist yet in very old DBs — safe to skip
+		return nil
+	}
+	if count > 0 {
+		return nil
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte("changeme"), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("failed to hash default password: %w", err)
+	}
+
+	_, err = d.conn.Exec(
+		`INSERT INTO users (username, password_hash, role, must_change_password) VALUES (?, ?, 'admin', 1)`,
+		"admin", string(hash),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create default admin user: %w", err)
+	}
+
+	log.Println("Created default admin user (admin/changeme) — please change password on first login")
 	return nil
 }
 
