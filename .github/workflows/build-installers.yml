@@ -51,6 +51,10 @@ jobs:
       - name: Build binaries
         run: |
           $ErrorActionPreference = "Stop"
+          Set-Location $env:GITHUB_WORKSPACE
+          $env:GO111MODULE = "on"
+          go env GOMOD GO111MODULE
+          go mod download
           go build -o coordinator.exe ./coordinator
           go build -o agent.exe ./agent
           go build -o cmd/setup/arcvault-setup.exe ./cmd/setup
@@ -104,6 +108,11 @@ jobs:
 
       - name: Build binaries
         run: |
+          set -e
+          cd "$GITHUB_WORKSPACE"
+          export GO111MODULE=on
+          go env GOMOD GO111MODULE
+          go mod download
           GOARCH=${{ matrix.arch }} go build -o coordinator ./coordinator
           GOARCH=${{ matrix.arch }} go build -o agent ./agent
           GOARCH=${{ matrix.arch }} go build -o cmd/setup/arcvault-setup ./cmd/setup
@@ -179,6 +188,11 @@ jobs:
 
       - name: Build binaries
         run: |
+          set -e
+          cd "$GITHUB_WORKSPACE"
+          export GO111MODULE=on
+          go env GOMOD GO111MODULE
+          go mod download
           mkdir -p dist
           go build -o dist/coordinator ./coordinator
           go build -o dist/agent ./agent
