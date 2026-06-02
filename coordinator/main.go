@@ -22,6 +22,8 @@ func main() {
 	}
 
 	switch os.Args[1] {
+	case "--version", "version":
+		fmt.Println(Version)
 	case "init":
 		if err := cmd.InitCommand(); err != nil {
 			log.Fatalf("init failed: %v", err)
