@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"unicode"
 )
 
 // Component represents selected installation components
@@ -29,8 +28,6 @@ type SetupConfig struct {
 
 	// Coordinator config
 	CoordinatorPort int
-	AdminUsername   string
-	AdminPassword   string
 	AdminToken      string
 	HTTPS           bool
 
@@ -43,15 +40,8 @@ type SetupConfig struct {
 // CoordinatorConfig represents the coordinator config.json structure
 type CoordinatorConfig struct {
 	Port  int    `json:"port"`
-	Admin Admin  `json:"admin"`
 	Token string `json:"admin_token"`
 	HTTPS bool   `json:"https,omitempty"`
-}
-
-// Admin holds coordinator admin credentials
-type Admin struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
 }
 
 // AgentConfig represents the agent config.yaml structure
@@ -174,26 +164,6 @@ func gatherCoordinatorConfig(reader *bufio.Reader, config *SetupConfig) error {
 		config.CoordinatorPort = p
 	}
 
-	// Admin Username
-	fmt.Print("Enter admin username: ")
-	username, _ := reader.ReadString('\n')
-	username = strings.TrimSpace(username)
-	if username == "" {
-		return fmt.Errorf("admin username cannot be empty")
-	}
-	config.AdminUsername = username
-
-	// Admin Password with strength indicator
-	fmt.Print("Enter admin password: ")
-	password := readPassword()
-	if password == "" {
-		return fmt.Errorf("admin password cannot be empty")
-	}
-	strength := evaluatePasswordStrength(password)
-	fmt.Printf("Password strength: %s\n", strength)
-
-	config.AdminPassword = password
-
 	// Generate admin token
 	token, err := generateToken(32)
 	if err != nil {
@@ -206,6 +176,10 @@ func gatherCoordinatorConfig(reader *bufio.Reader, config *SetupConfig) error {
 	httpsStr, _ := reader.ReadString('\n')
 	httpsStr = strings.TrimSpace(strings.ToLower(httpsStr))
 	config.HTTPS = httpsStr == "y" || httpsStr == "yes"
+
+	fmt.Println()
+	fmt.Println("Default login: admin / changeme")
+	fmt.Println("You will be prompted to change your password on first login.")
 
 	return nil
 }
@@ -255,8 +229,8 @@ func reviewSummary(components Component, config *SetupConfig) error {
 	case ComponentCoordinator:
 		fmt.Printf("Component: Coordinator (server)\n")
 		fmt.Printf("Port: %d\n", config.CoordinatorPort)
-		fmt.Printf("Admin Username: %s\n", config.AdminUsername)
 		fmt.Printf("HTTPS: %v\n", config.HTTPS)
+		fmt.Printf("Default login: admin / changeme (change on first login)\n")
 
 	case ComponentAgent:
 		fmt.Printf("Component: Agent (client)\n")
@@ -266,8 +240,8 @@ func reviewSummary(components Component, config *SetupConfig) error {
 	case ComponentBoth:
 		fmt.Printf("Component: Both (Coordinator + Agent)\n")
 		fmt.Printf("Coordinator Port: %d\n", config.CoordinatorPort)
-		fmt.Printf("Admin Username: %s\n", config.AdminUsername)
 		fmt.Printf("HTTPS: %v\n", config.HTTPS)
+		fmt.Printf("Default login: admin / changeme (change on first login)\n")
 		fmt.Printf("Agent ID: %s\n", config.AgentID)
 		fmt.Printf("Coordinator URL (Agent): %s\n", config.CoordinatorURL)
 	}
@@ -290,11 +264,7 @@ func writeConfigurations(components Component, config *SetupConfig, installPath 
 	// This is where the coordinator looks for config.json
 	if components == ComponentCoordinator || components == ComponentBoth {
 		coordConfig := CoordinatorConfig{
-			Port: config.CoordinatorPort,
-			Admin: Admin{
-				Username: config.AdminUsername,
-				Password: config.AdminPassword,
-			},
+			Port:  config.CoordinatorPort,
 			Token: config.AdminToken,
 			HTTPS: config.HTTPS,
 		}
@@ -414,68 +384,6 @@ func generateToken(length int) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(bytes), nil
-}
-
-func readPassword() string {
-	// Simple password read (not hidden on all platforms)
-	reader := bufio.NewReader(os.Stdin)
-	password, _ := reader.ReadString('\n')
-	return strings.TrimSpace(password)
-}
-
-func evaluatePasswordStrength(password string) string {
-	score := 0
-
-	if len(password) >= 8 {
-		score++
-	}
-	if len(password) >= 12 {
-		score++
-	}
-
-	hasLower := false
-	hasUpper := false
-	hasDigit := false
-	hasSpecial := false
-
-	for _, ch := range password {
-		if unicode.IsLower(ch) {
-			hasLower = true
-		}
-		if unicode.IsUpper(ch) {
-			hasUpper = true
-		}
-		if unicode.IsDigit(ch) {
-			hasDigit = true
-		}
-		if unicode.IsPunct(ch) || unicode.IsSymbol(ch) {
-			hasSpecial = true
-		}
-	}
-
-	if hasLower {
-		score++
-	}
-	if hasUpper {
-		score++
-	}
-	if hasDigit {
-		score++
-	}
-	if hasSpecial {
-		score++
-	}
-
-	switch {
-	case score <= 2:
-		return "Weak"
-	case score <= 4:
-		return "Fair"
-	case score <= 6:
-		return "Good"
-	default:
-		return "Strong"
-	}
 }
 
 func isWindows() bool {
