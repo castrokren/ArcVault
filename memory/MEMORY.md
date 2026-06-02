@@ -1,12 +1,16 @@
 # Memory Index
 
-**Updated:** May 29, 2026 | **Current Version:** v1.1.0
+**Updated:** June 2, 2026 12:45pm EDT | **Current Version:** v0.2.1
 
 ## Current Status
 
-✅ **Phase 22 Complete** — Integration Testing & Stress Tests (27 tests, 20/27 passing)
-✅ **History Tab Fixed** — Agent Run Breakdown chart now rendering correctly with status tracking
-🎯 **Next:** Phase 23 (CLI tooling, OpenAPI/Swagger, audit logging)
+✅ **v0.2.1 Release Finalization Complete** — Fresh install testing on Windows
+  - Coordinator service: ✅ Running, health check passing
+  - Agent service: ✅ Running, registered with coordinator
+  - Browser test: ✅ Login works, dashboard loads, agents page shows registered agent
+  - Agent registration: ✅ DESKTOP-EE77F38 online and responding to heartbeats
+  - All systems operational
+🎯 **Next:** Final verification, tag v0.2.1, prepare for release
 
 ## Memory Files
 
@@ -32,14 +36,38 @@
 - ✅ Memory efficient: 0.3MB for 100 agents
 - ✅ Edge cases covered: large paths, high file counts, permissions, disconnects at 50%
 
+### Windows Service Installation Notes (Session 6, June 2)
+
+**Setup Wizard Behavior:**
+- Interactive Go-based CLI, not CLI-parameterizable
+- Accepts input for: installation type (1=Coordinator, 2=Agent, etc.), port, HTTPS flag, confirmation
+- Creates two registry-based Windows services:
+  - `arcvault-coordinator` → runs `C:\Projects\ArcVault2.0\installer\windows\coordinator.exe run-service`
+  - `arcvault-agent` → runs `C:\Projects\ArcVault2.0\installer\windows\agent.exe run-service`
+- Generates config files in same directory: `config.json` (coordinator), `agent-config.yaml` (agent)
+- Uses dev binaries, not production install path (no C:\Program Files\ArcVault)
+
+**Agent Service Startup Issue — RESOLVED (Session 6, 13:37 UTC)**
+- **Problem:** Agent service exit code 1067, agent couldn't register with coordinator (401 Unauthorized)
+- **Root Cause:** Token mismatch between agent config and coordinator database
+  - Service loads config from `installer/windows/config.json` (not project root)
+  - Agent token was invalid or not in coordinator's tokens table
+  - Agent registration failed on startup, causing service crash
+- **Solution:** 
+  1. Regenerate coordinator and agent tokens using coordinator from installer directory
+  2. Ensure both configs use the same database path and valid tokens
+  3. Restart services to reload config
+- **Test Results:** ✅ Agent now registers as DESKTOP-EE77F38, online, heartbeat working
+- **Lesson:** Config file location depends on executable location — paths are relative to exe directory via `filepath.Join(filepath.Dir(exe), "config.json")`
+
 ### Production Readiness
 
-ArcVault is **PRODUCTION READY** as of v1.1.0 (May 29, 2026):
-- Comprehensive test coverage (27 tests across load, failure, integration, edge cases, recovery)
-- Agent disconnect recovery proven working
-- Scalability validated to 100+ agents
-- History tracking fully functional
-- Federation failover + RBAC + alerting implemented
+ArcVault v0.2.1 is **RELEASE READY** pending:
+- ✅ Coordinator functionality verified
+- ⚠️ Agent service startup issue (investigation needed)
+- ✅ Dashboard 401 fix deployed (redirects to login, no API errors on fresh session)
+- ✅ Service naming standardized (arcvault-coordinator, arcvault-agent)
+- ⏳ Full browser E2E test pending agent service resolution
 
 ---
 
