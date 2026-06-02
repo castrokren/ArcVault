@@ -2,9 +2,10 @@
 dist/
 .claude/
 
-# Built binaries
+# Built binaries (match only files, not directories)
 coordinator.exe
 coordinator
 agent.exe
-agent
-dist/
+agent/agent.exe
+/agent
+/coordinator
