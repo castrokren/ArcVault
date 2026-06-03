@@ -1,43 +1,48 @@
-//go:build windows
-
+﻿//go:build windows
 package updater
 
 import (
-	"fmt"
-	"os"
-	"os/exec"
-	"time"
+"fmt"
+"os"
+"time"
 )
 
-// ApplyUpdate stops the service, renames the staged binary, and starts the service.
+// ApplyUpdate replaces the binary in place and exits so the SCM restarts the service.
 func ApplyUpdate(stagedPath, currentPath string, progress func(ProgressEvent)) error {
-	// Signal restarting
-	progress(ProgressEvent{
-		Type:    "update_progress",
-		Step:    "restarting",
-		Pct:     95,
-		Message: "Restarting service...",
-	})
+progress(ProgressEvent{
+Type:    "update_progress",
+Step:    "restarting",
+Pct:     95,
+Message: "Restarting service...",
+})
 
-	// Use Windows Service Control (net stop/start) via cmd.exe
-	// Stop service
-	stopCmd := exec.Command("net", "stop", "arcvault-coordinator")
-	_ = stopCmd.Run() // Ignore error if service not running
+// Rename current binary out of the way
+oldPath := currentPath + ".old"
+_ = os.Remove(oldPath)
 
-	// Give service time to stop
-	time.Sleep(500 * time.Millisecond)
+var renameErr error
+for i := 0; i < 10; i++ {
+if err := os.Rename(currentPath, oldPath); err != nil {
+time.Sleep(1 * time.Second)
+continue
+}
+if err := os.Rename(stagedPath, currentPath); err != nil {
+_ = os.Rename(oldPath, currentPath)
+renameErr = err
+break
+}
+renameErr = nil
+break
+}
+if renameErr != nil {
+return fmt.Errorf("failed to replace binary: %w", renameErr)
+}
 
-	// Rename the staged binary to current
-	if err := os.Rename(stagedPath, currentPath); err != nil {
-		return fmt.Errorf("failed to replace binary: %w", err)
-	}
+// Exit so the SCM failure recovery restarts the service with the new binary
+go func() {
+time.Sleep(500 * time.Millisecond)
+os.Exit(1)
+}()
 
-	// Start service
-	startCmd := exec.Command("net", "start", "arcvault-coordinator")
-	err := startCmd.Run()
-	if err != nil {
-		return fmt.Errorf("failed to start service: %w", err)
-	}
-
-	return nil
+return nil
 }
