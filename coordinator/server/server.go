@@ -142,6 +142,7 @@ func (s *Server) authRoute(next http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) registerRoutes() {
 	s.router.HandleFunc("GET /health", s.handleHealth)
+	s.router.HandleFunc("GET /api/version", s.viewerRoute(s.handleVersion))
 	s.router.HandleFunc("GET /ws", s.handleWS)
 	s.router.HandleFunc("GET /ws/agent", s.handleAgentWS)
 	s.router.HandleFunc("GET /ws/federation", s.fedHub.HandleSubConnect)

@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** June 3, 2026 | **v0.2.3** | **Release Ready ✅**
+**Last updated:** June 3, 2026 | **v0.2.4** | **Release Ready ✅**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -32,99 +32,34 @@
   - Dashboard: Delete button + confirmation modal in Agents.vue (admin-only, local view)
   - 6 new tests in agent_delete_test.go; full suite passing
 ✅ Phase 19 (COMPLETE 2026-05-28): Robocopy/Rsync Advanced Flags
-  - Backend: SyncFlags struct (Mirror, MaxAge, MinAge, MaxSize, ExcludeFiles, ExcludeDirs) + validation + ToRobocopyArgs/ToRsyncArgs methods (32 tests, all passing)
-  - Frontend: SyncFlagsBuilder.vue component (collapsible Advanced Options, real-time command preview, form validation)
-  - Integration: Wired into Jobs form via v-model, API payload includes/omits sync_flags correctly
-  - Tests: 70 total (32 backend + 29 component unit + 9 integration)
-  - Bug fixes: Undefined array handling, API response structure (agentsData.data), form state reset
 ✅ Phase 20 (COMPLETE): Job cancellation + progress tracking (initial)
-  - Cancel endpoint + status workflow
-  - Initial progress column schema
 ✅ Phase 21a-3 (COMPLETE 2026-05-28): Real-time job progress tracking
-  - Backend: POST /api/jobs/{id}/progress (percentage, logs, status) + GET endpoint with log history
-  - Database: Auto-create job_runs on job insertion via trigger; UpdateProgressAndLogs writes to job_runs + job_logs
-  - Frontend: ProgressBar.vue component (4px green bar, smooth transitions); Jobs.vue WebSocket listener for real-time updates
-  - Architecture: Agent → POST progress → DB broadcast → WebSocket → Frontend (no polling needed)
-  - Tests: 15/15 progress tests passing; full suite 125+ tests passing
-  - PR: phase/21a-3-progress-tracking (ready for review)
 ✅ Phase 21a-4 (COMPLETE 2026-05-29): Critical hot fix — Jobs stuck in pending
-  - Issue: After rebuild, jobs created but never executed (stuck in PENDING or RUNNING)
-  - Root cause 1: handleListJobs missing sync_flags in SQL SELECT — agents got incomplete job data
-  - Root cause 2: robocopy hanging with /LOG+:NUL flag — blocked agent from processing jobs
-  - Fix 1: Added sync_flags to SELECT, Scan, and JSON deserialization in coordinator/server/jobs.go (lines 239, 253, 262-267)
-  - Fix 2: Replaced robocopy flags with /R:0 /W:0 /NP /NFL /NDL in agent/runner/executor.go (line 26)
-  - Lessons learned documented in memory/phase21a4_lessons_learned.md
-  - Testing: Verified jobs transition PENDING→RUNNING→COMPLETED with actual file copying
-  - Deployment: Run .\scripts\rebuild-and-restart.ps1
-  - Files changed: coordinator/server/jobs.go, agent/runner/executor.go, FIX_SUMMARY.md, memory/phase21a4_lessons_learned.md
 ✅ v0.2.1 (2026-05-29): Scheduled jobs fix + self-update verification
-  - Issue: Scheduled jobs executed immediately instead of waiting for scheduled time
-  - Root cause 1: Jobs created with status="pending" even when schedule field set (should be "scheduled")
-  - Root cause 2: Jobs created after startup not registered with cron scheduler
-  - Fix 1: Set status="scheduled" in handleCreateJob when Schedule != nil (coordinator/server/jobs.go lines 81-96, 171-186)
-  - Fix 2: Added late-binding cron registration via registerJobSchedule() called after job insert (lines 127, 216)
-  - Fix 3: Added global jobCron + jobCronMu in scheduler.go for post-startup job registration (lines 23-26, 142)
-  - Fix 4: Changed reset logic from "pending" → "scheduled" in triggerScheduledJobs (line 50)
-  - GitHub Actions: Updated deprecated artifact actions v3 → v4 in build-installers.yml
-  - Self-update: Verified coordinator check-update finds v0.2.1 on second PC (asset naming: coordinator_windows_amd64.exe)
-  - Tests: Updated 3 scheduler tests to expect "scheduled" status for jobs with schedule
-  - Release: v0.2.1 tagged, installer + binary uploaded to GitHub
+✅ Session 6 (June 2, 2026): v0.2.1 Release Finalization — COMPLETE
+✅ Session 7 (June 2, 2026): JWT Token Refresh Fix for Update Modals — COMPLETE
+✅ Session 8 (June 3, 2026): Coordinator Self-Update Fix — COMPLETE
+  - Dashboard embedding fixed, --version flag added, ARCVAULT_SERVICE env var set, os.Exit(1) restart
+  - Releases: v0.2.2 (--version fix), v0.2.3 (Windows update fix)
 
-✅ **Session 6** (June 2, 2026): v0.2.1 Release Finalization — COMPLETE
-  - **Task 1c ✅**: Fresh install coordinator service running with Automatic startup
-  - **Task 1d ✅**: Health endpoint returns 200 OK {"status":"ok"}
-  - **Task 1e ✅**: Browser test: Login works, dashboard loads, agents page shows registered agent
-  - **Issue Found & Resolved ✅**: Agent service startup failure (exit code 1067)
-    - **Root Cause**: Token mismatch — service loads config from installer/windows directory
-    - **Fix**: Regenerated tokens using coordinator from installer directory, synced both configs
-    - **Result**: Agent now registered as DESKTOP-EE77F38, online, heartbeat working
-    - **Lesson**: Service config paths are relative to executable location (filepath.Join(dir(exe), "config.json"))
-  - **Files Changed**: 
-    - installer/windows/agent-config.yaml (new valid token)
-    - installer/windows/config.json (updated admin token + database path)
-  - **Commits**: 
-    - 1cf96a9: fix(tokens): regenerate agent and coordinator tokens to resolve service startup failure
-    - 9b92289: cleanup(stop): clear agent service stop flag after successful startup
+✅ **Session 9** (June 3, 2026): v0.2.3 Release + Asset Resolution Fix — COMPLETE
+  - **Issue**: Update button disappeared after coordinator self-updated to v0.2.2
+  - **Root cause 1**: v0.2.3 was never released — service was correctly on latest (v0.2.2)
+  - **Root cause 2**: resolveAsset() only matched coordinator_windows_amd64.exe / coordinator-windows-amd64.exe — would fail to find plain coordinator.exe assets on future updates
+  - **Fix**: Added plain name fallback (coordinator.exe / coordinator) to resolveAsset() in updater.go
+  - **Result**: v0.2.3 released, service manually swapped, running clean at v0.2.3, update_available: False
+  - **Files changed**: coordinator/updater/updater.go (resolveAsset fallback)
+  - **Verified**: Invoke-RestMethod /api/update/check → current: v0.2.3, latest: 0.2.3, update_available: False
 
-✅ **Session 7** (June 2, 2026 7:32pm): JWT Token Refresh Fix for Update Modals — COMPLETE
-  - **Issue**: Update endpoints (/api/update/apply, /api/agents/:id/update) returning 401 Unauthorized
-  - **Root Cause**: UpdateModal and AgentUpdateModal were using api.js's refreshToken() which doesn't save token to localStorage
-    - After refreshToken() call, the old (expired) token was still used for the actual update request
-    - Result: 401 Unauthorized on /api/update/apply endpoint
-  - **Fix**: Changed both modals to use useAuth() composable's refreshToken() function
-    - useAuth.refreshToken() properly saves new token to localStorage before returning
-    - Token is now valid when subsequent API request is made
-  - **Files Changed**:
-    - dashboard/src/components/UpdateModal.vue (import useAuth, use auth.refreshToken())
-    - dashboard/src/components/AgentUpdateModal.vue (import useAuth, use auth.refreshToken())
-  - **Commits**:
-    - c3ab937: fix: save refreshed JWT token in update modals before making API requests
-  - **Dashboard Build**: ✅ Rebuilt and deployed to coordinator binary
+✅ **Session 10** (June 3, 2026): Bug fixes — Nav bar, agent update badge, rebuild script
+  - Nav bar hidden when logged out (`v-if="auth.isAuthenticated.value"` on `<header>` in App.vue)
+  - Agent Update badge false positive fixed — now compares agent version against coordinator current version, not GitHub latest
+  - Agent version moved from config file to ldflags (`-X main.Version=vX.Y.Z`) matching coordinator pattern
+  - `--version` flag added to agent binary (required for VerifyBinary check on self-update)
+  - `Version` field removed from agent config struct and `agent-config.yaml`
+  - rebuild-and-restart.ps1 fixed: correct deploy paths (`installer\windows\`), SCM recovery disabled/re-enabled around stop/start, ldflags version injection from `git describe`
 
-✅ **Session 8** (June 3, 2026): Coordinator Self-Update Fix — COMPLETE
-  - **Issue 1**: Dashboard embedding stale — new builds not copied to coordinator/static/dist
-    - **Root Cause**: npm run build outputs to dashboard/dist, not coordinator/static/dist
-    - **Fix**: Manually copy dashboard/dist → coordinator/static/dist before go build
-    - **Lesson**: Always copy dashboard build before rebuilding coordinator binary
-  - **Issue 2**: Old release binary (v0.2.1) missing --version flag support
-    - **Root Cause**: GitHub release asset built from older main.go without --version case in switch
-    - **Fix**: Released v0.2.2 with correct --version flag; VerifyBinary now passes
-  - **Issue 3**: Update failing with "Access is denied" on binary rename
-    - **Root Cause**: IsServiceMode() returned false — ARCVAULT_SERVICE env var never set in RunService()
-    - **Fix**: Added os.Setenv("ARCVAULT_SERVICE", "1") to RunService() in runner_windows.go
-  - **Issue 4**: Service not auto-restarting after update
-    - **Root Cause**: Service process cannot restart itself via net start — SCM blocks it
-    - **Fix**: Use os.Exit(1) from within ApplyUpdate() — SCM failure recovery actions restart the service
-    - **SCM Config required**: sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/3000/restart/3000
-    - **Note**: This SCM config must be applied after every fresh service install
-  - **Files Changed**:
-    - coordinator/service/runner_windows.go (added os.Setenv ARCVAULT_SERVICE=1)
-    - coordinator/updater/updater_windows.go (rename-out-of-way approach + os.Exit(1))
-    - coordinator/static/dist (updated dashboard build embedded in binary)
-  - **Releases**: v0.2.2 (--version fix), v0.2.3 (Windows update fix)
-  - **Commits**: (pending — commit before starting next session)
-
-🎯 **Next:** Commit all changes → build v0.2.3 release binary → gh release create v0.2.3
+🎯 **Next:** Begin Phase 22 (scope TBD)
 
 ## Core Commands
 ```bash
@@ -148,27 +83,30 @@ agent install-service
 sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/3000/restart/3000
 ```
 
-## What's Implemented
-- ✅ Single binary deployment (coordinator) with embedded Vue dashboard
-- ✅ Per-agent tokens (in addition to admin token)
-- ✅ Self-update system (coordinator + agents, live WebSocket progress)
-- ✅ Bidirectional rollback (one-version-back, v0.3.0+)
-- ✅ Server-side pagination & filtering (all list endpoints)
-- ✅ Job history visualization (timeline + agent charts, v0.4.0+)
-- ✅ Failure notifications (webhook + email, v0.5.0+)
-- ✅ JWT-based RBAC (v0.8.0): Three roles (admin, operator, viewer) with fine-grained endpoint access
-- ✅ User management: Create/list/delete/update roles with bcrypt password hashing
-- ✅ Agent groups: Organize agents by environment or function, assign members
-
 ## Build & Deploy Checklist (Windows)
 1. `cd dashboard && npm run build`
 2. `Remove-Item coordinator\static\dist -Recurse -Force`
 3. `Copy-Item dashboard\dist coordinator\static\dist -Recurse`
-4. `go build -ldflags "-X main.Version=vX.Y.Z" -o coordinator\arcvault-coordinator.exe coordinator\main.go`
+4. `go build -ldflags "-X main.Version=vX.Y.Z" -o installer\windows\coordinator.exe coordinator\main.go`
 5. `Stop-Service arcvault-coordinator`
-6. `Copy-Item coordinator\arcvault-coordinator.exe installer\windows\coordinator.exe -Force`
-7. `Start-Service arcvault-coordinator`
-8. `sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/3000/restart/3000`
+6. `Start-Service arcvault-coordinator`
+7. `sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/3000/restart/3000`
+
+## What's Implemented
+- ✅ Single binary deployment (coordinator) with embedded Vue dashboard
+- ✅ Per-agent tokens (in addition to admin token)
+- ✅ Self-update system (coordinator + agents, live WebSocket progress)
+- ✅ Bidirectional rollback (one-version-back)
+- ✅ Server-side pagination & filtering (all list endpoints)
+- ✅ Failure notifications (webhook + email)
+- ✅ JWT-based RBAC: Three roles (admin, operator, viewer)
+- ✅ User management: Create/list/delete/update roles with bcrypt password hashing
+- ✅ Agent groups: Organize agents by environment or function
+- ✅ Real-time job progress tracking via WebSocket
+- ✅ Robocopy/Rsync advanced flags (Mirror, MaxAge, MinSize, ExcludeFiles, etc.)
+- ✅ Job cancellation
+- ✅ Schedule builder UI (Interval/Daily/Weekly/Monthly/Custom, live cron preview)
+- ✅ Delete agents (admin only, 409 blocks if running jobs)
 
 ## Quick Setup
 
@@ -178,43 +116,15 @@ coordinator create-agent-token agent-01
 # Copy token to agent-config.yaml as auth_token
 ```
 
-**Notification config** (`coordinator/config.json`):
-```json
-{
-  "notifications": {
-    "on_failure": true,
-    "webhook": {
-      "url": "https://hooks.example.com/arcvault",
-      "secret": "hmac-secret"
-    },
-    "email": {
-      "smtp_host": "smtp.example.com",
-      "smtp_port": 587,
-      "from": "arcvault@example.com",
-      "to": ["ops@example.com"],
-      "username": "user",
-      "password": "pass"
-    }
-  }
-}
-```
-*Both webhook and email optional; webhook uses GitHub convention: `X-ArcVault-Signature: sha256=<hex>`*
-
-**Service installation:**
-```bash
-# Windows (admin PowerShell)
+**Service installation (Windows admin PowerShell):**
+```powershell
 coordinator install-service
 sc start arcvault-coordinator
 sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/3000/restart/3000
-
-# Linux/macOS (root)
-sudo coordinator install-service
-sudo systemctl start arcvault-coordinator        # Linux
-sudo launchctl start com.arcvault.coordinator   # macOS
 ```
 
 ## Reference
 - **Project instructions & routing:** [CLAUDE.md](CLAUDE.md)
-- **Phase history & architecture:** [MEMORY.md](MEMORY.md) (detailed design decisions, technical stack, full roadmap)
+- **Phase history & architecture:** [MEMORY.md](MEMORY.md)
 - **Current branch:** main
-- **Latest release:** v0.2.3
+- **Latest release:** v0.2.4
