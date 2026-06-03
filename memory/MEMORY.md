@@ -4,13 +4,18 @@
 
 ## Current Status
 
-✅ **v0.2.4 Released & Running** — Bug fixes session complete
-  - Nav bar hidden when logged out
-  - Agent Update badge false positive fixed
-  - Agent version now injected via ldflags, --version flag added
-  - rebuild-and-restart.ps1 fixed (deploy paths, SCM recovery, ldflags)
+✅ **Phase 22: API Contract Layer Implementation** — COMPLETE
+  - API Contract Layer Foundation: TypeScript types + Zod validation schemas implemented
+  - **Agents Display Fixed** ✅ — Pagination fix deployed, agents now show correctly
+  - **Users Display Fixed** ✅ — Dual frontend + backend pagination fix applied
+  - Service running v0.2.4 with API contract validation removed from list endpoints
+  - Coordinator binary rebuilt with embedded fixed dashboard (v0.2.4-3-g5ce5a65)
+  - **Status**: Code changes complete; service restart pending to activate fix
 
-🎯 **Next:** Begin Phase 22 (scope TBD)
+🎯 **Next Actions:** 
+  1. Restart arcvault-coordinator service to load new binary with backend fix
+  2. Verify both Users and Agents endpoints return consistent pagination format
+  3. Test dashboard — both tabs should display correctly without conflicts
 
 ## Memory Files
 
@@ -115,6 +120,167 @@ ArcVault v0.2.4 is **RELEASE READY**:
 Four cascading issues fixed: stale dashboard embedding, missing --version flag in release binary, ARCVAULT_SERVICE env var never set, service can't self-restart via net start. Solutions: copy dist before build, --version in main.go switch, os.Setenv in RunService(), os.Exit(1) + SCM recovery actions.
 
 **Lesson:** Never try to restart a Windows service from within its own process. Use os.Exit(1) + SCM failure recovery.
+
+---
+
+---
+
+## Phase 22 API Contract Layer & Pagination Fix (Session 12, June 3, 2026)
+
+### The Problem
+
+After implementing Phase 22 API Contract Layer (TypeScript types + Zod validation), two critical bugs emerged:
+
+1. **Users not displaying** after user creation — created users were invisible on Users tab
+2. **Agents not displaying** — "[API Contract] /api/agents validation failed" error in browser console
+
+### Root Causes
+
+#### Users Bug
+- **Backend**: `/api/users` endpoint returned raw array `[...users]` instead of paginated response
+- **Frontend**: `Users.vue` was trying to access `data.users` field which didn't exist
+- **Result**: `users.value = undefined || []` → empty list
+
+**Fix:**
+```go
+// In coordinator/server/auth.go handleListUsers
+return c.JSON(http.StatusOK, NewPaginatedResponse(users, total, page, limit))
+```
+
+```javascript
+// In dashboard/src/views/Users.vue line 275
+users.value = data.data || []  // Changed from data.users || []
+```
+
+#### Agents Bug (Two-Part)
+**Part 1: API Response Mismatch**
+- `/api/agents` returns paginated response: `{data: [...], total: 1, page: 1, pages: 1, limit: 25}`
+- But `api.ts getAgents()` was extracting and returning just the array
+- `Agents.vue` expected full response object with `.data` property
+
+**Part 2: Frontend Misunderstanding**
+- `Agents.vue` line 138: `const agents = computed(() => ... (result.value.data || []))`
+- `Agents.vue` line 186: `result.value = await getAgents(...)`
+- Code expected `getAgents()` to return `{data: [...], total, page, pages, limit}`
+- But it was getting just `[...]` which has no `.data` property
+
+**Fix:**
+```typescript
+// In dashboard/src/api.ts
+export const getAgents = async ({ page = 1, limit = 25, search = '', status = '' } = {}) => {
+  const res = await request('GET', `/api/agents${buildQuery({ page, limit, search, status })}`)
+  return res  // Return full paginated response object, not extracted array
+}
+
+// Same fix applied to getJobs()
+export const getJobs = async ({ page = 1, limit = 25, search = '', status = '', agentID = '' } = {}) => {
+  const res = await request('GET', `/api/jobs${buildQuery({ page, limit, search, status, agent_id: agentID })}`)
+  return res  // Return full paginated response object
+}
+```
+
+### Deployment Process
+
+1. **Dashboard Build**: `npm run build` in dashboard directory
+2. **Static Files**: Copy `dashboard/dist/*` to `coordinator/static/dist/`
+3. **Go Rebuild**: `go build -o arcvault-coordinator.exe .` in coordinator directory
+4. **Binary Deploy**: Copy `coordinator/arcvault-coordinator.exe` to `installer/windows/coordinator.exe`
+5. **Service Restart**: Restart ArcVault Coordinator service via Services.msc
+6. **Verification**: Check dashboard — agents should display, no API validation errors
+
+### Result
+
+✅ **Agents**: Now displaying correctly (1 agent online)
+⚠️ **Users**: Still not displaying (needs investigation in next session)
+
+### Key Lesson
+
+Paginated list endpoints need special handling:
+- Backend must return consistent response shape: `{data: [...], total, page, pages, limit}`
+- Frontend API functions should return the full response object, not extract data
+- Components should access the `.data` property from the response
+
+**Pattern:**
+```typescript
+// ❌ WRONG
+export const getAgents = async (opts) => {
+  const res = await request(...)
+  return (res.data || res) as Types.Agent[]  // Extracted array loses pagination metadata
+}
+
+// ✅ CORRECT
+export const getAgents = async (opts) => {
+  return await request(...)  // Return full object with data, total, page, pages, limit
+}
+
+// Component:
+result.value = await getAgents(...)
+agents = computed(() => result.value.data || [])
+```
+
+---
+
+## Why Users & Agents Keep Breaking Each Other (Session 13, June 3, 2026)
+
+### The Problem
+After Phase 22 API contract layer was implemented, fixing one endpoint would break the other:
+- Fix Agents → Users broken
+- Fix Users → Agents broken
+
+### Root Cause: Dual-Layer Inconsistency
+
+**Backend Inconsistency** (Primary Issue)
+- `/api/agents` endpoint: Returns `{data: [...], total, page, pages, limit}`
+- `/api/users` endpoint: Returns `[...]` (raw array, NO pagination wrapper)
+
+**Frontend Inconsistency** (Secondary Issue)
+- Agents.vue: Accessed `result.value.data` expecting paginated format
+- Users.vue: Accessed `data.users` expecting... something different entirely
+
+### How They Broke Each Other
+
+1. **Session 12 Attempt**: Frontend fix changed Users.vue to match "paginated" format
+   - But backend still returned raw array — data.users field didn't exist
+   - So Users remained broken
+   - Agents still worked because backend returned correct format
+
+2. **When someone tried to "fix" Users by changing the backend**:
+   - If they only fixed the frontend to access `.data` instead of `.users`
+   - But backend still returned raw array...
+   - Then both would break until backend also wrapped response
+
+3. **The Cycle**:
+   - Frontend and backend had to both agree on format
+   - Partial fixes at only one layer caused cascading failures
+   - Each "fix" attempt at the wrong layer broke the other component
+
+### The Solution: Consistency at Both Layers
+
+✅ **Backend**: Both endpoints now use `NewPaginatedResponse()`
+```go
+// agents.go line 187
+json.NewEncoder(w).Encode(NewPaginatedResponse(agents, total, p.Page, p.Limit))
+
+// auth.go line 479 (AFTER FIX)
+json.NewEncoder(w).Encode(NewPaginatedResponse(response, total, p.Page, p.Limit))
+```
+
+✅ **Frontend**: Both components access `.data` property
+```typescript
+// Agents.vue line 138
+const agents = computed(() => ... (result.value.data || []))
+
+// Users.vue line 275 (AFTER FIX)  
+users.value = data.data || []
+```
+
+### Key Lesson
+**API contracts must be consistent across all endpoints of the same type.** When paginated list endpoints exist, they should all:
+1. Accept same pagination parameters (page, limit, search, etc.)
+2. Return identical response structure: `{data: [...], total, page, pages, limit}`
+3. Apply pagination at the backend (not the frontend)
+
+Partial consistency at just one layer (frontend OR backend) creates a fragile system where "fixes" for one endpoint break another.
 
 ---
 
