@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** June 2, 2026 1:40pm EDT | **v0.2.1** | **Release Ready ✅**
+**Last updated:** June 2, 2026 7:32pm EDT | **v0.2.1** | **Release Ready ✅**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -85,9 +85,24 @@
   - **Commits**: 
     - 1cf96a9: fix(tokens): regenerate agent and coordinator tokens to resolve service startup failure
     - 9b92289: cleanup(stop): clear agent service stop flag after successful startup
-  - **Next**: Task 2 (Tag v0.2.1) and Task 3 (Re-enable GitHub Actions) blocked pending agent service resolution
 
-🎯 Next: Resolve agent service startup issue, complete Tasks 2-3, run full browser checklist
+✅ **Session 7** (June 2, 2026 7:32pm): JWT Token Refresh Fix for Update Modals — COMPLETE
+  - **Issue**: Update endpoints (/api/update/apply, /api/agents/:id/update) returning 401 Unauthorized
+  - **Root Cause**: UpdateModal and AgentUpdateModal were using api.js's refreshToken() which doesn't save token to localStorage
+    - After refreshToken() call, the old (expired) token was still used for the actual update request
+    - Result: 401 Unauthorized on /api/update/apply endpoint
+  - **Fix**: Changed both modals to use useAuth() composable's refreshToken() function
+    - useAuth.refreshToken() properly saves new token to localStorage before returning
+    - Token is now valid when subsequent API request is made
+  - **Files Changed**:
+    - dashboard/src/components/UpdateModal.vue (import useAuth, use auth.refreshToken())
+    - dashboard/src/components/AgentUpdateModal.vue (import useAuth, use auth.refreshToken())
+  - **Commits**:
+    - c3ab937: fix: save refreshed JWT token in update modals before making API requests
+  - **Dashboard Build**: ✅ Rebuilt and deployed to coordinator binary
+  - **Next**: Restart coordinator service and test update flow in browser
+
+🎯 Next: Restart coordinator and verify update flow works without 401 errors
 
 ## Core Commands
 ```bash

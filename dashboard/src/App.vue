@@ -110,7 +110,7 @@
 <script setup>
 import { ref, onMounted, provide, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { getRollbackAvailable } from './api.js'
+import { getRollbackAvailable, checkUpdate } from './api.js'
 import { useAuth } from './composables/useAuth.js'
 import { useWebSocket } from './composables/useWebSocket.js'
 import UpdateBanner from './components/UpdateBanner.vue'
@@ -149,6 +149,7 @@ provide('updateStore', updateStore)
 onMounted(() => {
   applyTheme(theme.value)
   if (auth.isAuthenticated.value) {
+    console.log('App mounted: connecting websocket and checking coordinator updates')
     connect()
     checkForUpdates()
     checkRollbackAvailable()
@@ -166,22 +167,22 @@ function toggleTheme() {
 }
 
 function checkForUpdates() {
-  const token = auth.getToken()
-  if (!token) return
-
-  fetch('/api/update/check', {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
-  })
-    .then(r => r.json())
+  console.log('Checking coordinator update status via /api/update/check')
+  checkUpdate()
     .then(data => {
+      console.log('Update check response:', data)
       updateStore.current = data.current
       updateStore.latest = data.latest
       updateStore.available = data.update_available
       updateStore.releaseUrl = data.release_url
       updateStore.assetUrl = data.asset_url
+      console.log('Update availability:', {
+        current: updateStore.current,
+        latest: updateStore.latest,
+        available: updateStore.available,
+        releaseUrl: updateStore.releaseUrl,
+        assetUrl: updateStore.assetUrl
+      })
     })
     .catch(err => {
       console.error('Failed to check for updates:', err)
