@@ -59,6 +59,13 @@
   - `Version` field removed from agent config struct and `agent-config.yaml`
   - rebuild-and-restart.ps1 fixed: correct deploy paths (`installer\windows\`), SCM recovery disabled/re-enabled around stop/start, ldflags version injection from `git describe`
 
+✅ **Session 11** (June 3, 2026): Dashboard fixes — Sync Flags, version badge, build pipeline
+  - **SyncFlagsBuilder** wired into Jobs form — was imported but never rendered; placed outside form-grid in `.sync-flags-row` wrapper
+  - **Version badge** added to nav brand — shows `updateStore.current` as small muted text next to ArcVault logo
+  - **build.ps1** created at project root — single command full pipeline: Vue build → clear + copy dist to coordinator/static/dist → Go build with ldflags → Stop-Service → copy binary → Start-Service
+  - **Root cause fixed**: `coordinator/static/dist` had accumulated 28+ stale JS files from previous builds; Go embed was picking up wrong files. build.ps1 clears this directory before every build.
+  - **v0.2.4 tagged and pushed** with all fixes
+
 🎯 **Next:** Begin Phase 22 (scope TBD)
 
 ## Core Commands
@@ -83,7 +90,15 @@ agent install-service
 sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/3000/restart/3000
 ```
 
-## Build & Deploy Checklist (Windows)
+## Build & Deploy (Windows)
+
+**Use build.ps1 (recommended):**
+```powershell
+cd C:\Projects\ArcVault2.0
+.\build.ps1
+```
+
+**Manual checklist:**
 1. `cd dashboard && npm run build`
 2. `Remove-Item coordinator\static\dist -Recurse -Force`
 3. `Copy-Item dashboard\dist coordinator\static\dist -Recurse`
