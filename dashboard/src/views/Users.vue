@@ -228,7 +228,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { getUsers, createUser, updateUserRole, deleteUser as deleteUserApi } from '../api'
 import { useAuth } from '../composables/useAuth.js'
 
@@ -272,7 +272,7 @@ async function fetchUsers() {
 
   try {
     const data = await getUsers({ page: page.value, limit })
-    users.value = data.users || []
+    users.value = data.data || []
   } catch (err) {
     error.value = err.message || 'Failed to load users'
   } finally {

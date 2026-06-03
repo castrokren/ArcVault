@@ -446,6 +446,8 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	p := ParsePagination(r)
+
 	users, err := s.db.ListUsers()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
@@ -453,6 +455,17 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"error": "failed to list users"})
 		return
 	}
+
+	total := len(users)
+	offset := (p.Page - 1) * p.Limit
+	if offset >= total {
+		offset = total
+	}
+	end := offset + p.Limit
+	if end > total {
+		end = total
+	}
+	paginatedUsers := users[offset:end]
 
 	// Omit password_hash from response
 	type UserResponse struct {
@@ -464,7 +477,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var response []UserResponse
-	for _, u := range users {
+	for _, u := range paginatedUsers {
 		response = append(response, UserResponse{
 			ID:                   u.ID,
 			Username:             u.Username,
@@ -475,8 +488,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(NewPaginatedResponse(response, total, p.Page, p.Limit))
 }
 
 // handleCreateUser handles POST /api/users — admin only

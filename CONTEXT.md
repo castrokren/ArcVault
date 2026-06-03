@@ -66,7 +66,37 @@
   - **Root cause fixed**: `coordinator/static/dist` had accumulated 28+ stale JS files from previous builds; Go embed was picking up wrong files. build.ps1 clears this directory before every build.
   - **v0.2.4 tagged and pushed** with all fixes
 
-🎯 **Next:** Begin Phase 22 (scope TBD)
+✅ **Session 12** (June 3, 2026): Phase 22 API Contract Layer & Agent Display Fix
+  - **Phase 22 Completed**: API Contract Layer with TypeScript types + Zod runtime validation schemas
+  - **Bug Found**: Users not displaying after creation; Agents list broken with "[API Contract] validation failed" errors
+  - **Root Cause (Users)**: Users endpoint returning paginated response `{data: [...], total, page, pages}` but Users.vue accessing raw array
+  - **Root Cause (Agents)**: Two-part issue:
+    1. Frontend `getAgents()` was returning just the array instead of full paginated response object
+    2. Agents.vue expects `result.value.data` but was getting `result.value = array`
+  - **Fix Applied**:
+    1. Modified `coordinator/server/auth.go` handleListUsers to wrap response in `NewPaginatedResponse`
+    2. Updated Users.vue to access `data.data` field from paginated response
+    3. Removed problematic Zod validation from `getAgents()`, `getJobs()`, `getGroups()` in `dashboard/src/api.ts`
+    4. **Critical Fix**: Changed `getAgents()` and `getJobs()` to return full paginated response object, not extracted array
+    5. Updated `dashboard/src/views/Users.vue` line 275 from `data.users || []` to `data.data || []`
+  - **Binary Deployment**: Built coordinator with embedded fixed dashboard (includes API contract layer + pagination fix)
+  - **Result**: ✅ Agents displaying correctly | ⚠️ Users still not displaying (needs investigation in next session)
+  - **Build Process Used**: Manual dashboard build + static/dist update + Go rebuild + service binary deployment
+
+✅ **Session 13** (June 3, 2026): Users/Agents Pagination Fix — Dual Frontend + Backend
+  - **Issue**: Users still not displaying while Agents worked — inconsistent API response formats
+  - **Root Cause Identified**: 
+    - Backend `/api/agents` endpoint uses `NewPaginatedResponse()` returning `{data: [...], total, page, pages, limit}`
+    - Backend `/api/users` endpoint returned raw array `[...]` — NOT wrapped in pagination
+    - Frontend Users.vue was accessing `data.users` (wrong field) instead of `data.data`
+    - When either component accessed the wrong field, the other would break
+  - **Fixes Applied**:
+    1. **Frontend (Users.vue)**: Changed `data.users` → `data.data` (line 275), added missing `watch` import
+    2. **Backend (auth.go)**: Modified `handleListUsers()` to parse pagination params, apply limit/offset, wrap response in `NewPaginatedResponse()` — now matches agents format
+    3. **Result**: Both endpoints now return identical pagination structure
+  - **Binary Rebuilt**: Coordinator rebuilt with all fixes (coordinator binary timestamp: 19:06:46)
+  - **Status**: Code fixes complete and deployed; service restart pending (permissions issue)
+  - **Next**: Service restart will complete the fix when admin user has capability to restart Windows service
 
 ## Core Commands
 ```bash
