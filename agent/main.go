@@ -17,6 +17,9 @@ import (
 	agentws "arcvault/agent/ws"
 )
 
+// Version is injected at build time via ldflags: -X main.Version=vX.Y.Z
+var Version = "v0.0.0-dev"
+
 func main() {
 	// no args = run the agent (backward compatible)
 	if len(os.Args) < 2 {
@@ -39,6 +42,8 @@ func main() {
 		if err := service.Uninstall(); err != nil {
 			log.Fatalf("uninstall-service failed: %v", err)
 		}
+	case "--version", "version":
+		fmt.Println(Version)
 	case "help":
 		printUsage()
 	default:
@@ -73,7 +78,7 @@ func runAgent() {
 
 	// Register with coordinator
 	hostname, _ := os.Hostname()
-	if err := heartbeat.Register(hbCfg, hostname, runtime.GOOS, runtime.GOARCH, cfg.Version); err != nil {
+	if err := heartbeat.Register(hbCfg, hostname, runtime.GOOS, runtime.GOARCH, Version); err != nil {
 		log.Fatalf("registration failed: %v", err)
 	}
 

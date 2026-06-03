@@ -1,6 +1,6 @@
-<template>
+﻿<template>
   <div class="app">
-    <header class="nav">
+    <header v-if="auth.isAuthenticated.value" class="nav">
       <div class="nav-brand">
         <svg class="nav-logo" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M10 2L17 6V10C17 13.87 13.94 17.5 10 18.5C6.06 17.5 3 13.87 3 10V6L10 2Z"
@@ -8,6 +8,7 @@
           <path d="M7 10L9.5 12.5L13 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
         <span class="nav-brand-text">ArcVault</span>
+        <span class="nav-version">{{ updateStore.current }}</span>
       </div>
 
       <div class="nav-divider"></div>
@@ -61,7 +62,7 @@
           <svg v-else width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M12 9a5 5 0 1 1-6-6 3.5 3.5 0 0 0 6 6z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
         </button>
 
-        <div class="ws-indicator" :class="{ connected: wsConnected }" :title="wsConnected ? 'Live — WebSocket connected' : 'Disconnected'">
+        <div class="ws-indicator" :class="{ connected: wsConnected }" :title="wsConnected ? 'Live â€” WebSocket connected' : 'Disconnected'">
           <span class="ws-dot"></span>
           <span class="ws-label">{{ wsConnected ? 'Live' : 'Off' }}</span>
         </div>
@@ -108,7 +109,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, provide, reactive, computed } from 'vue'
+import { ref, onMounted, provide, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getRollbackAvailable, checkUpdate } from './api.js'
 import { useAuth } from './composables/useAuth.js'
@@ -214,7 +215,7 @@ async function handleLogout() {
 </script>
 
 <style scoped>
-/* ── App shell ───────────────────────────────────────────── */
+/* â”€â”€ App shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .app {
   display: flex;
   flex-direction: column;
@@ -222,7 +223,7 @@ async function handleLogout() {
   background: var(--bg-base);
 }
 
-/* ── Nav ─────────────────────────────────────────────────── */
+/* â”€â”€ Nav â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .nav {
   display: flex;
   align-items: center;
@@ -258,6 +259,17 @@ async function handleLogout() {
   font-size: 1rem;
   letter-spacing: 0.04em;
   color: var(--text-primary);
+}
+
+.nav-version {
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  opacity: 0.7;
+  margin-left: 0.2rem;
+  align-self: flex-end;
+  padding-bottom: 0.05rem;
 }
 
 .nav-divider {

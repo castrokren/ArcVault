@@ -151,6 +151,9 @@ export const applyAgentRollback = (agentId) =>
 export const checkUpdate = () =>
   request('GET', '/api/update/check')
 
+export const getVersion = () =>
+  request('GET', '/api/version')
+
 export const applyCoordinatorUpdate = () =>
   request('POST', '/api/update/apply')
 

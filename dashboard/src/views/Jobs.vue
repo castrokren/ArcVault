@@ -64,6 +64,9 @@
         <label>Schedule <span class="optional">(optional)</span></label>
         <ScheduleBuilder v-model="form.schedule" />
       </div>
+      <div class="sync-flags-row">
+        <SyncFlagsBuilder v-model="form.sync_flags" />
+      </div>
       <div class="form-actions">
         <button class="primary" @click="createJob" :disabled="creating">
           {{ creating ? 'Creating...' : 'Create' }}
@@ -171,6 +174,7 @@ import { ref, computed, onMounted, watch, inject } from 'vue'
 import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups, getJobRuns } from '../api.js'
 import Pagination from '../components/Pagination.vue'
 import ScheduleBuilder from '../components/ScheduleBuilder.vue'
+import SyncFlagsBuilder from '../components/SyncFlagsBuilder.vue'
 import { useFederationLag } from '../composables/useFederationLag.js'
 
 const props = defineProps(['lastEvent'])
@@ -200,7 +204,7 @@ const statusFilter = ref('all')
 const agents = ref([])
 const groups = ref([])
 
-const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '' })
+const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', sync_flags: { mirror: false, max_age: null, min_age: null, max_size: null, exclude_files: [], exclude_dirs: [] } })
 
 // Logs modal state
 const showLogsModal = ref(false)
@@ -280,7 +284,7 @@ async function createJob() {
     if (form.value.dispatchMode === 'group') delete payload.agent_id
 
     await apiCreateJob(payload)
-    form.value = { dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '' }
+    form.value = { dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', sync_flags: { mirror: false, max_age: null, min_age: null, max_size: null, exclude_files: [], exclude_dirs: [] } }
     showForm.value = false
     page.value = 1
     await load()
@@ -465,6 +469,10 @@ onMounted(() => {
   box-shadow: 0 0 0 2px rgba(79, 142, 247, 0.1);
 }
 .optional { color: #666; font-size: 0.8rem; }
+
+.sync-flags-row {
+  margin-bottom: 1rem;
+}
 
 .form-actions { display: flex; gap: 0.5rem; }
 button.primary {
