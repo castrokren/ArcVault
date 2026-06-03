@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** June 2, 2026 7:32pm EDT | **v0.2.1** | **Release Ready ✅**
+**Last updated:** June 3, 2026 | **v0.2.3** | **Release Ready ✅**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -100,9 +100,31 @@
   - **Commits**:
     - c3ab937: fix: save refreshed JWT token in update modals before making API requests
   - **Dashboard Build**: ✅ Rebuilt and deployed to coordinator binary
-  - **Next**: Restart coordinator service and test update flow in browser
 
-🎯 Next: Restart coordinator and verify update flow works without 401 errors
+✅ **Session 8** (June 3, 2026): Coordinator Self-Update Fix — COMPLETE
+  - **Issue 1**: Dashboard embedding stale — new builds not copied to coordinator/static/dist
+    - **Root Cause**: npm run build outputs to dashboard/dist, not coordinator/static/dist
+    - **Fix**: Manually copy dashboard/dist → coordinator/static/dist before go build
+    - **Lesson**: Always copy dashboard build before rebuilding coordinator binary
+  - **Issue 2**: Old release binary (v0.2.1) missing --version flag support
+    - **Root Cause**: GitHub release asset built from older main.go without --version case in switch
+    - **Fix**: Released v0.2.2 with correct --version flag; VerifyBinary now passes
+  - **Issue 3**: Update failing with "Access is denied" on binary rename
+    - **Root Cause**: IsServiceMode() returned false — ARCVAULT_SERVICE env var never set in RunService()
+    - **Fix**: Added os.Setenv("ARCVAULT_SERVICE", "1") to RunService() in runner_windows.go
+  - **Issue 4**: Service not auto-restarting after update
+    - **Root Cause**: Service process cannot restart itself via net start — SCM blocks it
+    - **Fix**: Use os.Exit(1) from within ApplyUpdate() — SCM failure recovery actions restart the service
+    - **SCM Config required**: sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/3000/restart/3000
+    - **Note**: This SCM config must be applied after every fresh service install
+  - **Files Changed**:
+    - coordinator/service/runner_windows.go (added os.Setenv ARCVAULT_SERVICE=1)
+    - coordinator/updater/updater_windows.go (rename-out-of-way approach + os.Exit(1))
+    - coordinator/static/dist (updated dashboard build embedded in binary)
+  - **Releases**: v0.2.2 (--version fix), v0.2.3 (Windows update fix)
+  - **Commits**: (pending — commit before starting next session)
+
+🎯 **Next:** Commit all changes → build v0.2.3 release binary → gh release create v0.2.3
 
 ## Core Commands
 ```bash
@@ -121,6 +143,9 @@ coordinator check-update
 # Install as system service
 coordinator install-service
 agent install-service
+
+# Configure SCM failure recovery (required after fresh install on Windows)
+sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/3000/restart/3000
 ```
 
 ## What's Implemented
@@ -134,6 +159,16 @@ agent install-service
 - ✅ JWT-based RBAC (v0.8.0): Three roles (admin, operator, viewer) with fine-grained endpoint access
 - ✅ User management: Create/list/delete/update roles with bcrypt password hashing
 - ✅ Agent groups: Organize agents by environment or function, assign members
+
+## Build & Deploy Checklist (Windows)
+1. `cd dashboard && npm run build`
+2. `Remove-Item coordinator\static\dist -Recurse -Force`
+3. `Copy-Item dashboard\dist coordinator\static\dist -Recurse`
+4. `go build -ldflags "-X main.Version=vX.Y.Z" -o coordinator\arcvault-coordinator.exe coordinator\main.go`
+5. `Stop-Service arcvault-coordinator`
+6. `Copy-Item coordinator\arcvault-coordinator.exe installer\windows\coordinator.exe -Force`
+7. `Start-Service arcvault-coordinator`
+8. `sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/3000/restart/3000`
 
 ## Quick Setup
 
@@ -170,6 +205,7 @@ coordinator create-agent-token agent-01
 # Windows (admin PowerShell)
 coordinator install-service
 sc start arcvault-coordinator
+sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/3000/restart/3000
 
 # Linux/macOS (root)
 sudo coordinator install-service
@@ -181,4 +217,4 @@ sudo launchctl start com.arcvault.coordinator   # macOS
 - **Project instructions & routing:** [CLAUDE.md](CLAUDE.md)
 - **Phase history & architecture:** [MEMORY.md](MEMORY.md) (detailed design decisions, technical stack, full roadmap)
 - **Current branch:** main
-- **Latest r
+- **Latest release:** v0.2.3
