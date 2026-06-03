@@ -9,7 +9,8 @@ import (
 	"time"
 )
 
-// ProgressData tracks the progress of a running job
+// APIContract: matches dashboard/src/types/api.ts ProgressData interface
+// Last synced: 2026-06-03
 type ProgressData struct {
 	FilesProcessed   int   `json:"files_processed"`
 	BytesTransferred int64 `json:"bytes_transferred"`
@@ -17,6 +18,8 @@ type ProgressData struct {
 	TotalBytes       int64 `json:"total_bytes"`
 }
 
+// APIContract: matches dashboard/src/types/api.ts Job interface
+// Last synced: 2026-06-03
 // Job is the domain type returned by all job endpoints.
 type Job struct {
 	ID         string                 `json:"id"`

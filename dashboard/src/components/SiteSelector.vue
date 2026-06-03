@@ -11,7 +11,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { listFederation } from '../api.js'
+import { listFederation } from '../api'
 
 defineProps(['modelValue'])
 const emit = defineEmits(['update:modelValue'])

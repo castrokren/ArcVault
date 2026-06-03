@@ -145,7 +145,7 @@
 import JobTimeline from '../components/JobTimeline.vue'
 import AgentRunChart from '../components/AgentRunChart.vue'
 import Pagination from '../components/Pagination.vue'
-import { getJobRuns, getFederationHistory } from '../api.js'
+import { getJobRuns, getFederationHistory } from '../api'
 import { inject, ref } from 'vue'
 import { useFederationLag } from '../composables/useFederationLag.js'
 

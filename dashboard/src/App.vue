@@ -68,7 +68,7 @@
         </div>
 
         <div v-if="auth.isAuthenticated.value" class="user-menu">
-          <div class="user-avatar">{{ userInitials }}</div>
+          <div v-if="userInitials" class="user-avatar">{{ userInitials }}</div>
           <span class="user-info">
             <span class="user-name">{{ auth.currentUser?.username }}</span>
             <span class="user-role">{{ auth.currentUser?.role }}</span>
@@ -111,7 +111,7 @@
 <script setup>
 import { ref, onMounted, provide, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getRollbackAvailable, checkUpdate } from './api.js'
+import { getRollbackAvailable, checkUpdate } from './api'
 import { useAuth } from './composables/useAuth.js'
 import { useWebSocket } from './composables/useWebSocket.js'
 import UpdateBanner from './components/UpdateBanner.vue'

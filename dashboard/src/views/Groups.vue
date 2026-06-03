@@ -290,7 +290,7 @@ import {
   addAgentToGroup,
   removeAgentFromGroup,
   getAgents,
-} from '../api.js'
+} from '../api'
 import { useAuth } from '../composables/useAuth.js'
 
 const auth = useAuth()

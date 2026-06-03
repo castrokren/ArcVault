@@ -49,7 +49,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { applyRollback, applyAgentRollback } from '../api.js'
+import { applyRollback, applyAgentRollback } from '../api'
 
 const props = defineProps({
   // 'coordinator' or 'agent'

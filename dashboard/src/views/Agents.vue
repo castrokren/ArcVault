@@ -117,7 +117,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, inject } from 'vue'
-import { getAgents, getFederationAgents } from '../api.js'
+import { getAgents, getFederationAgents } from '../api'
 import AgentUpdateModal from '../components/AgentUpdateModal.vue'
 import RollbackModal from '../components/RollbackModal.vue'
 import Pagination from '../components/Pagination.vue'

@@ -171,7 +171,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, inject } from 'vue'
-import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups, getJobRuns } from '../api.js'
+import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups, getJobRuns } from '../api'
 import Pagination from '../components/Pagination.vue'
 import ScheduleBuilder from '../components/ScheduleBuilder.vue'
 import SyncFlagsBuilder from '../components/SyncFlagsBuilder.vue'
