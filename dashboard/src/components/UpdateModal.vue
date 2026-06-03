@@ -104,7 +104,7 @@
 
 <script setup>
 import { ref, inject, watch, onUnmounted } from 'vue'
-import { getToken, applyCoordinatorUpdate, saveToken } from '../api.js'
+import { getToken, applyCoordinatorUpdate, saveToken } from '../api'
 import { useAuth } from '../composables/useAuth.js'
 
 const props = defineProps({

@@ -23,6 +23,8 @@ func (s *Server) handleListGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// APIContract: matches dashboard/src/types/api.ts Group interface
+	// Last synced: 2026-06-03
 	type GroupResponse struct {
 		ID          int    `json:"id"`
 		Name        string `json:"name"`

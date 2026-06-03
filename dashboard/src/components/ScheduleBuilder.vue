@@ -108,7 +108,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { cronPreview } from '../api.js'
+import { cronPreview } from '../api'
 
 const props = defineProps({
   modelValue: { type: String, default: '' }

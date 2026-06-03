@@ -14,6 +14,8 @@ var startTime = time.Now()
 // BuildTime is optionally injected at build time via ldflags: -X server.BuildTime=...
 var BuildTime = "unknown"
 
+// APIContract: matches dashboard/src/types/api.ts VersionResponse interface
+// Last synced: 2026-06-03
 type versionResponse struct {
 	Version   string `json:"version"`
 	BuildTime string `json:"build_time"`

@@ -1,5 +1,5 @@
 import { ref, onMounted, onUnmounted } from 'vue'
-import { getFederationHealth } from '../api.js'
+import { getFederationHealth } from '../api'
 
 const POLL_INTERVAL = 15_000
 

@@ -21,6 +21,22 @@ type JWTClaims struct {
 	jwt.RegisteredClaims
 }
 
+// APIContract: matches dashboard/src/types/api.ts LoginResponse interface
+// Last synced: 2026-06-03
+type LoginResponse struct {
+	Token                string `json:"token"`
+	Role                 string `json:"role"`
+	MustChangePassword   bool   `json:"must_change_password"`
+}
+
+// APIContract: refresh endpoint returns same shape as login
+// Last synced: 2026-06-03
+type RefreshTokenResponse struct {
+	Token                string `json:"token"`
+	Role                 string `json:"role"`
+	MustChangePassword   bool   `json:"must_change_password"`
+}
+
 // UserClaimsCtxKey is the context key for storing user claims
 type UserClaimsCtxKey struct{}
 
@@ -244,10 +260,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"token":                  token,
-		"role":                   user.Role,
-		"must_change_password":   user.MustChangePassword,
+	json.NewEncoder(w).Encode(LoginResponse{
+		Token:                token,
+		Role:                 user.Role,
+		MustChangePassword:   user.MustChangePassword,
 	})
 }
 
@@ -395,10 +411,10 @@ func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"token":                token,
-		"role":                 user.Role,
-		"must_change_password": user.MustChangePassword,
+	json.NewEncoder(w).Encode(RefreshTokenResponse{
+		Token:                token,
+		Role:                 user.Role,
+		MustChangePassword:   user.MustChangePassword,
 	})
 }
 

@@ -229,7 +229,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getUsers, createUser, updateUserRole, deleteUser as deleteUserApi } from '../api.js'
+import { getUsers, createUser, updateUserRole, deleteUser as deleteUserApi } from '../api'
 import { useAuth } from '../composables/useAuth.js'
 
 const auth = useAuth()

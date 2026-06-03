@@ -118,7 +118,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { getTemplates, createTemplate, updateTemplate, deleteTemplate, runTemplate, cronPreview } from '../api.js'
+import { getTemplates, createTemplate, updateTemplate, deleteTemplate, runTemplate, cronPreview } from '../api'
 import Pagination from '../components/Pagination.vue'
 import ScheduleBuilder from '../components/ScheduleBuilder.vue'
 
