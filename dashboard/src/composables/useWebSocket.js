@@ -28,10 +28,12 @@ export function useWebSocket() {
     }
 
     ws.onmessage = (e) => {
+      console.log('WS message received:', e.data)
       try {
         lastEvent.value = JSON.parse(e.data)
-      } catch {
-        console.warn('WS: bad message', e.data)
+        console.log('WS parsed event:', lastEvent.value)
+      } catch (parseError) {
+        console.warn('WS: bad message', e.data, parseError)
       }
     }
 

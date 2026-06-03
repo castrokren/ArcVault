@@ -1,0 +1,65 @@
+=== RUN   TestLargeSourcePaths
+--- PASS: TestLargeSourcePaths (0.50s)
+=== RUN   TestHighFileCount
+--- PASS: TestHighFileCount (0.50s)
+=== RUN   TestPermissionDeniedErrors
+--- PASS: TestPermissionDeniedErrors (0.30s)
+=== RUN   TestLongJobDisconnectAtMidpoint
+--- PASS: TestLongJobDisconnectAtMidpoint (2.00s)
+=== RUN   TestConcurrentWritesToSameDestination
+--- PASS: TestConcurrentWritesToSameDestination (0.50s)
+=== RUN   TestRapidJobCreationAndCompletion
+--- PASS: TestRapidJobCreationAndCompletion (0.53s)
+=== RUN   TestMixedJobDurations
+--- PASS: TestMixedJobDurations (0.80s)
+=== RUN   TestAgentDisconnectRecovery
+--- PASS: TestAgentDisconnectRecovery (2.00s)
+=== RUN   TestSimultaneousAgentDisconnects
+    failure_injector_test.go:56: expected all 10 jobs to complete, got 0
+--- FAIL: TestSimultaneousAgentDisconnects (0.50s)
+=== RUN   TestNetworkTimeout
+--- PASS: TestNetworkTimeout (0.60s)
+=== RUN   TestCoordinatorCrashRecovery
+    failure_injector_test.go:111: expected at least 15 jobs to complete after crash recovery, got 13
+--- FAIL: TestCoordinatorCrashRecovery (0.60s)
+=== RUN   TestDatabaseLockUnderLoad
+--- PASS: TestDatabaseLockUnderLoad (0.25s)
+=== RUN   TestFailureRecoveryTime
+    failure_injector_test.go:168: Failures injected: 10
+    failure_injector_test.go:169: Failures recovered: 10
+    failure_injector_test.go:170: Recovery rate: 100.0%
+--- PASS: TestFailureRecoveryTime (1.50s)
+=== RUN   TestHarnessBasicLoad
+--- PASS: TestHarnessBasicLoad (0.30s)
+=== RUN   TestHarnessLatency
+--- PASS: TestHarnessLatency (0.10s)
+=== RUN   TestHarnessMemoryTracking
+--- PASS: TestHarnessMemoryTracking (0.50s)
+=== RUN   TestHarnessCompletionTime
+--- PASS: TestHarnessCompletionTime (0.10s)
+=== RUN   TestMultiAgentJobDispatch
+--- PASS: TestMultiAgentJobDispatch (0.20s)
+=== RUN   TestAgentFailover
+    integration_test.go:49: expected 90% completion with agent failover, got 85.0%
+--- FAIL: TestAgentFailover (0.60s)
+=== RUN   TestHighConcurrentLoad
+--- PASS: TestHighConcurrentLoad (0.51s)
+=== RUN   TestJobCancellation
+--- PASS: TestJobCancellation (1.50s)
+=== RUN   TestJobRecoveryOnCoordinatorRestart
+    recovery_scenarios_test.go:27: expected 85% recovery rate after coordinator restart, got 73.3%
+--- FAIL: TestJobRecoveryOnCoordinatorRestart (1.50s)
+=== RUN   TestMultipleAgentReconnection
+    recovery_scenarios_test.go:50: expected all jobs to complete after simultaneous disconnects, got 0/20
+--- FAIL: TestMultipleAgentReconnection (1.21s)
+=== RUN   TestStaggeredAgentReconnection
+--- PASS: TestStaggeredAgentReconnection (0.50s)
+=== RUN   TestDatabaseTransactionRecovery
+--- PASS: TestDatabaseTransactionRecovery (0.38s)
+=== RUN   TestProgressPersistenceAcrossDisconnect
+--- PASS: TestProgressPersistenceAcrossDisconnect (1.80s)
+=== RUN   TestCoordinatorFailoverInFederation
+--- PASS: TestCoordinatorFailoverInFederation (1.20s)
+FAIL
+exit status 1
+FAIL	arcvault/coordinator/cmd/arcvault-test	21.571s
