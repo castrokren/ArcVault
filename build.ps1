@@ -20,7 +20,9 @@ Copy-Item -Recurse "$root\dashboard\dist" "$root\coordinator\static\dist"
 
 Write-Host "==> Building coordinator..." -ForegroundColor Cyan
 Set-Location $root
-go build -o coordinator/arcvault-coordinator.exe coordinator/main.go
+$version = git describe --tags --always
+Write-Host "  Version: $version" -ForegroundColor Gray
+go build -ldflags "-X main.Version=$version" -o coordinator/arcvault-coordinator.exe coordinator/main.go
 if ($LASTEXITCODE -ne 0) { Write-Host "Go build failed" -ForegroundColor Red; exit 1 }
 
 if ($SkipDeploy) {
