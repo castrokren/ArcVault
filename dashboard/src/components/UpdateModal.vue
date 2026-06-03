@@ -104,6 +104,8 @@
 
 <script setup>
 import { ref, inject, watch, onUnmounted } from 'vue'
+import { getToken, applyCoordinatorUpdate, saveToken } from '../api.js'
+import { useAuth } from '../composables/useAuth.js'
 
 const props = defineProps({
   isOpen: Boolean,
@@ -171,19 +173,35 @@ function startUpdate() {
   progressMessage.value = ''
   currentStep.value = 'resolving'
 
-  // Call the update API
-  const token = localStorage.getItem('arcvault_token')
-  fetch('/api/update/apply', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${token}`,
-      'Content-Type': 'application/json'
-    }
-  }).catch(err => {
+  const token = getToken()
+  if (!token) {
     state.value = 'error'
-    errorMessage.value = `Failed to start update: ${err.message}`
-    clearTimers()
-  })
+    errorMessage.value = 'Missing authentication token. Please sign in again.'
+    return
+  }
+
+  const auth = useAuth()
+
+  console.log('Refreshing token before update...')
+
+  // Refresh token to ensure it's valid, then apply update
+  auth.refreshToken()
+    .then(success => {
+      if (!success) {
+        throw new Error('Token refresh failed')
+      }
+      console.log('Token refreshed, applying coordinator update')
+      return applyCoordinatorUpdate()
+    })
+    .then(() => {
+      console.log('Coordinator update request accepted')
+    })
+    .catch(err => {
+      console.error('Coordinator update failed:', err)
+      state.value = 'error'
+      errorMessage.value = `Failed to start update: ${err.message}`
+      clearTimers()
+    })
 }
 
 function startReconnectPolling() {
