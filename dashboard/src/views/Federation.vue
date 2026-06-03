@@ -95,7 +95,7 @@ import {
   updateFederation,
   deleteFederation,
   syncFederation,
-} from '../api.js'
+} from '../api'
 
 const subs = ref([])
 const loading = ref(true)

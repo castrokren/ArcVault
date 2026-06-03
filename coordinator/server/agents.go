@@ -19,6 +19,8 @@ type heartbeatRequest struct {
 	RollbackAvailable bool `json:"rollback_available"`
 }
 
+// APIContract: matches dashboard/src/types/api.ts Agent interface
+// Last synced: 2026-06-03
 type agentResponse struct {
 	ID                string  `json:"id"`
 	Hostname          string  `json:"hostname"`
