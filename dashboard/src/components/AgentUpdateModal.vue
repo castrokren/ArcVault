@@ -81,6 +81,8 @@
 
 <script setup>
 import { ref, inject, watch, onUnmounted } from 'vue'
+import { getToken, applyAgentUpdate } from '../api.js'
+import { useAuth } from '../composables/useAuth.js'
 
 const props = defineProps({
   isOpen: Boolean,
@@ -154,13 +156,28 @@ function startUpdate() {
   progressPct.value = 0
   currentStep.value = 'downloading'
 
-  const token = localStorage.getItem('arcvault_token')
-  fetch(`/api/agents/${props.agentId}/update`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}` }
-  })
-    .then(r => {
-      if (!r.ok) return r.json().then(b => Promise.reject(b.error || `HTTP ${r.status}`))
+  const token = getToken()
+  if (!token) {
+    state.value = 'error'
+    errorMessage.value = 'Missing authentication token. Please sign in again.'
+    return
+  }
+
+  const auth = useAuth()
+
+  console.log('Refreshing token before agent update...')
+
+  // Refresh token to ensure it's valid, then apply update
+  auth.refreshToken()
+    .then(success => {
+      if (!success) {
+        throw new Error('Token refresh failed')
+      }
+      console.log('Token refreshed, applying agent update for', props.agentId)
+      return applyAgentUpdate(props.agentId)
+    })
+    .then(() => {
+      console.log('Agent update request accepted for', props.agentId)
     })
     .catch(err => {
       state.value = 'error'
