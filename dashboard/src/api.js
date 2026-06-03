@@ -1,8 +1,16 @@
 const BASE_URL = ''
 
-function getToken() {
+export function getToken() {
   // Try new JWT token first, fall back to old admin token
   return localStorage.getItem('arcvault_jwt') || localStorage.getItem('arcvault_token') || ''
+}
+
+function getAuthHeaders() {
+  const token = getToken()
+  if (!token) return {}
+  return {
+    Authorization: `Bearer ${token}`,
+  }
 }
 
 function handle401() {
@@ -19,7 +27,7 @@ async function request(method, path, body = null) {
   const opts = {
     method,
     headers: {
-      'Authorization': `Bearer ${getToken()}`,
+      ...getAuthHeaders(),
       'Content-Type': 'application/json',
     },
   }
@@ -139,6 +147,16 @@ export const applyRollback = () =>
 export const applyAgentRollback = (agentId) =>
   request('POST', `/api/agents/${agentId}/rollback`)
 
+// --- updates ---
+export const checkUpdate = () =>
+  request('GET', '/api/update/check')
+
+export const applyCoordinatorUpdate = () =>
+  request('POST', '/api/update/apply')
+
+export const applyAgentUpdate = (agentId) =>
+  request('POST', `/api/agents/${agentId}/update`)
+
 // --- templates ---
 export const getTemplates = ({ page = 1, limit = 25, search = '' } = {}) =>
   request('GET', `/api/templates${buildQuery({ page, limit, search })}`)
@@ -188,10 +206,12 @@ export const getFederationHealth = () =>
 
 // --- token helpers ---
 export function saveToken(token) {
+  localStorage.setItem('arcvault_jwt', token)
   localStorage.setItem('arcvault_token', token)
 }
 
 export function clearToken() {
+  localStorage.removeItem('arcvault_jwt')
   localStorage.removeItem('arcvault_token')
 }
 

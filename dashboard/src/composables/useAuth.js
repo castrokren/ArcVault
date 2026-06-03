@@ -24,10 +24,7 @@ export function useAuth() {
 
   // Get token from storage (localStorage or memory)
   function getToken() {
-    const fromStorage = localStorage.getItem('arcvault_jwt')
-    if (fromStorage) return fromStorage
-    // Could also store in window, but for now localStorage is enough
-    return null
+    return localStorage.getItem('arcvault_jwt') || localStorage.getItem('arcvault_token') || null
   }
 
   // Save token to appropriate storage — always persist
@@ -35,6 +32,7 @@ export function useAuth() {
     rememberMe.value = remember
     localStorage.setItem('arcvault_remember_me', '1')
     localStorage.setItem('arcvault_jwt', token)
+    localStorage.setItem('arcvault_token', token)
   }
 
   // Clear all auth state
@@ -43,6 +41,7 @@ export function useAuth() {
     isAuthenticated.value = false
     rememberMe.value = false
     localStorage.removeItem('arcvault_jwt')
+    localStorage.removeItem('arcvault_token')
     localStorage.removeItem('arcvault_remember_me')
     localStorage.removeItem('arcvault_user')
   }

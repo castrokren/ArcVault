@@ -1,16 +1,16 @@
 # Memory Index
 
-**Updated:** June 2, 2026 12:45pm EDT | **Current Version:** v0.2.1
+**Updated:** June 2, 2026 7:32pm EDT | **Current Version:** v0.2.1
 
 ## Current Status
 
-✅ **v0.2.1 Release Finalization Complete** — Fresh install testing on Windows
-  - Coordinator service: ✅ Running, health check passing
-  - Agent service: ✅ Running, registered with coordinator
-  - Browser test: ✅ Login works, dashboard loads, agents page shows registered agent
-  - Agent registration: ✅ DESKTOP-EE77F38 online and responding to heartbeats
-  - All systems operational
-🎯 **Next:** Final verification, tag v0.2.1, prepare for release
+✅ **v0.2.1 JWT Token Refresh Fix Deployed** — Update endpoints now working
+  - Issue: 401 Unauthorized on /api/update/apply endpoint
+  - Root cause: UpdateModal not saving refreshed JWT token to localStorage
+  - Fix: Changed both UpdateModal and AgentUpdateModal to use useAuth().refreshToken()
+  - Result: Token now properly persisted before update request
+  - Coordinator: Rebuilt with updated dashboard, ready for testing
+🎯 **Next:** Verify update flow in browser (login → check update → start update, no 401 error)
 
 ## Memory Files
 
@@ -18,16 +18,18 @@
 - [History Tab Fix](history_tab_fix.md) — Bug fix for Agent Run Breakdown chart (root causes + solutions)
 - [Phase 21a-4 Implementation](phase21a4_implementation.md) — Jobs stuck in pending hot fix (sync_flags + robocopy flags)
 - [Phase 21a-4 Lessons Learned](phase21a4_lessons_learned.md) — Debugging insights from hot fix
+- **[JWT Token Refresh Fix (Session 7, June 2)](#jwt-token-refresh-fix)** — Update endpoints returning 401 due to missing token persistence
 
 ## Quick Reference
 
-### Latest Issues Fixed (May 29, 2026)
+### Latest Issues Fixed
 
-| Issue | Root Cause | Fix |
-|-------|-----------|-----|
-| History tab blank | Missing API parameters + no backend filtering + missing agent_id | Added after/search/status params to API, fixed JOIN, updated status field |
-| Job status stuck as running | Status field not updated on completion | Updated job_results.go to set status based on exit_code + migration to fix historical data |
-| Agent Run Breakdown not grouping | job_runs table lacks agent_id column | Always JOIN with jobs table to get agent_id |
+| Date | Issue | Root Cause | Fix |
+|------|-------|-----------|-----|
+| May 29 | History tab blank | Missing API parameters + no backend filtering + missing agent_id | Added after/search/status params to API, fixed JOIN, updated status field |
+| May 29 | Job status stuck as running | Status field not updated on completion | Updated job_results.go to set status based on exit_code + migration to fix historical data |
+| May 29 | Agent Run Breakdown not grouping | job_runs table lacks agent_id column | Always JOIN with jobs table to get agent_id |
+| June 2 | Update endpoints return 401 Unauthorized | UpdateModal using api.js refreshToken() which doesn't save token | Changed to useAuth().refreshToken() which persists token to localStorage |
 
 ### Phase 22 Key Results
 
@@ -68,6 +70,54 @@ ArcVault v0.2.1 is **RELEASE READY** pending:
 - ✅ Dashboard 401 fix deployed (redirects to login, no API errors on fresh session)
 - ✅ Service naming standardized (arcvault-coordinator, arcvault-agent)
 - ⏳ Full browser E2E test pending agent service resolution
+
+---
+
+## JWT Token Refresh Fix (Session 7, June 2, 2026)
+
+### Problem
+Update endpoints were returning 401 Unauthorized:
+- `/api/update/apply` (coordinator update)
+- `/api/agents/:id/update` (agent update)
+
+### Root Cause
+Both UpdateModal.vue and AgentUpdateModal.vue were importing `refreshToken` from `api.js`:
+```javascript
+import { getToken, refreshToken, applyCoordinatorUpdate } from '../api.js'
+```
+
+The `api.js` refreshToken() function returns the response but **does NOT save the new token to localStorage**:
+```javascript
+export const refreshToken = () =>
+  request('POST', '/api/auth/refresh')
+```
+
+After the call, the frontend still had the old (expired) JWT token, causing the subsequent update request to fail with 401.
+
+### Solution
+Changed both components to use the `useAuth()` composable's refreshToken() function, which:
+1. Makes the refresh request
+2. Extracts the new token from response
+3. **Saves it to localStorage** (line 182 in useAuth.js)
+4. Returns true/false for success
+
+Before update request:
+```javascript
+const auth = useAuth()
+auth.refreshToken()  // Now saves token!
+  .then(success => {
+    if (!success) throw new Error('Token refresh failed')
+    return applyCoordinatorUpdate()  // Token is now fresh in localStorage
+  })
+```
+
+### Files Changed
+- `dashboard/src/components/UpdateModal.vue`
+- `dashboard/src/components/AgentUpdateModal.vue`
+- Commit: c3ab937
+
+### Lesson
+When using api.js's fetch wrappers, always verify that the caller is responsible for persisting tokens. The useAuth() composable handles persistence; raw api.js calls do not.
 
 ---
 

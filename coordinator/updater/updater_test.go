@@ -2,7 +2,6 @@ package updater
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,47 +12,37 @@ import (
 
 // TestResolveAssetURL tests asset resolution for different OS/arch combinations.
 func TestResolveAssetURL(t *testing.T) {
-	tests := []struct {
-		goos     string
-		goarch   string
-		name     string
-		wantName string
-	}{
-		{"linux", "amd64", "coordinator_linux_amd64", "coordinator_linux_amd64"},
-		{"darwin", "arm64", "coordinator_darwin_arm64", "coordinator_darwin_arm64"},
-		{"windows", "amd64", "coordinator_windows_amd64.exe", "coordinator_windows_amd64.exe"},
+	assets := []ReleaseAsset{
+		{Name: "coordinator_linux_amd64", DownloadURL: "http://example.com/linux"},
+		{Name: "coordinator_darwin_arm64", DownloadURL: "http://example.com/darwin"},
+		{Name: "coordinator_windows_amd64.exe", DownloadURL: "http://example.com/windows"},
 	}
 
-	for _, tt := range tests {
-		t.Run(fmt.Sprintf("%s_%s", tt.goos, tt.goarch), func(t *testing.T) {
-			// Save original runtime values and mock them would require platform build,
-			// so we just test the asset matching logic
-			assets := []ReleaseAsset{
-				{Name: "coordinator_linux_amd64", DownloadURL: "http://example.com/linux"},
-				{Name: "coordinator_darwin_arm64", DownloadURL: "http://example.com/darwin"},
-				{Name: "coordinator_windows_amd64.exe", DownloadURL: "http://example.com/windows"},
-			}
+	cases := []struct {
+		goos, goarch string
+		wantURL      string
+	}{
+		{"linux", "amd64", "http://example.com/linux"},
+		{"darwin", "arm64", "http://example.com/darwin"},
+		{"windows", "amd64", "http://example.com/windows"},
+	}
 
-			// Filter to find the asset we're testing
-			for _, asset := range assets {
-				if asset.Name == tt.wantName {
-					// Manually check the resolution logic
-					url, err := ResolveAssetURL(assets)
-					if err != nil {
-						// Only fail if this is the current platform
-						if (runtime.GOOS == tt.goos && runtime.GOARCH == tt.goarch) {
-							t.Errorf("ResolveAssetURL failed: %v", err)
-						}
-						return
-					}
-					if url == "" {
-						t.Errorf("ResolveAssetURL returned empty URL")
-					}
-					return
-				}
+	for _, tc := range cases {
+		t.Run(tc.goos+"_"+tc.goarch, func(t *testing.T) {
+			url, err := resolveAsset("coordinator", tc.goos, tc.goarch, assets)
+			if err != nil {
+				t.Fatalf("resolveAsset failed: %v", err)
+			}
+			if url != tc.wantURL {
+				t.Fatalf("resolveAsset returned %q, want %q", url, tc.wantURL)
 			}
 		})
 	}
+}
+
+func TestResolveVersionedAssetURL(t *testing.T) {
+	// This test was removed when resolver broadened to accept versioned/archive names.
+	// Reverting to strict matching, so no versioned asset tests here.
 }
 
 // TestDownloadBinary tests downloading a binary to a file.
