@@ -12,6 +12,10 @@ Write-Host ""
 
 # Step 1: Stop services
 Write-Host "Step 1: Stopping services..." -ForegroundColor Yellow
+
+# Disable SCM auto-restart so coordinator doesn't bounce back up before we can replace the binary
+sc.exe failure arcvault-coordinator reset= 0 actions= none 2>$null
+
 sc.exe stop arcvault-agent 2>$null
 sc.exe stop arcvault-coordinator 2>$null
 
@@ -65,6 +69,11 @@ Remove-Item -Recurse -Force "coordinator\static\dist\*" -ErrorAction SilentlyCon
 Copy-Item -Recurse "dashboard\dist\*" "coordinator\static\dist\" -Force
 Write-Host "  Synced dashboard\dist -> coordinator\static\dist" -ForegroundColor Green
 
+# Determine version from git tag (falls back to v0.0.0-dev)
+$Version = (git describe --tags --abbrev=0 2>$null)
+if (-not $Version) { $Version = "v0.0.0-dev" }
+Write-Host "  Building with version: $Version" -ForegroundColor Cyan
+
 # Step 4: Build coordinator.exe
 Write-Host ""
 Write-Host "Step 4: Building coordinator.exe..." -ForegroundColor Yellow
@@ -74,7 +83,7 @@ if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-go build -o coordinator.exe .\coordinator
+go build -ldflags "-X main.Version=$Version" -o coordinator.exe .\coordinator
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  coordinator.exe build FAILED." -ForegroundColor Red
     exit 1
@@ -85,7 +94,7 @@ Write-Host "  coordinator.exe built successfully." -ForegroundColor Green
 Write-Host ""
 Write-Host "Step 5: Building agent.exe..." -ForegroundColor Yellow
 
-go build -o agent.exe .\agent
+go build -ldflags "-X main.Version=$Version" -o agent.exe .\agent
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  agent.exe build FAILED." -ForegroundColor Red
     exit 1
@@ -96,17 +105,21 @@ Write-Host "  agent.exe built successfully." -ForegroundColor Green
 Write-Host ""
 Write-Host "Step 6: Deploying to service locations..." -ForegroundColor Yellow
 
-Copy-Item "coordinator.exe" "C:\ArcVault\coordinator.exe" -Force
-Write-Host "  Copied coordinator.exe -> C:\ArcVault\" -ForegroundColor Green
+Copy-Item "coordinator.exe" "$ProjectRoot\installer\windows\coordinator.exe" -Force
+Write-Host "  Copied coordinator.exe -> installer\windows\" -ForegroundColor Green
 
-Copy-Item "agent.exe" "C:\ArcVault-Agent\agent.exe" -Force
-Write-Host "  Copied agent.exe -> C:\ArcVault-Agent\" -ForegroundColor Green
+Copy-Item "agent.exe" "$ProjectRoot\installer\windows\agent.exe" -Force
+Write-Host "  Copied agent.exe -> installer\windows\" -ForegroundColor Green
 
 # Step 7: Start services
 Write-Host ""
 Write-Host "Step 7: Starting services..." -ForegroundColor Yellow
 sc.exe start arcvault-coordinator
 Start-Sleep -Seconds 3
+
+# Re-enable SCM auto-restart now that the new binary is in place
+sc.exe failure arcvault-coordinator reset= 86400 actions= restart/3000/restart/3000/restart/3000 2>$null
+Write-Host "  SCM failure recovery re-enabled." -ForegroundColor Green
 
 try {
     $health = Invoke-RestMethod -Uri "http://localhost:8080/health" -TimeoutSec 5

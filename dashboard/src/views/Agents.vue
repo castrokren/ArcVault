@@ -150,8 +150,11 @@ const rollbackModal = ref({ show: false, agentId: null })
 const updateStore = inject('updateStore', { available: false, latest: '' })
 
 function updateAvailable(agent) {
-  if (!updateStore.available || !updateStore.latest) return false
-  return agent.version !== updateStore.latest
+  // An agent needs updating only when it's behind the coordinator's current running version.
+  // Avoids false positives caused by reusing the coordinator's update-available state.
+  if (!updateStore.current) return false
+  const normalize = v => String(v).replace(/^v/, '')
+  return normalize(agent.version) !== normalize(updateStore.current)
 }
 
 function openUpdateModal(agent) {
