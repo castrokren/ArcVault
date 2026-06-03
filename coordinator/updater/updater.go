@@ -116,9 +116,22 @@ func resolveAsset(prefix, goos, goarch string, assets []ReleaseAsset) (string, e
 	exact := fmt.Sprintf("%s_%s_%s", prefix, goos, goarch)
 	alt := fmt.Sprintf("%s-%s-%s", prefix, goos, goarch)
 
+	// Preferred: platform-specific name (coordinator_windows_amd64.exe)
 	for _, asset := range assets {
 		name := asset.Name
-		if strings.EqualFold(name, exact) || strings.EqualFold(name, exact+".exe") || strings.EqualFold(name, alt) || strings.EqualFold(name, alt+".exe") {
+		if strings.EqualFold(name, exact) ||
+			strings.EqualFold(name, exact+".exe") ||
+			strings.EqualFold(name, alt) ||
+			strings.EqualFold(name, alt+".exe") {
+			return asset.DownloadURL, nil
+		}
+	}
+
+	// Fallback: plain name (coordinator.exe or coordinator)
+	plainExe := prefix + ".exe"
+	for _, asset := range assets {
+		name := asset.Name
+		if strings.EqualFold(name, prefix) || strings.EqualFold(name, plainExe) {
 			return asset.DownloadURL, nil
 		}
 	}
