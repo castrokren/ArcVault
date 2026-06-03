@@ -1,0 +1,17 @@
+{
+  "agents_spawned": 50,
+  "jobs_created": 1000,
+  "jobs_completed": 1000,
+  "jobs_failed": 0,
+  "duration_seconds": 2.0123802,
+  "throughput_jobs_per_second": 496.92399080452094,
+  "latency_p50_ms": 100.6874,
+  "latency_p95_ms": 100.9028,
+  "latency_p99_ms": 100.9028,
+  "peak_memory_mb": 0.29544830322265625,
+  "job_duration_ms": 100,
+  "failures_injected": 0,
+  "failures_recovered": 0,
+  "avg_connection_count": 0,
+  "max_connection_count": 0
+}

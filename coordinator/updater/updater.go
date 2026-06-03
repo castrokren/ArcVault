@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -44,24 +45,36 @@ type githubRelease struct {
 func CheckLatestRelease(currentVersion string) (*UpdateInfo, error) {
 	resp, err := http.Get("https://api.github.com/repos/castrokren/ArcVault/releases/latest")
 	if err != nil {
+		log.Printf("GitHub release check failed: %v", err)
 		return nil, fmt.Errorf("failed to fetch latest release: %w", err)
 	}
 	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("GitHub release body read failed: %v", err)
+		return nil, fmt.Errorf("failed to read release body: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
+		log.Printf("GitHub release check returned status %d: %s", resp.StatusCode, string(body))
 		return nil, fmt.Errorf("github api returned status %d", resp.StatusCode)
 	}
 
 	var release githubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+	if err := json.Unmarshal(body, &release); err != nil {
+		log.Printf("GitHub release JSON parse failed: %v; body=%s", err, string(body))
 		return nil, fmt.Errorf("failed to parse release JSON: %w", err)
 	}
 
 	latestVersion := strings.TrimPrefix(release.TagName, "v")
 	assetURL, err := resolveAssetURL(release.Assets)
 	if err != nil {
+		log.Printf("GitHub release asset resolution failed: %v; assets=%v", err, releaseAssetsSummary(release.Assets))
 		return nil, err
 	}
+
+	log.Printf("GitHub release check: current=%s latest=%s tag=%s asset_url=%s assets=%d", currentVersion, latestVersion, release.TagName, assetURL, len(release.Assets))
 
 	updateAvailable := compareVersions(currentVersion, latestVersion) < 0
 
@@ -72,6 +85,14 @@ func CheckLatestRelease(currentVersion string) (*UpdateInfo, error) {
 		ReleaseURL:      release.HTMLURL,
 		AssetURL:        assetURL,
 	}, nil
+}
+
+func releaseAssetsSummary(assets []ReleaseAsset) []string {
+	names := make([]string, 0, len(assets))
+	for _, asset := range assets {
+		names = append(names, asset.Name)
+	}
+	return names
 }
 
 // resolveAssetURL finds the coordinator asset URL for the current platform.
@@ -90,14 +111,14 @@ func ResolveAgentAssetURL(goos, goarch string, assets []ReleaseAsset) (string, e
 }
 
 // resolveAsset finds a release asset URL for the given binary prefix, OS, and arch.
+// It supports both exact asset names and versioned/release archive names.
 func resolveAsset(prefix, goos, goarch string, assets []ReleaseAsset) (string, error) {
-	assetName := fmt.Sprintf("%s_%s_%s", prefix, goos, goarch)
-	if goos == "windows" {
-		assetName += ".exe"
-	}
+	exact := fmt.Sprintf("%s_%s_%s", prefix, goos, goarch)
+	alt := fmt.Sprintf("%s-%s-%s", prefix, goos, goarch)
 
 	for _, asset := range assets {
-		if asset.Name == assetName {
+		name := asset.Name
+		if strings.EqualFold(name, exact) || strings.EqualFold(name, exact+".exe") || strings.EqualFold(name, alt) || strings.EqualFold(name, alt+".exe") {
 			return asset.DownloadURL, nil
 		}
 	}
