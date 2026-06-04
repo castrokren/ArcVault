@@ -2,11 +2,9 @@ package server
 
 import (
 	"crypto/rand"
-	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"time"
 )
 
 // APIContract: matches dashboard/src/types/api.ts ProgressData interface
@@ -66,56 +64,28 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if input.Name == "" {
-		http.Error(w, "name is required", http.StatusBadRequest)
-		return
-	}
-	if input.SourcePath == "" {
-		http.Error(w, "source_path is required", http.StatusBadRequest)
-		return
-	}
-	if input.DestPath == "" {
-		http.Error(w, "dest_path is required", http.StatusBadRequest)
-		return
-	}
-
 	// Single agent dispatch
 	if input.AgentID != "" {
-		job := Job{
-			ID:         newJobID(),
-			AgentID:    input.AgentID,
-			Name:       input.Name,
-			SourcePath: input.SourcePath,
-			DestPath:   input.DestPath,
-			Schedule:   input.Schedule,
-			SyncFlags:  input.SyncFlags,
-			Status:     "pending",
-			CreatedAt:  time.Now().UTC().Format(time.RFC3339),
-		}
-
-		// Serialize sync_flags to JSON if present
-		var syncFlagsJSON *string
-		if job.SyncFlags != nil {
-			data, err := json.Marshal(job.SyncFlags)
-			if err != nil {
-				http.Error(w, "invalid sync_flags JSON", http.StatusBadRequest)
-				return
-			}
-			jsonStr := string(data)
-			syncFlagsJSON = &jsonStr
-		}
-
-		_, err := s.db.Conn().Exec(
-			`INSERT INTO jobs (id, agent_id, name, source_path, dest_path, schedule, sync_flags, status, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			job.ID, job.AgentID, job.Name, job.SourcePath, job.DestPath, job.Schedule, syncFlagsJSON, job.Status, job.CreatedAt,
-		)
+		jobDTO, err := s.jobService.CreateJob(input.AgentID, input.Name, input.SourcePath, input.DestPath, input.Schedule, input.SyncFlags)
 		if err != nil {
-			http.Error(w, "failed to create job", http.StatusInternalServerError)
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 
-		// Append to federation_events log for state sync.
+		// Convert DTO to response and append to federation_events log
+		job := Job{
+			ID:         jobDTO.ID,
+			AgentID:    jobDTO.AgentID,
+			Name:       jobDTO.Name,
+			SourcePath: jobDTO.SourcePath,
+			DestPath:   jobDTO.DestPath,
+			Schedule:   jobDTO.Schedule,
+			SyncFlags:  jobDTO.SyncFlags,
+			Status:     jobDTO.Status,
+			CreatedAt:  jobDTO.CreatedAt,
+		}
+
+		// Log to federation_events for state sync
 		payload, _ := json.Marshal(job)
 		s.db.AppendFederationEvent(s.coordinatorID, "job_created", string(payload))
 
@@ -125,81 +95,42 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Group dispatch: create one job per group member with shared dispatch_id
+	// Group dispatch
 	groupID := *input.GroupID
-
-	// Verify group exists
-	group, err := s.db.GetGroup(groupID)
+	response, err := s.jobService.CreateJobForGroup(groupID, input.Name, input.SourcePath, input.DestPath, input.Schedule, input.SyncFlags)
 	if err != nil {
-		http.Error(w, "failed to fetch group", http.StatusInternalServerError)
-		return
-	}
-	if group == nil {
-		http.Error(w, "group not found", http.StatusNotFound)
-		return
-	}
-
-	// Fetch group members
-	agentIDs, err := s.db.GetGroupMembers(groupID)
-	if err != nil {
-		http.Error(w, "failed to fetch group members", http.StatusInternalServerError)
-		return
-	}
-
-	if len(agentIDs) == 0 {
-		http.Error(w, "group has no members", http.StatusBadRequest)
-		return
-	}
-
-	// Generate shared dispatch_id for the batch
-	dispatchID := "dispatch-" + newJobID()[4:] // reuse job ID generator, strip "job-" prefix
-
-	// Create one job per group member
-	jobs := []Job{}
-	createdAt := time.Now().UTC().Format(time.RFC3339)
-
-	for _, agentID := range agentIDs {
-		// Serialize sync_flags to JSON if present
-		var syncFlagsJSON *string
-		if input.SyncFlags != nil {
-			data, err := json.Marshal(input.SyncFlags)
-			if err != nil {
-				http.Error(w, "invalid sync_flags JSON", http.StatusBadRequest)
-				return
-			}
-			jsonStr := string(data)
-			syncFlagsJSON = &jsonStr
+		// Determine HTTP status based on error
+		statusCode := http.StatusInternalServerError
+		if err.Error() == "group not found" {
+			statusCode = http.StatusNotFound
+		} else if err.Error() == "group has no members" {
+			statusCode = http.StatusBadRequest
 		}
+		http.Error(w, err.Error(), statusCode)
+		return
+	}
 
-		job := Job{
-			ID:         newJobID(),
-			AgentID:    agentID,
-			Name:       input.Name,
-			SourcePath: input.SourcePath,
-			DestPath:   input.DestPath,
-			Schedule:   input.Schedule,
-			SyncFlags:  input.SyncFlags,
-			Status:     "pending",
-			CreatedAt:  createdAt,
+	// Convert service response to API response
+	jobs := make([]Job, len(response.Jobs))
+	for i, jobDTO := range response.Jobs {
+		jobs[i] = Job{
+			ID:         jobDTO.ID,
+			AgentID:    jobDTO.AgentID,
+			Name:       jobDTO.Name,
+			SourcePath: jobDTO.SourcePath,
+			DestPath:   jobDTO.DestPath,
+			Schedule:   jobDTO.Schedule,
+			SyncFlags:  jobDTO.SyncFlags,
+			Status:     jobDTO.Status,
+			CreatedAt:  jobDTO.CreatedAt,
 		}
-
-		_, err := s.db.Conn().Exec(
-			`INSERT INTO jobs (id, agent_id, name, source_path, dest_path, schedule, sync_flags, status, created_at, group_id, dispatch_id)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			job.ID, job.AgentID, job.Name, job.SourcePath, job.DestPath, job.Schedule, syncFlagsJSON, job.Status, job.CreatedAt, groupID, dispatchID,
-		)
-		if err != nil {
-			http.Error(w, "failed to create job", http.StatusInternalServerError)
-			return
-		}
-		jobs = append(jobs, job)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"dispatch_id": dispatchID,
-		"group_id":    groupID,
+		"dispatch_id": response.DispatchID,
+		"group_id":    response.GroupID,
 		"jobs":        jobs,
 	})
 }
@@ -213,105 +144,53 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	status := q.Get("status")
 	p := ParsePagination(r)
 
-	args := []any{}
-	where := " WHERE 1=1"
-	if agentID != "" {
-		where += " AND agent_id = ?"
-		args = append(args, agentID)
-	}
-	if search != "" {
-		where += " AND (name LIKE ? OR agent_id LIKE ?)"
-		like := "%" + search + "%"
-		args = append(args, like, like)
-	}
-	if status != "" {
-		where += " AND status = ?"
-		args = append(args, status)
-	}
-
-	var total int
-	countArgs := append([]any{}, args...)
-	if err := s.db.Conn().QueryRow("SELECT COUNT(*) FROM jobs"+where, countArgs...).Scan(&total); err != nil {
-		http.Error(w, "failed to count jobs", http.StatusInternalServerError)
-		return
-	}
-
 	offset := (p.Page - 1) * p.Limit
-	queryArgs := append(args, p.Limit, offset)
-	rows, err := s.db.Conn().Query(
-		"SELECT id, agent_id, name, source_path, dest_path, schedule, sync_flags, status, progress, created_at FROM jobs"+where+
-			" ORDER BY created_at DESC LIMIT ? OFFSET ?",
-		queryArgs...,
-	)
+	result, err := s.jobService.ListJobs(search, status, agentID, p.Limit, offset)
 	if err != nil {
-		http.Error(w, "failed to query jobs", http.StatusInternalServerError)
+		http.Error(w, "failed to list jobs", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
 
-	jobs := []Job{}
-	for rows.Next() {
-		var j Job
-		var schedule *string
-		var syncFlagsJSON *string
-		var progressJSON *string
-		if err := rows.Scan(&j.ID, &j.AgentID, &j.Name, &j.SourcePath, &j.DestPath, &schedule, &syncFlagsJSON, &j.Status, &progressJSON, &j.CreatedAt); err != nil {
-			http.Error(w, "failed to scan job", http.StatusInternalServerError)
-			return
+	// Convert service DTOs to response DTOs
+	jobs := make([]Job, len(result.Jobs))
+	for i, jobDTO := range result.Jobs {
+		jobs[i] = Job{
+			ID:         jobDTO.ID,
+			AgentID:    jobDTO.AgentID,
+			Name:       jobDTO.Name,
+			SourcePath: jobDTO.SourcePath,
+			DestPath:   jobDTO.DestPath,
+			Schedule:   jobDTO.Schedule,
+			SyncFlags:  jobDTO.SyncFlags,
+			Status:     jobDTO.Status,
+			CreatedAt:  jobDTO.CreatedAt,
 		}
-		j.Schedule = schedule
-
-		// Deserialize sync_flags JSON if present
-		if syncFlagsJSON != nil {
-			var syncFlags map[string]interface{}
-			if err := json.Unmarshal([]byte(*syncFlagsJSON), &syncFlags); err == nil {
-				j.SyncFlags = syncFlags
-			}
-		}
-
-		// Deserialize progress JSON if present
-		if progressJSON != nil {
-			var p ProgressData
-			if err := json.Unmarshal([]byte(*progressJSON), &p); err == nil {
-				j.Progress = &p
-			}
-		}
-
-		jobs = append(jobs, j)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(NewPaginatedResponse(jobs, total, p.Page, p.Limit))
+	json.NewEncoder(w).Encode(NewPaginatedResponse(jobs, result.Total, result.Page, result.Limit))
 }
 
 // handleGetJob handles GET /api/jobs/{id}
 func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	var j Job
-	var schedule *string
-	var progressJSON *string
-	err := s.db.Conn().QueryRow(
-		`SELECT id, agent_id, name, source_path, dest_path, schedule, status, progress, created_at
-		 FROM jobs WHERE id = ?`, id,
-	).Scan(&j.ID, &j.AgentID, &j.Name, &j.SourcePath, &j.DestPath, &schedule, &j.Status, &progressJSON, &j.CreatedAt)
-
-	if err == sql.ErrNoRows {
+	jobDTO, err := s.jobService.GetJob(id)
+	if err != nil {
 		http.Error(w, "job not found", http.StatusNotFound)
 		return
 	}
-	if err != nil {
-		http.Error(w, "failed to query job", http.StatusInternalServerError)
-		return
-	}
-	j.Schedule = schedule
 
-	// Deserialize progress JSON if present
-	if progressJSON != nil {
-		var p ProgressData
-		if err := json.Unmarshal([]byte(*progressJSON), &p); err == nil {
-			j.Progress = &p
-		}
+	j := Job{
+		ID:         jobDTO.ID,
+		AgentID:    jobDTO.AgentID,
+		Name:       jobDTO.Name,
+		SourcePath: jobDTO.SourcePath,
+		DestPath:   jobDTO.DestPath,
+		Schedule:   jobDTO.Schedule,
+		SyncFlags:  jobDTO.SyncFlags,
+		Status:     jobDTO.Status,
+		CreatedAt:  jobDTO.CreatedAt,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -322,15 +201,14 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	result, err := s.db.Conn().Exec(`DELETE FROM jobs WHERE id = ?`, id)
-	if err != nil {
-		http.Error(w, "failed to delete job", http.StatusInternalServerError)
+	// Verify job exists before deleting
+	if exists, err := s.db.JobExists(id); err != nil || !exists {
+		http.Error(w, "job not found", http.StatusNotFound)
 		return
 	}
 
-	n, _ := result.RowsAffected()
-	if n == 0 {
-		http.Error(w, "job not found", http.StatusNotFound)
+	if err := s.jobService.DeleteJob(id); err != nil {
+		http.Error(w, "failed to delete job", http.StatusInternalServerError)
 		return
 	}
 
@@ -343,48 +221,21 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
 	// Fetch the job to check its current status
-	var j Job
-	var schedule *string
-	var progressJSON *string
-	err := s.db.Conn().QueryRow(
-		`SELECT id, agent_id, name, source_path, dest_path, schedule, status, progress, created_at
-		 FROM jobs WHERE id = ?`, id,
-	).Scan(&j.ID, &j.AgentID, &j.Name, &j.SourcePath, &j.DestPath, &schedule, &j.Status, &progressJSON, &j.CreatedAt)
-
-	if err == sql.ErrNoRows {
+	jobDTO, err := s.jobService.GetJob(id)
+	if err != nil {
 		http.Error(w, "job not found", http.StatusNotFound)
 		return
 	}
-	if err != nil {
-		http.Error(w, "failed to query job", http.StatusInternalServerError)
-		return
-	}
-	j.Schedule = schedule
-
-	// Deserialize progress JSON if present
-	if progressJSON != nil {
-		var p ProgressData
-		if err := json.Unmarshal([]byte(*progressJSON), &p); err == nil {
-			j.Progress = &p
-		}
-	}
 
 	// Only allow canceling running jobs
-	if j.Status != "running" {
+	if jobDTO.Status != "running" {
 		http.Error(w, "job is not running", http.StatusBadRequest)
 		return
 	}
 
 	// Update job status to "canceling"
-	result, err := s.db.Conn().Exec(`UPDATE jobs SET status = ? WHERE id = ?`, "canceling", id)
-	if err != nil {
+	if err := s.jobService.UpdateJobStatus(id, "canceling"); err != nil {
 		http.Error(w, "failed to update job status", http.StatusInternalServerError)
-		return
-	}
-
-	n, _ := result.RowsAffected()
-	if n == 0 {
-		http.Error(w, "job not found", http.StatusNotFound)
 		return
 	}
 
@@ -393,7 +244,17 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 	// For now, just return the updated job with status="canceling"
 
 	// Return updated job
-	j.Status = "canceling"
+	j := Job{
+		ID:         jobDTO.ID,
+		AgentID:    jobDTO.AgentID,
+		Name:       jobDTO.Name,
+		SourcePath: jobDTO.SourcePath,
+		DestPath:   jobDTO.DestPath,
+		Schedule:   jobDTO.Schedule,
+		SyncFlags:  jobDTO.SyncFlags,
+		Status:     "canceling",
+		CreatedAt:  jobDTO.CreatedAt,
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(j)

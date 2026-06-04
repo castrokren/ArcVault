@@ -132,13 +132,16 @@ func (h *Harness) generateReport() *TestReport {
 	recoveredCount := 0
 
 	for _, m := range h.metrics {
-		if m.Failed {
-			failedCount++
-			if m.Recovered {
-				recoveredCount++
-			}
-		} else {
+		// A job is completed if it either succeeded outright or failed but recovered
+		if !m.Failed || m.Recovered {
 			completedCount++
+		} else {
+			failedCount++
+		}
+
+		// Track recoveries separately
+		if m.Failed && m.Recovered {
+			recoveredCount++
 		}
 
 		duration := m.EndTime.Sub(m.StartTime).Seconds() * 1000

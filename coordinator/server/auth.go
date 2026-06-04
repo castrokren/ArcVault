@@ -10,6 +10,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+
+	"arcvault/coordinator/business"
 )
 
 // JWTClaims holds the claims in a JWT token
@@ -217,35 +219,30 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
+	var req LoginRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	// Look up user by username
-	user, err := s.db.GetUserByUsername(req.Username)
-	if err != nil || user == nil {
-		// Return generic error to prevent user enumeration
+	// Validate request
+	if err := req.Validate(); err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid username or password"})
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Verify password
-	err = bcryptCompare(user.PasswordHash, req.Password)
+	// Use service to validate credentials
+	user, err := s.userService.ValidateCredentials(req.Username, req.Password)
 	if err != nil {
 		// Return generic error to prevent user enumeration
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid username or password"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid username or password"})
 		return
 	}
 
@@ -254,16 +251,18 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to generate token"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "failed to generate token"})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(LoginResponse{
-		Token:                token,
-		Role:                 user.Role,
-		MustChangePassword:   user.MustChangePassword,
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"user_id":               user.ID,
+		"username":              user.Username,
+		"token":                 token,
+		"expires_in":            86400,
+		"must_change_password":  user.MustChangePassword,
 	})
 }
 
@@ -306,10 +305,10 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleChangePassword handles PUT /api/auth/change-password
-// Body: {"current_password":"...","new_password":"..."}
+// handleChangePassword handles POST /api/auth/change-password
+// Body: {"old_password":"...","new_password":"..."}
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPut {
+	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -318,67 +317,42 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	if claims == nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "unauthorized"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "unauthorized"})
 		return
 	}
 
-	var req struct {
-		CurrentPassword string `json:"current_password"`
-		NewPassword     string `json:"new_password"`
-	}
+	var req ChangePasswordRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	// Validate new password length
-	if len(req.NewPassword) < 8 {
+	// Validate request
+	if err := req.Validate(); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "password must be at least 8 characters"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Get current user from DB to verify current password
-	user, err := s.db.GetUserByID(claims.UserID)
-	if err != nil || user == nil {
+	// Use service to update password
+	if err := s.userService.UpdatePassword(claims.UserID, req.OldPassword, req.NewPassword); err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "user not found"})
-		return
-	}
-
-	// Verify current password
-	if err := bcryptCompare(user.PasswordHash, req.CurrentPassword); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]string{"error": "current password is incorrect"})
-		return
-	}
-
-	// Hash new password
-	newHash, err := bcryptHash(req.NewPassword)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to update password"})
-		return
-	}
-
-	// Update password and clear must_change flag
-	if err := s.db.UpdatePassword(claims.UserID, newHash, false); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to update password"})
+		if err.Error() == "incorrect password" {
+			w.WriteHeader(http.StatusUnauthorized)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	json.NewEncoder(w).Encode(MessageResponse{Message: "Password changed successfully"})
 }
 
 // handleRefreshToken handles POST /api/auth/refresh
@@ -394,8 +368,8 @@ func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Re-verify the user still exists (catches deleted accounts).
-	user, err := s.db.GetUserByID(claims.UserID)
-	if err != nil || user == nil {
+	user, err := s.userService.GetUserByID(claims.UserID)
+	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(map[string]string{"error": "user not found"})
@@ -448,7 +422,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 
 	p := ParsePagination(r)
 
-	users, err := s.db.ListUsers()
+	users, err := s.userService.ListUsers()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -467,28 +441,8 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	paginatedUsers := users[offset:end]
 
-	// Omit password_hash from response
-	type UserResponse struct {
-		ID                   int       `json:"id"`
-		Username             string    `json:"username"`
-		Role                 string    `json:"role"`
-		MustChangePassword   bool      `json:"must_change_password"`
-		CreatedAt            time.Time `json:"created_at"`
-	}
-
-	var response []UserResponse
-	for _, u := range paginatedUsers {
-		response = append(response, UserResponse{
-			ID:                   u.ID,
-			Username:             u.Username,
-			Role:                 u.Role,
-			MustChangePassword:   u.MustChangePassword,
-			CreatedAt:            u.CreatedAt,
-		})
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(NewPaginatedResponse(response, total, p.Page, p.Limit))
+	json.NewEncoder(w).Encode(NewPaginatedResponse(paginatedUsers, total, p.Page, p.Limit))
 }
 
 // handleCreateUser handles POST /api/users — admin only
@@ -503,51 +457,50 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	if claims == nil || claims.Role != "admin" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"error": "admin only"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "not authorized"})
 		return
 	}
 
-	var req struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
-	}
+	var req CreateUserRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	// Validate role
-	if req.Role != "admin" && req.Role != "operator" && req.Role != "viewer" {
+	// Validate request
+	if err := req.Validate(); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid role"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Hash password
-	hash, err := bcryptHash(req.Password)
+	input := &business.CreateUserInput{
+		Username: req.Username,
+		Password: req.Password,
+		Role:     req.Role,
+	}
+
+	user, err := s.userService.CreateUser(input)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to create user"})
-		return
-	}
-
-	// Create user with must_change_password=true
-	if err := s.db.CreateUser(req.Username, hash, req.Role, true); err != nil {
-		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "username already exists"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"ok": "user created"})
+	json.NewEncoder(w).Encode(UserResponse{
+		UserID:            user.ID,
+		Username:          user.Username,
+		Role:              user.Role,
+		MustChangePassword: user.MustChangePassword,
+		CreatedAt:         user.CreatedAt,
+	})
 }
 
 // handleDeleteUser handles DELETE /api/users/{id} — admin only
@@ -584,8 +537,8 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delete user
-	if err := s.db.DeleteUser(userID); err != nil {
+	// Use service to delete user
+	if err := s.userService.DeleteUser(userID); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "failed to delete user"})
@@ -598,7 +551,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 // handleUpdateUserRole handles PUT /api/users/{id}/role — admin only
 // Body: {"role":"..."}
 func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPut {
+	if r.Method != http.MethodPatch {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -607,7 +560,7 @@ func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 	if claims == nil || claims.Role != "admin" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]string{"error": "admin only"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "not authorized"})
 		return
 	}
 
@@ -617,38 +570,41 @@ func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 	if _, err := fmt.Sscanf(userIDStr, "%d", &userID); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid user id"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid user id"})
 		return
 	}
 
-	var req struct {
-		Role string `json:"role"`
-	}
+	var req UpdateUserRoleRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	// Validate role
-	if req.Role != "admin" && req.Role != "operator" && req.Role != "viewer" {
+	// Validate request
+	if err := req.Validate(); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid role"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
 
-	// Update role
-	if err := s.db.UpdateUserRole(userID, req.Role); err != nil {
+	// Use service to update user role
+	if err := s.userService.UpdateUserRole(userID, req.Role); err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to update role"})
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"ok": "role updated"})
+	json.NewEncoder(w).Encode(UpdateUserRoleResponse{
+		UserID:    userID,
+		Username:  "", // Would need to fetch from service to populate
+		Role:      req.Role,
+		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+	})
 }

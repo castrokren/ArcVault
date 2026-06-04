@@ -318,12 +318,7 @@ func (s *Server) fireTemplate(t db.Template) {
 
 	log.Printf("Scheduler: firing template %s (agent %s)", t.ID, t.AgentID)
 
-	_, err := s.db.Conn().Exec(
-		`INSERT INTO jobs (id, agent_id, name, source_path, dest_path, command, status, created_at)
-		 VALUES (?, ?, ?, '', '', ?, 'pending', ?)`,
-		runID, t.AgentID, t.Name, t.Command, now,
-	)
-	if err != nil {
+	if err := s.db.CreateTemplateJob(runID, t.AgentID, t.Name, t.Command, now); err != nil {
 		log.Printf("Scheduler: failed to insert job for template %s: %v", t.ID, err)
 		return
 	}
