@@ -260,6 +260,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"user_id":               user.ID,
 		"username":              user.Username,
+		"role":                  user.Role,
 		"token":                 token,
 		"expires_in":            86400,
 		"must_change_password":  user.MustChangePassword,
@@ -308,7 +309,7 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 // handleChangePassword handles POST /api/auth/change-password
 // Body: {"old_password":"...","new_password":"..."}
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
+	if r.Method != http.MethodPut {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
