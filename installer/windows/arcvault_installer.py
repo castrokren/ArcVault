@@ -22,14 +22,16 @@ import threading
 class ArcVaultInstaller:
     """Main installer class"""
 
+    # Install locations — must match what coordinator/agent read at runtime.
+    # coordinator.exe reads config.json from its own directory (os.Executable()).
+    # agent.exe reads agent-config.yaml from its own directory.
+    COORD_DIR = Path("C:/ArcVault")
+    AGENT_DIR = Path("C:/ArcVault-Agent")
+
     def __init__(self):
-        self.version = "1.1.0"
-        self.install_path = Path("C:/Program Files/ArcVault")
-        self.config_path = Path.home() / ".arcvault"
+        self.version = "0.3.0"
         self.components = set()
         self.coordinator_port = 8080
-        self.admin_username = ""
-        self.admin_password = ""
         self.admin_token = ""
         self.agent_id = ""
         self.agent_token = ""
@@ -180,23 +182,15 @@ class ArcVaultInstaller:
 
         port_var = row("Port:", width=10)
         port_var.insert(0, "8080")
-        user_var = row("Admin Username:", width=24)
-        pass_var = row("Admin Password:", width=24, show="*")
+        ttk.Label(frame, text="Default login: admin / changeme  (you'll be prompted to change it on first login)",
+                  font=("Segoe UI", 9), foreground="#555555").pack(anchor=tk.W, pady=(4, 0))
 
         def next_step():
-            if not user_var.get():
-                messagebox.showerror("Required", "Admin username is required")
-                return
-            if not pass_var.get():
-                messagebox.showerror("Required", "Admin password is required")
-                return
             try:
                 self.coordinator_port = int(port_var.get())
             except ValueError:
                 messagebox.showerror("Invalid", "Port must be a number")
                 return
-            self.admin_username = user_var.get()
-            self.admin_password = pass_var.get()
             self.admin_token = self.generate_token(32)
             if "agent" in self.components:
                 self.show_agent_config()
@@ -269,7 +263,8 @@ class ArcVaultInstaller:
         lines = [f"Components:  {', '.join(c.title() for c in sorted(self.components))}"]
         if "coordinator" in self.components:
             lines += [f"Port:  {self.coordinator_port}",
-                      f"Admin user:  {self.admin_username}"]
+                      f"Install dir:  {self.COORD_DIR}",
+                      f"Default login:  admin / changeme"]
         if "agent" in self.components:
             lines += [f"Coordinator URL:  {self.coordinator_url}",
                       f"Agent ID:  {self.agent_id}"]
@@ -300,11 +295,6 @@ class ArcVaultInstaller:
 
         def do_install():
             try:
-                self.install_path.mkdir(parents=True, exist_ok=True)
-                status.config(text="Creating directories...")
-                self.root.update()
-
-                self.config_path.mkdir(parents=True, exist_ok=True)
                 status.config(text="Writing configuration...")
                 self.root.update()
 
@@ -322,6 +312,10 @@ class ArcVaultInstaller:
                     self.install_service("agent")
 
                 if "coordinator" in self.components:
+                    # Wait for coordinator to start before opening dashboard
+                    status.config(text="Waiting for coordinator to start...")
+                    self.root.update()
+                    time.sleep(3)
                     status.config(text="Opening dashboard...")
                     self.root.update()
                     self.open_browser(f"http://localhost:{self.coordinator_port}")
@@ -347,55 +341,82 @@ class ArcVaultInstaller:
     # ------------------------------------------------------------------
 
     def write_coordinator_config(self):
+        """Write config.json next to coordinator.exe — that's where it looks at runtime."""
+        self.COORD_DIR.mkdir(parents=True, exist_ok=True)
         config = {
             "port": self.coordinator_port,
-            "admin": {"username": self.admin_username, "password": self.admin_password},
             "admin_token": self.admin_token,
+            "database_path": str(self.COORD_DIR / "arcvault.db"),
+            "environment": "production",
         }
-        with open(self.config_path / "coordinator-config.json", "w") as f:
+        with open(self.COORD_DIR / "config.json", "w") as f:
             json.dump(config, f, indent=2)
 
     def write_agent_config(self):
-        config = {
-            "coordinator_url": self.coordinator_url,
-            "agent_id": self.agent_id,
-            "auth_token": self.agent_token,
-        }
-        with open(self.config_path / "agent-config.json", "w") as f:
-            json.dump(config, f, indent=2)
+        """Write agent-config.yaml next to agent.exe — that's where it looks at runtime."""
+        self.AGENT_DIR.mkdir(parents=True, exist_ok=True)
+        content = (
+            f"agent_id: {self.agent_id}\n"
+            f"coordinator_url: {self.coordinator_url}\n"
+            f"auth_token: {self.agent_token}\n"
+        )
+        with open(self.AGENT_DIR / "agent-config.yaml", "w") as f:
+            f.write(content)
 
     def install_service(self, service_type: str):
+        """
+        Copy the bundled binary to the install directory, then use the binary's
+        own install-service command.  This ensures the service is registered with
+        the 'run-service' argument that Windows SCM requires, and uses the correct
+        service name (arcvault-coordinator / arcvault-agent).
+        """
         try:
             base_path = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path.cwd()
 
             names = {
-                "coordinator": ("coordinator.exe", "ArcVaultCoordinator", "ArcVault Coordinator"),
-                "agent":       ("agent.exe",       "ArcVaultAgent",       "ArcVault Agent"),
+                "coordinator": ("coordinator.exe", "arcvault-coordinator", self.COORD_DIR),
+                "agent":       ("agent.exe",       "arcvault-agent",       self.AGENT_DIR),
             }
             if service_type not in names:
                 raise Exception(f"Unknown service type: {service_type}")
-            binary_name, service_name, display_name = names[service_type]
+            binary_name, service_name, install_dir = names[service_type]
 
             binary_src = base_path / binary_name
             if not binary_src.exists():
                 raise Exception(f"Binary not found: {binary_src}")
 
-            # Stop first to avoid WinError 32 (file locked by running service)
+            # Prepare install directory
+            install_dir.mkdir(parents=True, exist_ok=True)
+
+            # Stop and remove any existing service registration.
+            # Use 'sc' directly — doesn't require the binary to be present,
+            # so it works on both fresh installs and reinstalls.
             subprocess.run(["sc", "stop", service_name],
                            capture_output=True, text=True, shell=True)
-            time.sleep(2)
+            time.sleep(1)
+            subprocess.run(["sc", "delete", service_name],
+                           capture_output=True, text=True, shell=True)
+            # Wait for SCM to release the registration (up to 5 s)
+            for _ in range(10):
+                chk = subprocess.run(["sc", "query", service_name],
+                                     capture_output=True, text=True, shell=True)
+                if "does not exist" in chk.stdout or chk.returncode != 0:
+                    break
+                time.sleep(0.5)
 
-            binary_dst = self.install_path / binary_name
+            # Copy binary to install directory
+            binary_dst = install_dir / binary_name
             shutil.copy(binary_src, binary_dst)
 
+            # Register service using the binary's own install-service command.
+            # This correctly passes 'run-service' to SCM (plain 'sc create binPath='
+            # would start without arguments and exit immediately with code 1).
             result = subprocess.run(
-                ["sc", "create", service_name,
-                 f"binPath= {binary_dst}", "start= auto",
-                 f"DisplayName= {display_name}"],
+                [str(binary_dst), "install-service"],
                 capture_output=True, text=True, shell=True,
             )
-            if result.returncode != 0 and "already exists" not in result.stderr:
-                raise Exception(f"sc create failed: {result.stderr}")
+            if result.returncode != 0:
+                raise Exception(f"install-service failed: {result.stdout} {result.stderr}")
 
             start = subprocess.run(["sc", "start", service_name],
                                    capture_output=True, text=True, shell=True)

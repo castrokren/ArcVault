@@ -34,14 +34,23 @@
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M7 1.5L1.5 10.5h11L7 1.5z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M7 6v2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="10" r="0.6" fill="currentColor"/></svg>
           Alerts
         </router-link>
-        <router-link to="/users" :class="{ disabled: !isAdmin }" :title="!isAdmin ? 'Requires admin role' : ''">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M2 12c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-          Users
-        </router-link>
-        <router-link to="/groups" :class="{ disabled: !isAdmin }" :title="!isAdmin ? 'Requires admin role' : ''">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="5" cy="5" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="9.5" cy="4.5" r="1.75" stroke="currentColor" stroke-width="1.3"/><path d="M1 12c0-2.21 1.79-4 4-4s4 1.79 4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.5 8c1.65 0 3 1.35 3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-          Groups
-        </router-link>
+        <div v-if="isAdmin" class="nav-admin-menu" @mouseenter="adminMenuOpen = true" @mouseleave="adminMenuOpen = false">
+          <span class="nav-admin-trigger">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="4" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M2 12c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="11" cy="3" r="1.5" stroke="currentColor" stroke-width="1.2"/></svg>
+            Admin
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2.5 4l2.5 2.5L7.5 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </span>
+          <div v-if="adminMenuOpen" class="nav-admin-dropdown">
+            <router-link to="/users" @click="adminMenuOpen = false">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M2 12c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+              Users
+            </router-link>
+            <router-link to="/groups" @click="adminMenuOpen = false">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="5" cy="5" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="9.5" cy="4.5" r="1.75" stroke="currentColor" stroke-width="1.3"/><path d="M1 12c0-2.21 1.79-4 4-4s4 1.79 4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.5 8c1.65 0 3 1.35 3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+              Groups
+            </router-link>
+          </div>
+        </div>
       </nav>
 
       <div class="nav-right">
@@ -125,6 +134,7 @@ const updateModalOpen = ref(false)
 const showRollbackModal = ref(false)
 const showChangePasswordModal = ref(false)
 const rollbackAvailable = ref(false)
+const adminMenuOpen = ref(false)
 const theme = ref(localStorage.getItem('arcvault-theme') || 'dark')
 const { connected: wsConnected, lastEvent, connect } = useWebSocket()
 
@@ -327,6 +337,68 @@ async function handleLogout() {
 .nav-links a.router-link-active svg {
   opacity: 1;
   color: var(--accent);
+}
+
+.nav-admin-menu {
+  position: relative;
+}
+
+.nav-admin-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
+}
+
+.nav-admin-menu:hover .nav-admin-trigger {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.nav-admin-trigger svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.nav-admin-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0.3rem;
+  min-width: 130px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  z-index: 100;
+}
+
+.nav-admin-dropdown a {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 5px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.nav-admin-dropdown a:hover,
+.nav-admin-dropdown a.router-link-active {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
 }
 
 .nav-links a.disabled {
