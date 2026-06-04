@@ -1,7 +1,6 @@
 package server
 
 import (
-	"database/sql"
 	"encoding/json"
 	"net/http"
 )
@@ -10,55 +9,36 @@ import (
 func (s *Server) handleGetJobRuns(w http.ResponseWriter, r *http.Request) {
 	jobID := r.PathValue("id")
 
-	var exists string
-	err := s.db.Conn().QueryRow(`SELECT id FROM jobs WHERE id = ?`, jobID).Scan(&exists)
-	if err == sql.ErrNoRows {
-		http.Error(w, "job not found", http.StatusNotFound)
-		return
-	}
+	exists, err := s.db.JobExists(jobID)
 	if err != nil {
 		http.Error(w, "failed to query job", http.StatusInternalServerError)
+		return
+	}
+	if !exists {
+		http.Error(w, "job not found", http.StatusNotFound)
 		return
 	}
 
 	p := ParsePagination(r)
 	offset := (p.Page - 1) * p.Limit
 
-	var total int
-	if err := s.db.Conn().QueryRow(`SELECT COUNT(*) FROM job_runs WHERE job_id = ?`, jobID).Scan(&total); err != nil {
-		http.Error(w, "failed to count runs", http.StatusInternalServerError)
-		return
-	}
-
-	rows, err := s.db.Conn().Query(
-		`SELECT id, job_id, exit_code, output, finished_at
-		 FROM job_runs WHERE job_id = ? ORDER BY finished_at DESC LIMIT ? OFFSET ?`,
-		jobID, p.Limit, offset,
-	)
+	dbRuns, total, err := s.db.ListJobRuns(jobID, p.Limit, offset)
 	if err != nil {
 		http.Error(w, "failed to query runs", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
 
-	runs := []JobRun{}
-	for rows.Next() {
-		var run JobRun
-		var exitCode sql.NullInt64
-		var output sql.NullString
-		var finishedAt sql.NullString
-		if err := rows.Scan(&run.ID, &run.JobID, &exitCode, &output, &finishedAt); err != nil {
-			http.Error(w, "failed to scan run", http.StatusInternalServerError)
-			return
+	runs := make([]JobRun, 0, len(dbRuns))
+	for _, dbRun := range dbRuns {
+		run := JobRun{ID: dbRun.ID, JobID: dbRun.JobID, StartedAt: dbRun.StartedAt}
+		if dbRun.ExitCode != nil {
+			run.ExitCode = *dbRun.ExitCode
 		}
-		if exitCode.Valid {
-			run.ExitCode = int(exitCode.Int64)
+		if dbRun.Output != nil {
+			run.Output = *dbRun.Output
 		}
-		if output.Valid {
-			run.Output = output.String
-		}
-		if finishedAt.Valid {
-			run.FinishedAt = finishedAt.String
+		if dbRun.FinishedAt != nil {
+			run.FinishedAt = *dbRun.FinishedAt
 		}
 		runs = append(runs, run)
 	}
@@ -71,62 +51,34 @@ func (s *Server) handleGetJobRuns(w http.ResponseWriter, r *http.Request) {
 // Optional: ?job_id=, ?agent_id=, ?page=, ?limit=
 func (s *Server) handleListAllJobRuns(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	jobID := q.Get("job_id")
-	agentID := q.Get("agent_id")
 	p := ParsePagination(r)
 
-	args := []any{}
-	join := ""
-	where := " WHERE 1=1"
-
-	if agentID != "" {
-		join = " JOIN jobs j ON job_runs.job_id = j.id"
-		where += " AND j.agent_id = ?"
-		args = append(args, agentID)
+	filters := map[string]string{}
+	if jobID := q.Get("job_id"); jobID != "" {
+		filters["job_id"] = jobID
 	}
-	if jobID != "" {
-		where += " AND job_runs.job_id = ?"
-		args = append(args, jobID)
-	}
-
-	var total int
-	countArgs := append([]any{}, args...)
-	if err := s.db.Conn().QueryRow("SELECT COUNT(*) FROM job_runs"+join+where, countArgs...).Scan(&total); err != nil {
-		http.Error(w, "failed to count runs", http.StatusInternalServerError)
-		return
+	if agentID := q.Get("agent_id"); agentID != "" {
+		filters["agent_id"] = agentID
 	}
 
 	offset := (p.Page - 1) * p.Limit
-	queryArgs := append(args, p.Limit, offset)
-	rows, err := s.db.Conn().Query(
-		"SELECT job_runs.id, job_runs.job_id, job_runs.exit_code, job_runs.output, job_runs.finished_at FROM job_runs"+join+where+
-			" ORDER BY job_runs.finished_at DESC LIMIT ? OFFSET ?",
-		queryArgs...,
-	)
+	dbRuns, total, err := s.db.ListAllJobRuns(filters, p.Limit, offset)
 	if err != nil {
 		http.Error(w, "failed to query runs", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
 
-	runs := []JobRun{}
-	for rows.Next() {
-		var run JobRun
-		var exitCode sql.NullInt64
-		var output sql.NullString
-		var finishedAt sql.NullString
-		if err := rows.Scan(&run.ID, &run.JobID, &exitCode, &output, &finishedAt); err != nil {
-			http.Error(w, "failed to scan run", http.StatusInternalServerError)
-			return
+	runs := make([]JobRun, 0, len(dbRuns))
+	for _, dbRun := range dbRuns {
+		run := JobRun{ID: dbRun.ID, JobID: dbRun.JobID, StartedAt: dbRun.StartedAt}
+		if dbRun.ExitCode != nil {
+			run.ExitCode = *dbRun.ExitCode
 		}
-		if exitCode.Valid {
-			run.ExitCode = int(exitCode.Int64)
+		if dbRun.Output != nil {
+			run.Output = *dbRun.Output
 		}
-		if output.Valid {
-			run.Output = output.String
-		}
-		if finishedAt.Valid {
-			run.FinishedAt = finishedAt.String
+		if dbRun.FinishedAt != nil {
+			run.FinishedAt = *dbRun.FinishedAt
 		}
 		runs = append(runs, run)
 	}

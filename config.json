@@ -1,7 +1,0 @@
-{
-  "port": 8080,
-  "database_path": "C:\\Users\\kren\\.arcvault\\arcvault.db",
-  "admin_token": "0e0f349b26bb15b5a12c8abd492b96392e31d5ab3b16714bf1a396e884f16a04",
-  "jwt_secret": "34c377e0f193bbca855cad937bb54e6f09514af908122de35eb9768bdd71acb3",
-  "environment": "development"
-}

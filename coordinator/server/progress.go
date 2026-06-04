@@ -54,12 +54,8 @@ func (s *Server) handleProgress(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check if job exists
-	var jobExists int
-	err := s.db.Conn().QueryRow(
-		`SELECT COUNT(*) FROM jobs WHERE id = ?`,
-		jobID,
-	).Scan(&jobExists)
-	if err != nil || jobExists == 0 {
+	exists, err := s.db.JobExists(jobID)
+	if err != nil || !exists {
 		http.Error(w, "job not found", http.StatusNotFound)
 		return
 	}
