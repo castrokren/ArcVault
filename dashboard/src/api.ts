@@ -103,7 +103,7 @@ export const refreshToken = async (): Promise<Types.RefreshTokenResponse> => {
 
 export const changePassword = (currentPassword: string, newPassword: string) =>
   request('PUT', '/api/auth/change-password', {
-    current_password: currentPassword,
+    old_password: currentPassword,
     new_password: newPassword,
   })
 

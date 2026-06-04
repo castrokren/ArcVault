@@ -105,11 +105,25 @@ Write-Host "  agent.exe built successfully." -ForegroundColor Green
 Write-Host ""
 Write-Host "Step 6: Deploying to service locations..." -ForegroundColor Yellow
 
-Copy-Item "coordinator.exe" "$ProjectRoot\installer\windows\coordinator.exe" -Force
-Write-Host "  Copied coordinator.exe -> installer\windows\" -ForegroundColor Green
+# Deploy to live service directories (where the Windows services run from)
+if (Test-Path "C:\ArcVault") {
+    Copy-Item "coordinator.exe" "C:\ArcVault\coordinator.exe" -Force
+    Write-Host "  Copied coordinator.exe -> C:\ArcVault\" -ForegroundColor Green
+} else {
+    Write-Host "  WARNING: C:\ArcVault not found, skipping live deploy" -ForegroundColor Yellow
+}
 
+if (Test-Path "C:\ArcVault-Agent") {
+    Copy-Item "agent.exe" "C:\ArcVault-Agent\agent.exe" -Force
+    Write-Host "  Copied agent.exe -> C:\ArcVault-Agent\" -ForegroundColor Green
+} else {
+    Write-Host "  WARNING: C:\ArcVault-Agent not found, skipping live deploy" -ForegroundColor Yellow
+}
+
+# Also keep installer\windows\ in sync for building the installer
+Copy-Item "coordinator.exe" "$ProjectRoot\installer\windows\coordinator.exe" -Force
 Copy-Item "agent.exe" "$ProjectRoot\installer\windows\agent.exe" -Force
-Write-Host "  Copied agent.exe -> installer\windows\" -ForegroundColor Green
+Write-Host "  Copied binaries -> installer\windows\" -ForegroundColor Green
 
 # Step 7: Start services
 Write-Host ""
