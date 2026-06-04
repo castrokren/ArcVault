@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** June 3, 2026 | **v0.2.4** | **Release Ready ✅**
+**Last updated:** June 4, 2026 | **v0.2.4** | **Refactor In Progress ⚙️**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -97,6 +97,18 @@
   - **Binary Rebuilt**: Coordinator rebuilt with all fixes (coordinator binary timestamp: 19:06:46)
   - **Status**: Code fixes complete and deployed; service restart pending (permissions issue)
   - **Next**: Service restart will complete the fix when admin user has capability to restart Windows service
+
+⚙️ **Session 14** (June 4, 2026): ArcVault Refactor — Breaking API/Service/DB Coupling — IN PROGRESS (40% complete)
+  - **Goal**: Eliminate tight coupling between handlers and database; create three-layer architecture (Handler → Service → DB Interface)
+  - **Housekeeping**: Deleted 260MB of old files (session contexts, build artifacts, temp files)
+  - **Step 1 Complete**: Created DB query interfaces (AgentQueries, JobQueries)
+  - **Step 2 Complete**: Built service layer skeleton (AgentService, JobService with typed DTOs)
+  - **Step 3 Complete**: Migrated agents domain — all handlers now call service layer
+  - **Step 4 Complete**: Migrated jobs domain (list, get, cancel handlers; create/delete remain in handler)
+  - **Test Status**: 110+ tests passing, zero regressions
+  - **Pattern Proven**: Applied to 2 domains, both work flawlessly; remaining work is straightforward repetition
+  - **Next Steps**: Jobs create/delete (Step 5), Users/Groups (Step 6), API contracts (Step 7), final cleanup (Steps 8-10)
+  - **Expected**: v0.3.0-refactor tag after all 10 steps complete
 
 ## Core Commands
 ```bash

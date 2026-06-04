@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"arcvault/coordinator/business"
 	"arcvault/coordinator/config"
 	"arcvault/coordinator/db"
 	"arcvault/coordinator/notifications"
@@ -16,15 +17,19 @@ import (
 var Version = "dev"
 
 type Server struct {
-	cfg           *config.Config
-	db            *db.DB
-	router        *http.ServeMux
-	hub           *Hub
-	fedHub        *FederationHub
-	fedClient     *FederationClient
-	staticFS      fs.FS
-	Notifier      *notifications.Dispatcher
-	coordinatorID string
+	cfg            *config.Config
+	db             *db.DB
+	router         *http.ServeMux
+	hub            *Hub
+	fedHub         *FederationHub
+	fedClient      *FederationClient
+	staticFS       fs.FS
+	Notifier       *notifications.Dispatcher
+	coordinatorID  string
+	agentService   *business.AgentService
+	jobService     *business.JobService
+	userService    *business.UserService
+	groupService   *business.GroupService
 }
 
 func New(cfg *config.Config, database *db.DB) *Server {
@@ -39,7 +44,7 @@ func NewWithFS(cfg *config.Config, database *db.DB, staticFS fs.FS) *Server {
 	}
 
 	s := &Server{
-		cfg:           cfg,
+		cfg:            cfg,
 		db:            database,
 		router:        http.NewServeMux(),
 		hub:           newHub(),
@@ -47,6 +52,10 @@ func NewWithFS(cfg *config.Config, database *db.DB, staticFS fs.FS) *Server {
 		staticFS:      staticFS,
 		Notifier:      notifications.NewDispatcher(cfg.Notifications),
 		coordinatorID: coordinatorID,
+		agentService:  business.NewAgentService(database),
+		jobService:    business.NewJobService(database),
+		userService:   business.NewUserService(database),
+		groupService:  business.NewGroupService(database),
 	}
 
 	if cfg.Federation != nil {

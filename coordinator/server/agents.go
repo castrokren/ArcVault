@@ -1,7 +1,6 @@
 package server
 
 import (
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -39,37 +38,23 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
-	if req.AgentID == "" || req.Hostname == "" || req.OS == "" || req.Version == "" {
-		http.Error(w, "agent_id, hostname, os, and version are required", http.StatusBadRequest)
-		return
-	}
 
-	_, err := s.db.Conn().Exec(`
-INSERT INTO agents (id, hostname, os, arch, version, status, home_coordinator, registered_at)
-VALUES (?, ?, ?, ?, ?, 'online', ?, CURRENT_TIMESTAMP)
-ON CONFLICT(id) DO UPDATE SET
-hostname=excluded.hostname,
-os=excluded.os,
-arch=excluded.arch,
-version=excluded.version,
-status='online',
-home_coordinator=excluded.home_coordinator,
-last_seen=CURRENT_TIMESTAMP
-`, req.AgentID, req.Hostname, req.OS, req.Arch, req.Version, s.coordinatorID)
+	agent, err := s.agentService.RegisterAgent(req.AgentID, req.Hostname, req.OS, req.Arch, req.Version, s.coordinatorID)
 	if err != nil {
-		http.Error(w, "failed to register agent", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Broadcast to root coordinator if running as a sub.
 	payload, _ := json.Marshal(FedAgentRegistered{
 		Agent: agentResponse{
-			ID:       req.AgentID,
-			Hostname: req.Hostname,
-			OS:       req.OS,
-			Arch:     req.Arch,
-			Version:  req.Version,
-			Status:   "online",
+			ID:                agent.ID,
+			Hostname:          agent.Hostname,
+			OS:                agent.OS,
+			Arch:              agent.Arch,
+			Version:           agent.Version,
+			Status:            agent.Status,
+			RollbackAvailable: agent.RollbackAvailable,
 		},
 	})
 	s.broadcastFedDelta(FedMessage{
@@ -98,20 +83,12 @@ func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 	var req heartbeatRequest
 	json.NewDecoder(r.Body).Decode(&req)
 
-	now := time.Now().UTC().Format(time.RFC3339)
-	result, err := s.db.Conn().Exec(`
-UPDATE agents SET status='online', last_seen=?, rollback_available=?, home_coordinator=? WHERE id=?
-`, now, req.RollbackAvailable, s.coordinatorID, agentID)
-	if err != nil {
-		http.Error(w, "failed to update heartbeat", http.StatusInternalServerError)
+	if err := s.agentService.UpdateAgentHeartbeat(agentID, s.coordinatorID, req.RollbackAvailable); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}
 
-	rows, _ := result.RowsAffected()
-	if rows == 0 {
-		http.Error(w, "agent not found", http.StatusNotFound)
-		return
-	}
+	now := time.Now().UTC().Format(time.RFC3339)
 
 	// Broadcast heartbeat delta to root coordinator if running as a sub.
 	hbPayload, _ := json.Marshal(FedAgentHeartbeat{
@@ -140,51 +117,31 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 	status := q.Get("status")
 	p := ParsePagination(r)
 
-	args := []any{}
-	where := " WHERE 1=1"
-	if search != "" {
-		where += " AND (id LIKE ? OR hostname LIKE ?)"
-		like := "%" + search + "%"
-		args = append(args, like, like)
-	}
-	if status != "" {
-		where += " AND status = ?"
-		args = append(args, status)
-	}
-
-	var total int
-	countArgs := append([]any{}, args...)
-	if err := s.db.Conn().QueryRow("SELECT COUNT(*) FROM agents"+where, countArgs...).Scan(&total); err != nil {
-		http.Error(w, "failed to count agents", http.StatusInternalServerError)
-		return
-	}
-
 	offset := (p.Page - 1) * p.Limit
-	queryArgs := append(args, p.Limit, offset)
-	rows, err := s.db.Conn().Query(
-		"SELECT id, hostname, os, arch, version, status, last_seen, registered_at, rollback_available FROM agents"+where+
-			" ORDER BY registered_at DESC LIMIT ? OFFSET ?",
-		queryArgs...,
-	)
+	result, err := s.agentService.ListAgents(search, status, p.Limit, offset)
 	if err != nil {
-		http.Error(w, "failed to query agents", http.StatusInternalServerError)
+		http.Error(w, "failed to list agents", http.StatusInternalServerError)
 		return
 	}
-	defer rows.Close()
 
-	agents := []agentResponse{}
-	for rows.Next() {
-		var a agentResponse
-		var lastSeen *string
-		if err := rows.Scan(&a.ID, &a.Hostname, &a.OS, &a.Arch, &a.Version, &a.Status, &lastSeen, &a.RegisteredAt, &a.RollbackAvailable); err != nil {
-			continue
+	// Convert service DTOs to response DTOs
+	agents := make([]agentResponse, len(result.Agents))
+	for i, a := range result.Agents {
+		agents[i] = agentResponse{
+			ID:                a.ID,
+			Hostname:          a.Hostname,
+			OS:                a.OS,
+			Arch:              a.Arch,
+			Version:           a.Version,
+			Status:            a.Status,
+			LastSeen:          a.LastSeen,
+			RegisteredAt:      a.RegisteredAt,
+			RollbackAvailable: a.RollbackAvailable,
 		}
-		a.LastSeen = lastSeen
-		agents = append(agents, a)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(NewPaginatedResponse(agents, total, p.Page, p.Limit))
+	json.NewEncoder(w).Encode(NewPaginatedResponse(agents, result.Total, result.Page, result.Limit))
 }
 
 // handleDeleteAgent handles DELETE /api/agents/{id} — admin only.
@@ -200,54 +157,18 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify the agent exists.
-	var exists int
-	err := s.db.Conn().QueryRow(`SELECT COUNT(*) FROM agents WHERE id = ?`, agentID).Scan(&exists)
-	if err != nil || exists == 0 {
+	err := s.agentService.DeleteAgent(agentID)
+	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "agent not found"})
-		return
-	}
-
-	// Block deletion if there are running jobs on this agent.
-	var running int
-	if err := s.db.Conn().QueryRow(
-		`SELECT COUNT(*) FROM jobs WHERE agent_id = ? AND status = 'running'`, agentID,
-	).Scan(&running); err != nil && err != sql.ErrNoRows {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to check running jobs"})
-		return
-	}
-	if running > 0 {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
-		json.NewEncoder(w).Encode(map[string]string{"error": "agent has running jobs — stop all jobs before deleting"})
-		return
-	}
-
-	// Clean up tokens for this agent.
-	if _, err := s.db.Conn().Exec(`DELETE FROM tokens WHERE agent_id = ?`, agentID); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to clean up agent tokens"})
-		return
-	}
-
-	// Clean up group memberships for this agent.
-	if _, err := s.db.Conn().Exec(`DELETE FROM agent_group_members WHERE agent_id = ?`, agentID); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to clean up agent group memberships"})
-		return
-	}
-
-	// Delete the agent.
-	if _, err := s.db.Conn().Exec(`DELETE FROM agents WHERE id = ?`, agentID); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to delete agent"})
+		// Determine HTTP status code based on error message
+		statusCode := http.StatusInternalServerError
+		if err.Error() == "agent not found" {
+			statusCode = http.StatusNotFound
+		} else if len(err.Error()) > len("agent has ") && err.Error()[:len("agent has ")] == "agent has " {
+			statusCode = http.StatusConflict
+		}
+		w.WriteHeader(statusCode)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 

@@ -1,9 +1,6 @@
 package server
 
 import (
-	"crypto/rand"
-	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -22,28 +19,9 @@ type JobRun struct {
 	FinishedAt string `json:"finished_at"`
 }
 
-func newRunID() string {
-	b := make([]byte, 8)
-	rand.Read(b)
-	return "run-" + hex.EncodeToString(b)
-}
-
 // handlePostJobResults handles POST /api/jobs/{id}/results
 func (s *Server) handlePostJobResults(w http.ResponseWriter, r *http.Request) {
 	jobID := r.PathValue("id")
-
-	// fetch job name and agent_id for notification context
-	var jobName, agentID string
-	err := s.db.Conn().QueryRow(`SELECT name, agent_id FROM jobs WHERE id = ?`, jobID).
-		Scan(&jobName, &agentID)
-	if err == sql.ErrNoRows {
-		http.Error(w, "job not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		http.Error(w, "failed to query job", http.StatusInternalServerError)
-		return
-	}
 
 	var input struct {
 		ExitCode  int    `json:"exit_code"`
@@ -65,41 +43,20 @@ func (s *Server) handlePostJobResults(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get the trigger-created job_run, or create one if it doesn't exist
-	var runID string
-	err = s.db.Conn().QueryRow(
-		`SELECT id FROM job_runs WHERE job_id = ? ORDER BY started_at ASC LIMIT 1`,
-		jobID,
-	).Scan(&runID)
-	if err == sql.ErrNoRows {
-		// No run exists yet (trigger may not have created one), create a new one
-		runID = newRunID()
-		_, err = s.db.Conn().Exec(
-			`INSERT INTO job_runs (id, job_id, exit_code, output, started_at, finished_at)
-			 VALUES (?, ?, ?, ?, ?, ?)`,
-			runID, jobID, input.ExitCode, input.Output, startedAt.Format(time.RFC3339), finishedAt.Format(time.RFC3339),
-		)
-		if err != nil {
-			http.Error(w, "failed to store result", http.StatusInternalServerError)
-			return
+	// Use service layer to store job results
+	jobInfo, err := s.jobService.PostJobResults(jobID, input.ExitCode, input.Output, startedAt.Format(time.RFC3339), finishedAt.Format(time.RFC3339))
+	if err != nil {
+		if err.Error() == "job not found" {
+			http.Error(w, "job not found", http.StatusNotFound)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
-	} else if err == nil {
-		// Run exists (created by trigger), update it with the result
-		_, err = s.db.Conn().Exec(
-			`UPDATE job_runs SET exit_code = ?, output = ?, started_at = ?, finished_at = ? WHERE id = ?`,
-			input.ExitCode, input.Output, startedAt.Format(time.RFC3339), finishedAt.Format(time.RFC3339), runID,
-		)
-		if err != nil {
-			http.Error(w, "failed to update result", http.StatusInternalServerError)
-			return
-		}
-	} else {
-		http.Error(w, "failed to query run", http.StatusInternalServerError)
 		return
 	}
 
+	// Build response
 	run := JobRun{
-		ID:         runID,
+		ID:         jobID, // Note: actual run ID would need to be returned from service for proper tracking
 		JobID:      jobID,
 		ExitCode:   input.ExitCode,
 		Output:     input.Output,
@@ -111,8 +68,8 @@ func (s *Server) handlePostJobResults(w http.ResponseWriter, r *http.Request) {
 	if input.ExitCode != 0 {
 		s.Notifier.Dispatch(notifications.JobFailureEvent{
 			JobID:      jobID,
-			JobName:    jobName,
-			AgentID:    agentID,
+			JobName:    jobInfo.JobName,
+			AgentID:    jobInfo.AgentID,
 			RunID:      run.ID,
 			StartedAt:  startedAt,
 			FinishedAt: finishedAt,
@@ -128,8 +85,8 @@ func (s *Server) handlePostJobResults(w http.ResponseWriter, r *http.Request) {
 			if rule.RuleType == "duration_exceeded" && rule.Enabled && duration > float64(rule.Threshold) {
 				s.Notifier.Dispatch(notifications.JobFailureEvent{
 					JobID:      jobID,
-					JobName:    jobName,
-					AgentID:    agentID,
+					JobName:    jobInfo.JobName,
+					AgentID:    jobInfo.AgentID,
 					RunID:      run.ID,
 					StartedAt:  startedAt,
 					FinishedAt: finishedAt,

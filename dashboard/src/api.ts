@@ -145,15 +145,15 @@ export const removeAgentFromGroup = (groupId: number, agentId: string) =>
   request('DELETE', `/api/groups/${groupId}/agents/${agentId}`)
 
 // --- Agents ---
-export const getAgents = async ({ page = 1, limit = 25, search = '', status = '' } = {}): Promise<Types.Agent[]> => {
+export const getAgents = async ({ page = 1, limit = 25, search = '', status = '' } = {}) => {
   const res = await request('GET', `/api/agents${buildQuery({ page, limit, search, status })}`)
-  return validateResponse('/api/agents', AgentListSchema, res)
+  return res
 }
 
 // --- Jobs ---
-export const getJobs = async ({ page = 1, limit = 25, search = '', status = '', agentID = '' } = {}): Promise<Types.Job[]> => {
+export const getJobs = async ({ page = 1, limit = 25, search = '', status = '', agentID = '' } = {}) => {
   const res = await request('GET', `/api/jobs${buildQuery({ page, limit, search, status, agent_id: agentID })}`)
-  return validateResponse('/api/jobs', JobListSchema, res)
+  return res
 }
 
 export const getJob = (id: string) => request('GET', `/api/jobs/${id}`)

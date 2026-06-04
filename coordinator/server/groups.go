@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+
+	"arcvault/coordinator/business"
 )
 
 // === Groups API Endpoints ===
@@ -15,7 +17,7 @@ func (s *Server) handleListGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groups, err := s.db.ListGroups()
+	groups, err := s.groupService.ListGroups()
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
@@ -32,15 +34,14 @@ func (s *Server) handleListGroups(w http.ResponseWriter, r *http.Request) {
 		AgentCount  int    `json:"agent_count"`
 	}
 
-	response := []GroupResponse{}
-	for _, g := range groups {
-		members, _ := s.db.GetGroupMembers(g.ID)
-		response = append(response, GroupResponse{
+	response := make([]GroupResponse, len(groups))
+	for i, g := range groups {
+		response[i] = GroupResponse{
 			ID:          g.ID,
 			Name:        g.Name,
 			Description: g.Description,
-			AgentCount:  len(members),
-		})
+			AgentCount:  g.AgentCount,
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -56,23 +57,33 @@ func (s *Server) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	}
+	var req CreateGroupRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	group, err := s.db.CreateGroup(req.Name, req.Description)
+	// Validate request
+	if err := req.Validate(); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	input := &business.CreateGroupInput{
+		Name:        req.Name,
+		Description: req.Description,
+	}
+
+	group, err := s.groupService.CreateGroup(input)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "group name already exists"})
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -100,15 +111,13 @@ func (s *Server) handleGetGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	group, err := s.db.GetGroup(groupID)
-	if err != nil || group == nil {
+	group, err := s.groupService.GetGroup(groupID)
+	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		json.NewEncoder(w).Encode(map[string]string{"error": "group not found"})
 		return
 	}
-
-	members, _ := s.db.GetGroupMembers(group.ID)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -116,14 +125,14 @@ func (s *Server) handleGetGroup(w http.ResponseWriter, r *http.Request) {
 		"id":          group.ID,
 		"name":        group.Name,
 		"description": group.Description,
-		"agent_count": len(members),
+		"agent_count": group.AgentCount,
 	})
 }
 
 // handleUpdateGroup handles PUT /api/groups/{id} — admin only
 // Body: {"name":"...","description":"..."}
 func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPut {
+	if r.Method != http.MethodPatch {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -132,32 +141,49 @@ func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid group id"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid group id"})
 		return
 	}
 
-	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	}
+	var req UpdateGroupRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid request"})
 		return
 	}
 
-	if err := s.db.UpdateGroup(groupID, req.Name, req.Description); err != nil {
+	// Validate request
+	if err := req.Validate(); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to update group"})
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	input := &business.UpdateGroupInput{
+		Name:        req.Name,
+		Description: req.Description,
+	}
+
+	group, err := s.groupService.UpdateGroup(groupID, input)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"ok": "group updated"})
+	json.NewEncoder(w).Encode(GroupResponse{
+		GroupID:    group.ID,
+		Name:       group.Name,
+		Description: group.Description,
+		AgentCount: group.AgentCount,
+		CreatedAt:  group.CreatedAt,
+	})
 }
 
 // handleDeleteGroup handles DELETE /api/groups/{id} — admin only
@@ -175,7 +201,7 @@ func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.db.DeleteGroup(groupID); err != nil {
+	if err := s.groupService.DeleteGroup(groupID); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "failed to delete group"})
@@ -212,14 +238,10 @@ func (s *Server) handleAddAgentToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate agent exists by checking if agent is registered
-	// Note: We skip validation here to keep it simple - agents are auto-discovered
-	// In a more robust implementation, we'd validate against registered agents
-
-	if err := s.db.AddAgentToGroup(groupID, req.AgentID); err != nil {
+	if err := s.groupService.AddAgentToGroup(groupID, req.AgentID); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to add agent to group"})
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -245,10 +267,10 @@ func (s *Server) handleRemoveAgentFromGroup(w http.ResponseWriter, r *http.Reque
 
 	agentID := r.PathValue("agentID")
 
-	if err := s.db.RemoveAgentFromGroup(groupID, agentID); err != nil {
+	if err := s.groupService.RemoveAgentFromGroup(groupID, agentID); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{"error": "failed to remove agent"})
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -270,7 +292,7 @@ func (s *Server) handleGetGroupAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	members, err := s.db.GetGroupMembers(groupID)
+	members, err := s.groupService.GetGroupAgents(groupID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
