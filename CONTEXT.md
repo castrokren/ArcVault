@@ -62,8 +62,8 @@
 ✅ **Session 11** (June 3, 2026): Dashboard fixes — Sync Flags, version badge, build pipeline
   - **SyncFlagsBuilder** wired into Jobs form — was imported but never rendered; placed outside form-grid in `.sync-flags-row` wrapper
   - **Version badge** added to nav brand — shows `updateStore.current` as small muted text next to ArcVault logo
-  - **build.ps1** created at project root — single command full pipeline: Vue build → clear + copy dist to coordinator/static/dist → Go build with ldflags → Stop-Service → copy binary → Start-Service
-  - **Root cause fixed**: `coordinator/static/dist` had accumulated 28+ stale JS files from previous builds; Go embed was picking up wrong files. build.ps1 clears this directory before every build.
+  - **scripts/rebuild-and-restart.ps1** is the canonical build script — full pipeline: stop services → Vue build → clear + copy dist to coordinator/static/dist → Go build with ldflags → deploy → restart
+  - **Root cause fixed**: `coordinator/static/dist` had accumulated 28+ stale JS files from previous builds; Go embed was picking up wrong files. The script clears this directory before every build.
   - **v0.2.4 tagged and pushed** with all fixes
 
 ✅ **Session 12** (June 3, 2026): Phase 22 API Contract Layer & Agent Display Fix
@@ -98,7 +98,17 @@
   - **Status**: Code fixes complete and deployed; service restart pending (permissions issue)
   - **Next**: Service restart will complete the fix when admin user has capability to restart Windows service
 
-⚙️ **Session 14** (June 4, 2026): ArcVault Refactor — Breaking API/Service/DB Coupling — IN PROGRESS (40% complete)
+✅ **Session 15** (June 5, 2026): Bug fixes — update detection, RBAC, nav bar, installer — COMPLETE
+  - **Coordinator update detection**: Poll interval 24h → 1h; added 5-min TTL to update cache so `/api/update/check` always returns fresh data
+  - **Jobs 403 fixed**: `GET /api/jobs` and `GET /api/jobs/{id}` changed from `adminTokenRoute` → `viewerRoute`; `POST /api/jobs` and `POST /api/jobs/{id}/cancel` → `operatorRoute`; `DELETE /api/jobs/{id}` → `adminRoute`
+  - **Nav bar "?" icon removed**: `userInitials` computed no longer falls back to `'?'` — avatar hides via `v-if` when username is empty
+  - **build.ps1 removed**: replaced by `scripts/rebuild-and-restart.ps1` (superset); CONTEXT.md updated
+  - **Installer "marked for deletion" fix**: wait loop now checks for exit code 1060 (not any non-zero); 15s max wait + 2s buffer after service confirmed gone; both `agent_service_windows.go` and `service_windows.go` now delete & wait before re-creating
+  - **Installer agent token fix**: combined install now sets `agent_token = admin_token`; previously a separate random token was written that the coordinator never knew about → 401 → Error 1067
+  - **Installer build version fix**: `scripts/build.ps1` now injects `-X main.Version=v0.3.0` into both Go binaries; was building without ldflags → agent showed `v0.0.0-dev`, coordinator reported `v0.2.0`
+  - **Files changed**: `coordinator/server/update.go`, `coordinator/cmd/commands.go`, `coordinator/server/server.go`, `dashboard/src/App.vue`, `installer/windows/arcvault_installer.py`, `agent/service/agent_service_windows.go`, `coordinator/service/service_windows.go`, `scripts/build.ps1`, `CONTEXT.md`
+
+✅ **Session 14** (June 4, 2026): ArcVault Refactor — Breaking API/Service/DB Coupling — COMPLETE
   - **Goal**: Eliminate tight coupling between handlers and database; create three-layer architecture (Handler → Service → DB Interface)
   - **Housekeeping**: Deleted 260MB of old files (session contexts, build artifacts, temp files)
   - **Step 1 Complete**: Created DB query interfaces (AgentQueries, JobQueries)
@@ -107,8 +117,7 @@
   - **Step 4 Complete**: Migrated jobs domain (list, get, cancel handlers; create/delete remain in handler)
   - **Test Status**: 110+ tests passing, zero regressions
   - **Pattern Proven**: Applied to 2 domains, both work flawlessly; remaining work is straightforward repetition
-  - **Next Steps**: Jobs create/delete (Step 5), Users/Groups (Step 6), API contracts (Step 7), final cleanup (Steps 8-10)
-  - **Expected**: v0.3.0-refactor tag after all 10 steps complete
+  - All 10 steps complete — see arcvault_refactor_session.md for full details
 
 ## Core Commands
 ```bash
@@ -134,10 +143,10 @@ sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/300
 
 ## Build & Deploy (Windows)
 
-**Use build.ps1 (recommended):**
+**Use rebuild-and-restart.ps1 (recommended):**
 ```powershell
 cd C:\Projects\ArcVault2.0
-.\build.ps1
+.\scripts\rebuild-and-restart.ps1
 ```
 
 **Manual checklist:**
@@ -184,4 +193,4 @@ sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/300
 - **Project instructions & routing:** [CLAUDE.md](CLAUDE.md)
 - **Phase history & architecture:** [MEMORY.md](MEMORY.md)
 - **Current branch:** main
-- **Latest release:** v0.2.4
+- **Latest release:** v0.3.0

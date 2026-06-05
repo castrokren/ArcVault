@@ -191,11 +191,11 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("DELETE /api/agents/{id}", s.adminRoute(s.handleDeleteAgent))
 
 	// Jobs endpoints
-	s.router.HandleFunc("POST /api/jobs", s.adminTokenRoute(s.handleCreateJob))
-	s.router.HandleFunc("GET /api/jobs", s.adminTokenRoute(s.handleListJobs))
-	s.router.HandleFunc("GET /api/jobs/{id}", s.adminTokenRoute(s.handleGetJob))
-	s.router.HandleFunc("DELETE /api/jobs/{id}", s.adminTokenRoute(s.handleDeleteJob))
-	s.router.HandleFunc("POST /api/jobs/{id}/cancel", s.adminTokenRoute(s.handleCancelJob))
+	s.router.HandleFunc("POST /api/jobs", s.operatorRoute(s.handleCreateJob))
+	s.router.HandleFunc("GET /api/jobs", s.viewerRoute(s.handleListJobs))
+	s.router.HandleFunc("GET /api/jobs/{id}", s.viewerRoute(s.handleGetJob))
+	s.router.HandleFunc("DELETE /api/jobs/{id}", s.adminRoute(s.handleDeleteJob))
+	s.router.HandleFunc("POST /api/jobs/{id}/cancel", s.operatorRoute(s.handleCancelJob))
 	s.router.HandleFunc("PATCH /api/jobs/{id}/status", s.operatorRoute(s.handleUpdateJobStatus))
 	s.router.HandleFunc("GET /api/jobs/{id}/runs", s.viewerRoute(s.handleGetJobRuns))
 	s.router.HandleFunc("GET /api/job-runs", s.viewerRoute(s.handleListAllJobRuns))

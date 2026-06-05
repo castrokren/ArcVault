@@ -142,7 +142,7 @@ const isAdmin = computed(() => auth.hasRole('admin'))
 
 const userInitials = computed(() => {
   const name = auth.currentUser?.username || ''
-  return name.slice(0, 2).toUpperCase() || '?'
+  return name.slice(0, 2).toUpperCase()
 })
 
 // Reactive update info store

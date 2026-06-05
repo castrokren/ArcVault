@@ -229,7 +229,10 @@ class ArcVaultInstaller:
         id_var.insert(0, os.environ.get("COMPUTERNAME", "agent-1"))
 
         if "coordinator" in self.components:
-            self.agent_token = self.generate_token(32)
+            # Reuse the coordinator's admin_token — authMiddleware always accepts it,
+            # and the DB is empty on a fresh install so a separate agent token would
+            # be rejected (401 → registration failure → Error 1067 on service start).
+            self.agent_token = self.admin_token
             token_var = row("Auth Token:", width=36)
             token_var.insert(0, self.agent_token[:16] + "...")
             token_var.config(state="readonly")
@@ -396,13 +399,25 @@ class ArcVaultInstaller:
             time.sleep(1)
             subprocess.run(["sc", "delete", service_name],
                            capture_output=True, text=True, shell=True)
-            # Wait for SCM to release the registration (up to 5 s)
-            for _ in range(10):
-                chk = subprocess.run(["sc", "query", service_name],
-                                     capture_output=True, text=True, shell=True)
-                if "does not exist" in chk.stdout or chk.returncode != 0:
+            # Wait until SCM fully releases the registration (up to 15 s).
+            # We must see exit code 1060 (ERROR_SERVICE_DOES_NOT_EXIST) — NOT just
+            # any non-zero code. Exit code 1072 means "marked for deletion" (still
+            # alive); creating a new service while that's true causes start failures.
+            for _ in range(30):
+                chk = subprocess.run(
+                    ["sc", "query", service_name],
+                    capture_output=True, text=True, shell=True,
+                )
+                gone = (
+                    chk.returncode == 1060
+                    or "does not exist" in chk.stdout.lower()
+                    or "does not exist" in chk.stderr.lower()
+                )
+                if gone:
                     break
                 time.sleep(0.5)
+            # Extra buffer: give SCM time to flush the registry entry
+            time.sleep(2)
 
             # Copy binary to install directory
             binary_dst = install_dir / binary_name

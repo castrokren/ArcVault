@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"arcvault/coordinator/updater"
 )
@@ -16,14 +17,18 @@ import (
 var (
 	updateMu      sync.RWMutex
 	cachedInfo    *updater.UpdateInfo
+	cachedAt      time.Time
 	updateRunning atomic.Bool
 )
+
+const updateCacheTTL = 5 * time.Minute
 
 // SetUpdateCache stores the latest version check result.
 func SetUpdateCache(info *updater.UpdateInfo) {
 	updateMu.Lock()
 	defer updateMu.Unlock()
 	cachedInfo = info
+	cachedAt = time.Now()
 }
 
 // GetUpdateCache returns the cached version check result.
@@ -33,23 +38,31 @@ func GetUpdateCache() *updater.UpdateInfo {
 	return cachedInfo
 }
 
-// handleCheckUpdate returns the cached update information.
+// updateCacheStale reports whether the cache is absent or older than updateCacheTTL.
+func updateCacheStale() bool {
+	updateMu.RLock()
+	defer updateMu.RUnlock()
+	return cachedInfo == nil || time.Since(cachedAt) > updateCacheTTL
+}
+
+// handleCheckUpdate returns update information, refreshing from GitHub if the cache is stale (>5 min).
 func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	info := GetUpdateCache()
-	if info == nil {
-		// If no cache yet, do an inline check
-		// Try to get version from environment or default
+	if updateCacheStale() {
 		currentVersion := os.Getenv("ARCVAULT_VERSION")
 		if currentVersion == "" {
 			currentVersion = "v0.2.0"
 		}
 
-		var err error
-		info, err = updater.CheckLatestRelease(currentVersion)
+		info, err := updater.CheckLatestRelease(currentVersion)
 		if err != nil {
 			log.Printf("Failed to check latest release: %v", err)
+			// Return stale cache if available rather than an error
+			if cached := GetUpdateCache(); cached != nil {
+				json.NewEncoder(w).Encode(cached)
+				return
+			}
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("failed to check updates: %v", err)})
 			return
@@ -58,7 +71,7 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 		SetUpdateCache(info)
 	}
 
-	json.NewEncoder(w).Encode(info)
+	json.NewEncoder(w).Encode(GetUpdateCache())
 }
 
 // handleApplyUpdate starts the update process.
