@@ -144,3 +144,21 @@ func randomHex(length int) string {
 	rand.Read(b)
 	return hex.EncodeToString(b)
 }
+
+// validateCredentialTypeForAgent checks if credential type is compatible with agent OS
+func (s *Server) validateCredentialTypeForAgent(credType, agentOS string) bool {
+	// Map credential types to compatible OS values
+	osCompatibility := map[string]map[string]bool{
+		"SMB":      {"windows": true},
+		"SSH":      {"linux": true, "darwin": true, "unix": true},
+		"AWS":      {"windows": true, "linux": true, "darwin": true},
+		"Database": {"windows": true, "linux": true, "darwin": true},
+	}
+
+	if compatible, exists := osCompatibility[credType]; exists {
+		return compatible[agentOS]
+	}
+
+	// If credential type not recognized, allow it (fail open)
+	return true
+}

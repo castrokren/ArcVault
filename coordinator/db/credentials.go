@@ -104,3 +104,27 @@ func (d *DB) HasJobsReferencingProfile(profileID string) (bool, error) {
 	}
 	return count > 0, nil
 }
+
+// UpdateJobCredentialProfile assigns a credential profile to a job.
+func (d *DB) UpdateJobCredentialProfile(jobID, profileID string) error {
+	_, err := d.conn.Exec(
+		`UPDATE jobs SET credential_profile_id = ? WHERE id = ?`,
+		profileID, jobID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update job credential profile: %w", err)
+	}
+	return nil
+}
+
+// SnapshotJobRunCredentials updates job run with credential profile snapshot.
+func (d *DB) SnapshotJobRunCredentials(runID, credentialProfileID, credentialProfileName string) error {
+	_, err := d.conn.Exec(
+		`UPDATE job_runs SET credential_profile_id = ?, credential_profile_name = ? WHERE id = ?`,
+		credentialProfileID, credentialProfileName, runID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to snapshot job run credentials: %w", err)
+	}
+	return nil
+}
