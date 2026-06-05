@@ -102,7 +102,7 @@ func StartCommand(cfg *config.Config, staticFS fs.FS) error {
 	// Start background version checker
 	currentVersion := os.Getenv("ARCVAULT_VERSION")
 	if currentVersion == "" {
-		currentVersion = "v0.2.0"
+		currentVersion = "v0.4.0"
 	}
 
 	go startVersionChecker(currentVersion)
