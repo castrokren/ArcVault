@@ -6,7 +6,7 @@
 ## Summary
 
 **Plan A:** ✅ **COMPLETE** (5/5 tasks)  
-**Plan B:** 🟡 **IN PROGRESS** (7/9 tasks)  
+**Plan B:** ✅ **COMPLETE** (9/9 tasks)  
 **Plan C:** ⏳ **Not Started**
 
 ---
@@ -118,47 +118,59 @@ UpdateJobCredentialProfile(jobID, profileID) error           // NEW
 SnapshotJobRunCredentials(runID, profileID, profileName)    // NEW
 ```
 
-### Remaining Tasks
+#### Task 8: ✅ Agent-Facing Credentials Injection — COMPLETE
 
-#### Task 8: Agent-Facing Credentials Injection
-
-**Goal:** When an agent requests `GET /api/jobs`, decrypt and include credentials if:
-- Request is authenticated with agent token (not JWT)
-- Job has `credential_profile_id` set
-- ARCVAULT_CREDENTIAL_KEY is available
-
-**Implementation Notes:**
-- Current `GET /api/jobs` uses `viewerRoute` (JWT + role-based)
-- Need to support agent token auth alongside JWT
-- Distinguish in handler: check for `UserClaims` in context
-  - If claims present → JWT user (no credentials)
-  - If no claims → agent token (include credentials if available)
+**Implementation:**
+- Modified `GET /api/jobs` and `GET /api/jobs/{id}` handlers
+- Detect agent token requests: check for `UserClaims` in request context
+  - If UserClaims present → JWT user (no credentials returned)
+  - If no UserClaims → agent token (credentials injected if available)
 - Decrypt flow:
   ```go
-  profile := db.GetCredentialProfile(job.CredentialProfileID)
-  plaintext := credcrypto.Decrypt(key, profile.EncryptedData)
-  job.Credentials = json.Unmarshal(plaintext)
+  if isAgentTokenRequest(r) {
+    credProfileID := db.GetJobCredentialProfileID(jobID)
+    credentials := decryptCredentials(credProfileID)  // safe, returns nil on any error
+    job.Credentials = credentials
+  }
   ```
 
-**Modified Response Type:**
+**Security:**
+- Only agent token requests receive decrypted credentials
+- Dashboard/viewer users never see credentials
+- Decryption errors are silent (credentials not included)
+- ARCVAULT_CREDENTIAL_KEY required to decrypt
+
+**Response Type:**
 ```go
 type Job struct {
-  // ... existing fields ...
-  Credentials map[string]interface{} `json:"credentials,omitempty"`
+  ID          string
+  AgentID     string
+  Name        string
+  // ... other fields ...
+  Credentials map[string]interface{} `json:"credentials,omitempty"`  // agent-only
+  CreatedAt   string
 }
 ```
 
-#### Task 9: Job Run Credential Snapshots
+#### Task 9: ✅ Job Run Credential Snapshots — COMPLETE
 
-**Goal:** When job execution starts, capture credential profile state in job_runs record
+**Implementation:**
+- Modified `StoreResult()` in `coordinator/business/jobs.go`
+- After job_run creation/update, snapshot credential profile info:
+  ```go
+  credProfileID := db.GetJobCredentialProfileID(jobID)
+  if credProfileID != "" {
+    profile := db.GetCredentialProfile(credProfileID)
+    db.SnapshotJobRunCredentials(runID, profile.ID, profile.Name)
+  }
+  ```
+- Snapshot captured at execution completion (when results are posted)
+- Both ID and name recorded (name helpful for auditing if profile deleted later)
+- Error-tolerant: snapshot failures don't affect job result storage
 
-**Implementation Notes:**
-- Hook point: When job_runs record is created (likely in job executor/scheduler)
-- Call: `db.SnapshotJobRunCredentials(runID, profileID, profileName)`
-- Snapshot both ID and name (name helpful for audit trail if profile deleted later)
-- Verify: completed job_runs has `credential_profile_id` and `credential_profile_name` populated
-
-**Location:** Likely in `coordinator/service/job_execution.go` or scheduler
+**Result:**
+- Completed job_runs have `credential_profile_id` and `credential_profile_name` populated
+- Audit trail preserved even if credential profile is deleted later
 
 ---
 
@@ -217,30 +229,73 @@ Agent receives decrypted credentials in job response (agent token only)
 
 ---
 
-## Next Steps
+## Next Steps: Plan C
 
-### To Complete Plan B (8-9 only)
+**Status:** Ready to start  
+**Dependency:** Plan B completion ✅
 
-1. **Task 8:** Modify job list handler to support agent tokens + credential injection
-   - Check auth context for JWT claims
-   - Decrypt & inject credentials for agent requests
-   - Add `Credentials` field to Job response type
+Plan C tasks (from planning file):
+1. Agent `ApplyCredentials()` method
+2. Setup wizard key generation  
+3. Dashboard Credentials page + UI
+4. Job form credential selection dropdown
 
-2. **Task 9:** Hook job execution to snapshot credentials
-   - Find where job_runs are created
-   - Call `db.SnapshotJobRunCredentials()` when execution starts
+See `planning/path-auth-plan-c-agent-dashboard.md` for details.
 
-### Then Start Plan C
+---
 
-Depends on Plan B completion.
+## Architecture Summary
+
+### Data Flow: Credential Lifecycle
+
+```
+1. CREATION (Admin)
+   POST /api/credential-profiles
+     ↓ Encrypt with LoadKey()
+     ↓ Store encrypted_data BLOB
+   credential_profiles table
+
+2. ASSIGNMENT (Operator)
+   POST /api/jobs
+     ├─ Validate credential_profile_id exists
+     ├─ Check type matches agent OS
+     └─ Link job → credential_profile_id
+
+3. EXECUTION (Agent)
+   Agent posts job results → StoreResult()
+     ├─ Create job_run record
+     └─ Snapshot credential info into job_runs
+         (credential_profile_id, credential_profile_name)
+
+4. DELIVERY (Agent Requests)
+   GET /api/jobs or GET /api/jobs/{id}
+     ├─ Check: agent token? (UserClaims absent)
+     ├─ If YES + has credentials:
+     │   └─ Decrypt and inject into response
+     └─ If NO (JWT/viewer): omit credentials
+
+5. AUDIT
+   Completed job_runs show which credentials were used
+   (via credential_profile_id + credential_profile_name snapshot)
+```
+
+### Security Properties
+
+- **Encryption:** AES-256-GCM, standard NIST-approved algorithm
+- **Key Storage:** Environment variable only (ARCVAULT_CREDENTIAL_KEY, hex-encoded)
+- **Access Control:** Only agents get credentials (via agent token)
+- **Audit Trail:** All job executions record which credential profile was used
+- **Key Rotation:** `coordinator rekey --old-key <hex> --new-key <hex>` (re-encrypts all)
+- **Error Handling:** Decryption failures are silent/safe (credentials simply omitted)
 
 ---
 
 ## Commit History
 
-- `feat: Add credcrypto package...` (Plan A complete)
-- `feat: Add credential profile management...` (Plan B partial, Tasks 1-6)
-- `feat: Add credential profile validation...` (Plan B Task 7)
+- `feat: Add credcrypto package...` (Plan A complete, 5/5 tasks)
+- `feat: Add credential profile management...` (Plan B Tasks 1-6, schema + CRUD)
+- `feat: Add credential profile validation...` (Plan B Task 7, job validation)
+- `feat: Complete Plan B credential injection...` (Plan B Tasks 8-9, final integration)
 
 ---
 
