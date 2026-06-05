@@ -55,6 +55,14 @@
           </option>
         </select>
 
+        <label>Path Authentication <span class="optional">(optional)</span></label>
+        <select v-model="form.credential_profile_id" :disabled="form.dispatchMode === 'group' || !form.agent_id">
+          <option value="">None</option>
+          <option v-for="cred in filteredCredentials" :key="cred.id" :value="cred.id">
+            {{ cred.name }} ({{ cred.type }})
+          </option>
+        </select>
+
         <label>Name</label>
         <input v-model="form.name" placeholder="nightly-backup" />
         <label>Source Path</label>
@@ -203,8 +211,10 @@ const statusFilter = ref('all')
 
 const agents = ref([])
 const groups = ref([])
+const credentials = ref([])
+const filteredCredentials = ref([])
 
-const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', sync_flags: { mirror: false, max_age: null, min_age: null, max_size: null, exclude_files: [], exclude_dirs: [] } })
+const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', credential_profile_id: '', sync_flags: { mirror: false, max_age: null, min_age: null, max_size: null, exclude_files: [], exclude_dirs: [] } })
 
 // Logs modal state
 const showLogsModal = ref(false)
@@ -248,6 +258,46 @@ function setStatus(s) {
   statusFilter.value = s
   page.value = 1
   load()
+}
+
+async function loadCredentials() {
+  try {
+    const response = await fetch('/api/credential-profiles', {
+      headers: {
+        Authorization: `Bearer ${localStorage.getItem('token')}`,
+      },
+    })
+    if (response.ok) {
+      const data = await response.json()
+      credentials.value = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : [])
+      filterCredentials()
+    }
+  } catch (e) {
+    console.error('Failed to load credentials:', e)
+  }
+}
+
+function getAgentOS(agentId) {
+  const agent = agents.value.find(a => a.id === agentId)
+  return agent ? agent.os : ''
+}
+
+function filterCredentials() {
+  const agentOS = getAgentOS(form.value.agent_id)
+  if (!agentOS) {
+    filteredCredentials.value = credentials.value
+    return
+  }
+
+  // Filter by OS compatibility
+  const osTypeMap = {
+    'windows': ['SMB', 'AWS', 'Database'],
+    'linux': ['SSH', 'AWS', 'Database'],
+    'darwin': ['SSH', 'AWS', 'Database'],
+  }
+
+  const compatibleTypes = osTypeMap[agentOS.toLowerCase()] || []
+  filteredCredentials.value = credentials.value.filter(c => compatibleTypes.includes(c.type))
 }
 
 function goToPage(n) {
@@ -366,9 +416,14 @@ watch(() => props.lastEvent, (ev) => {
   if (!selectedSite.value && (ev?.type === 'job.updated' || ev?.type === 'job.result')) load()
 })
 
+watch(() => form.value.agent_id, () => {
+  filterCredentials()
+})
+
 onMounted(() => {
   load()
   loadAgentsAndGroups()
+  loadCredentials()
 })
 </script>
 

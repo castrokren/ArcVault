@@ -36,6 +36,7 @@ class ArcVaultInstaller:
         self.agent_id = ""
         self.agent_token = ""
         self.coordinator_url = ""
+        self.credential_key = ""
         self.root = None
 
     def _setup_styles(self):
@@ -343,6 +344,49 @@ class ArcVaultInstaller:
     # Helpers
     # ------------------------------------------------------------------
 
+    def generate_credential_key(self):
+        """Generate a 32-byte credential encryption key in hex format."""
+        return secrets.token_hex(32)
+
+    def get_or_create_credential_key(self):
+        """
+        Get existing credential key from service environment or generate new one.
+        Returns (key, is_existing).
+        """
+        try:
+            # Try to read from Registry: HKLM\SYSTEM\CurrentControlSet\Services\arcvault-coordinator\Environment
+            result = subprocess.run(
+                ['reg', 'query',
+                 'HKLM\\SYSTEM\\CurrentControlSet\\Services\\arcvault-coordinator\\Environment',
+                 '/v', 'ARCVAULT_CREDENTIAL_KEY'],
+                capture_output=True, text=True, shell=True
+            )
+            if result.returncode == 0:
+                # Extract value from output (format: "  ARCVAULT_CREDENTIAL_KEY  REG_SZ  <value>")
+                for line in result.stdout.split('\n'):
+                    if 'ARCVAULT_CREDENTIAL_KEY' in line:
+                        parts = line.split('REG_SZ')
+                        if len(parts) > 1:
+                            key = parts[1].strip()
+                            if key and len(key) == 64:  # 32 bytes in hex = 64 chars
+                                return key, True
+        except Exception:
+            pass
+
+        # Generate new key if not found
+        return self.generate_credential_key(), False
+
+    def set_service_environment_variable(self, service_name: str, var_name: str, var_value: str):
+        """Set an environment variable for a Windows service via Registry."""
+        try:
+            reg_path = f'HKLM\\SYSTEM\\CurrentControlSet\\Services\\{service_name}\\Environment'
+            subprocess.run(
+                ['reg', 'add', reg_path, '/v', var_name, '/d', var_value, '/f'],
+                capture_output=True, text=True, shell=True, check=True
+            )
+        except Exception as e:
+            print(f"Warning: Failed to set service environment variable: {e}")
+
     def write_coordinator_config(self):
         """Write config.json next to coordinator.exe — that's where it looks at runtime."""
         self.COORD_DIR.mkdir(parents=True, exist_ok=True)
@@ -354,6 +398,20 @@ class ArcVaultInstaller:
         }
         with open(self.COORD_DIR / "config.json", "w") as f:
             json.dump(config, f, indent=2)
+
+        # Generate or retrieve credential key
+        key, is_existing = self.get_or_create_credential_key()
+        self.credential_key = key
+
+        # If new key was generated, display it to user (once)
+        if not is_existing:
+            messagebox.showinfo(
+                "Credential Key Generated",
+                f"A credential encryption key has been generated:\n\n{key}\n\n"
+                "⚠️ Save this key in a secure location!\n"
+                "You will need it to re-install or migrate the system.\n\n"
+                "The key is stored in the coordinator service environment."
+            )
 
     def write_agent_config(self):
         """Write agent-config.yaml next to agent.exe — that's where it looks at runtime."""
@@ -432,6 +490,12 @@ class ArcVaultInstaller:
             )
             if result.returncode != 0:
                 raise Exception(f"install-service failed: {result.stdout} {result.stderr}")
+
+            # Set credential key environment variable for coordinator service
+            if service_type == "coordinator" and self.credential_key:
+                self.set_service_environment_variable("arcvault-coordinator",
+                                                       "ARCVAULT_CREDENTIAL_KEY",
+                                                       self.credential_key)
 
             start = subprocess.run(["sc", "start", service_name],
                                    capture_output=True, text=True, shell=True)

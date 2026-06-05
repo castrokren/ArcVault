@@ -10,6 +10,7 @@ import FederationHealth from '../views/FederationHealth.vue'
 import Users from '../views/Users.vue'
 import Groups from '../views/Groups.vue'
 import Alerts from '../views/Alerts.vue'
+import Credentials from '../views/admin/Credentials.vue'
 
 const routes = [
   { path: '/', redirect: '/agents' },
@@ -23,6 +24,7 @@ const routes = [
   { path: '/users', component: Users },
   { path: '/groups', component: Groups },
   { path: '/alerts', component: Alerts },
+  { path: '/admin/credentials', component: Credentials },
 ]
 
 const router = createRouter({

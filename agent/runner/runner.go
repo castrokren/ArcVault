@@ -13,16 +13,23 @@ import (
 	"time"
 )
 
+// JobCredentials holds credentials for a job (e.g., SMB username/password, SSH key).
+type JobCredentials struct {
+	Type     string                 `json:"type"`                    // "SMB", "SSH", etc.
+	Data     map[string]interface{} `json:"data"`                    // type-specific fields
+}
+
 // Job represents a pending job returned by the coordinator.
 type Job struct {
-	ID         string      `json:"id"`
-	AgentID    string      `json:"agent_id"`
-	Name       string      `json:"name"`
-	SourcePath string      `json:"source_path"`
-	DestPath   string      `json:"dest_path"`
-	Command    string      `json:"command"`
-	Status     string      `json:"status"`
-	SyncFlags  *SyncFlags  `json:"sync_flags,omitempty"`
+	ID          string           `json:"id"`
+	AgentID     string           `json:"agent_id"`
+	Name        string           `json:"name"`
+	SourcePath  string           `json:"source_path"`
+	DestPath    string           `json:"dest_path"`
+	Command     string           `json:"command"`
+	Status      string           `json:"status"`
+	SyncFlags   *SyncFlags       `json:"sync_flags,omitempty"`
+	Credentials *JobCredentials  `json:"credentials,omitempty"`
 }
 
 // Executor is a function that runs a job and returns exit code + output.
@@ -164,15 +171,29 @@ func (r *Runner) process(job Job) {
 		return
 	}
 
-	// 2. execute
+	// 2. apply credentials (call applyCredentials from the main agent package)
+	cleanup, err := applyCredentials(job)
+	defer cleanup()
+	if err != nil {
+		log.Printf("Runner: failed to apply credentials for job %s: %v", job.ID, err)
+		if err := r.postResult(job.ID, 1, fmt.Sprintf("credential error: %v", err)); err != nil {
+			log.Printf("Runner: failed to post error result for job %s: %v", job.ID, err)
+		}
+		if err := r.updateStatus(job.ID, "failed"); err != nil {
+			log.Printf("Runner: failed to set failed status for job %s: %v", job.ID, err)
+		}
+		return
+	}
+
+	// 3. execute
 	exitCode, output := r.executor(job)
 
-	// 3. post result
+	// 4. post result
 	if err := r.postResult(job.ID, exitCode, output); err != nil {
 		log.Printf("Runner: failed to post result for job %s: %v", job.ID, err)
 	}
 
-	// 4. mark final status
+	// 5. mark final status
 	finalStatus := "completed"
 	if exitCode != 0 {
 		finalStatus = "failed"
