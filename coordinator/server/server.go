@@ -190,6 +190,11 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("GET /api/agents", s.viewerRoute(s.handleListAgents))
 	s.router.HandleFunc("DELETE /api/agents/{id}", s.adminRoute(s.handleDeleteAgent))
 
+	// Credential profiles endpoints
+	s.router.HandleFunc("POST /api/credential-profiles", s.adminRoute(s.handleCreateCredentialProfile))
+	s.router.HandleFunc("GET /api/credential-profiles", s.viewerRoute(s.handleListCredentialProfiles))
+	s.router.HandleFunc("DELETE /api/credential-profiles/{id}", s.adminRoute(s.handleDeleteCredentialProfile))
+
 	// Jobs endpoints
 	s.router.HandleFunc("POST /api/jobs", s.operatorRoute(s.handleCreateJob))
 	s.router.HandleFunc("GET /api/jobs", s.viewerRoute(s.handleListJobs))
