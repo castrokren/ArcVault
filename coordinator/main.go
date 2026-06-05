@@ -7,6 +7,7 @@ import (
 
 	"arcvault/coordinator/cmd"
 	"arcvault/coordinator/config"
+	"arcvault/coordinator/internal/credcrypto"
 	"arcvault/coordinator/service"
 	"arcvault/coordinator/static"
 )
@@ -47,6 +48,54 @@ func main() {
 		if err := cmd.CreateAgentTokenCommand(os.Args[2], tokenOnly); err != nil {
 			log.Fatalf("create-agent-token failed: %v", err)
 		}
+	case "rekey":
+		if len(os.Args) < 5 {
+			fmt.Println("Usage: coordinator rekey --old-key <hex> --new-key <hex>")
+			os.Exit(1)
+		}
+
+		var oldKey, newKey string
+		for i := 2; i < len(os.Args)-1; i++ {
+			if os.Args[i] == "--old-key" && i+1 < len(os.Args) {
+				oldKey = os.Args[i+1]
+			}
+			if os.Args[i] == "--new-key" && i+1 < len(os.Args) {
+				newKey = os.Args[i+1]
+			}
+		}
+
+		if oldKey == "" || newKey == "" {
+			fmt.Println("Usage: coordinator rekey --old-key <hex> --new-key <hex>")
+			os.Exit(1)
+		}
+
+		cfg, err := config.Load()
+		if err != nil {
+			log.Fatalf("failed to load config: %v", err)
+		}
+
+		database, err := cmd.OpenDatabase(cfg.DatabasePath)
+		if err != nil {
+			log.Fatalf("failed to open database: %v", err)
+		}
+		defer database.Close()
+
+		oldKeyBytes, err := cmd.DecodeKeyHex(oldKey)
+		if err != nil {
+			log.Fatalf("invalid old-key: %v", err)
+		}
+
+		newKeyBytes, err := cmd.DecodeKeyHex(newKey)
+		if err != nil {
+			log.Fatalf("invalid new-key: %v", err)
+		}
+
+		if err := credcrypto.Rekey(database.Conn(), oldKeyBytes, newKeyBytes); err != nil {
+			log.Fatalf("rekey failed: %v", err)
+		}
+
+		fmt.Println("Credentials rekeyed successfully")
+		os.Exit(0)
 	case "check-update":
 		if err := cmd.CheckUpdateCommand(Version); err != nil {
 			log.Fatalf("check-update failed: %v", err)
@@ -84,6 +133,7 @@ func printUsage() {
 	fmt.Println("  init                          - Initialize and generate admin token")
 	fmt.Println("  start                         - Start the coordinator server")
 	fmt.Println("  create-agent-token <agent-id> - Generate a token for an agent")
+	fmt.Println("  rekey <args>                  - Rotate credential encryption keys")
 	fmt.Println("  check-update                  - Check for available updates")
 	fmt.Println("  install-service               - Install as a system service (requires admin/root)")
 	fmt.Println("  uninstall-service             - Remove the system service (requires admin/root)")
