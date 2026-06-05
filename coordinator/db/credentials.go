@@ -128,3 +128,21 @@ func (d *DB) SnapshotJobRunCredentials(runID, credentialProfileID, credentialPro
 	}
 	return nil
 }
+
+// GetJobCredentialProfileID retrieves the credential profile ID assigned to a job.
+func (d *DB) GetJobCredentialProfileID(jobID string) (string, error) {
+	var profileID sql.NullString
+	err := d.conn.QueryRow(
+		`SELECT credential_profile_id FROM jobs WHERE id = ?`,
+		jobID,
+	).Scan(&profileID)
+
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("failed to get job credential profile: %w", err)
+	}
+
+	return profileID.String, nil
+}

@@ -145,6 +145,17 @@ type ExtendedGroupQueries interface {
 	RemoveAgentFromGroup(groupID int, agentID string) error
 }
 
+// CredentialProfileQueries defines operations on credential profiles
+type CredentialProfileQueries interface {
+	CreateCredentialProfile(id, name, credType string, encryptedData []byte) error
+	GetCredentialProfile(id string) (*CredentialProfile, error)
+	ListCredentialProfiles() ([]*CredentialProfile, error)
+	DeleteCredentialProfile(id string) error
+	HasJobsReferencingProfile(profileID string) (bool, error)
+	GetJobCredentialProfileID(jobID string) (string, error)
+	SnapshotJobRunCredentials(runID, credentialProfileID, credentialProfileName string) error
+}
+
 // AllQueries is a union interface that includes all query types.
 // Used by services that need to access multiple query interfaces.
 type AllQueries interface {
@@ -152,6 +163,7 @@ type AllQueries interface {
 	JobRunQueries
 	UserQueries
 	ExtendedGroupQueries
+	CredentialProfileQueries
 }
 
 // Agent represents an agent in the database.

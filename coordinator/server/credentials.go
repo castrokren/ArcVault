@@ -162,3 +162,45 @@ func (s *Server) validateCredentialTypeForAgent(credType, agentOS string) bool {
 	// If credential type not recognized, allow it (fail open)
 	return true
 }
+
+// isAgentTokenRequest checks if the request was authenticated with an agent token
+// (as opposed to JWT). This is detected by the absence of UserClaims in context.
+func isAgentTokenRequest(r *http.Request) bool {
+	_, hasUserClaims := r.Context().Value(UserClaimsCtxKey{}).(*JWTClaims)
+	return !hasUserClaims
+}
+
+// decryptCredentials decrypts a credential profile's encrypted data
+// Returns nil if key not available
+func (s *Server) decryptCredentials(profileID string) map[string]interface{} {
+	// Check if key is available
+	if os.Getenv("ARCVAULT_CREDENTIAL_KEY") == "" {
+		return nil
+	}
+
+	// Load encryption key
+	key, err := credcrypto.LoadKey()
+	if err != nil {
+		return nil
+	}
+
+	// Get profile
+	profile, err := s.db.GetCredentialProfile(profileID)
+	if err != nil || profile == nil {
+		return nil
+	}
+
+	// Decrypt
+	plaintext, err := credcrypto.Decrypt(key, profile.EncryptedData)
+	if err != nil {
+		return nil
+	}
+
+	// Unmarshal JSON
+	var credentials map[string]interface{}
+	if err := json.Unmarshal(plaintext, &credentials); err != nil {
+		return nil
+	}
+
+	return credentials
+}
