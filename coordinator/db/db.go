@@ -319,6 +319,14 @@ CREATE TABLE IF NOT EXISTS tokens (
 	FOREIGN KEY (agent_id) REFERENCES agents(id)
 );
 
+CREATE TABLE IF NOT EXISTS credential_profiles (
+	id              TEXT PRIMARY KEY,
+	name            TEXT NOT NULL UNIQUE,
+	type            TEXT NOT NULL,
+	encrypted_data  BLOB NOT NULL,
+	created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS jobs (
 	id          TEXT PRIMARY KEY,
 	agent_id    TEXT NOT NULL,
@@ -350,6 +358,11 @@ CREATE TABLE IF NOT EXISTS job_runs (
 	d.conn.Exec(`ALTER TABLE agents ADD COLUMN rollback_available BOOLEAN NOT NULL DEFAULT 0`)
 	// Idempotent: add command column to jobs for Phase 13 template-fired jobs.
 	d.conn.Exec(`ALTER TABLE jobs ADD COLUMN command TEXT NOT NULL DEFAULT ''`)
+	// Idempotent: add credential_profile_id column to jobs for Path Auth.
+	d.conn.Exec(`ALTER TABLE jobs ADD COLUMN credential_profile_id TEXT`)
+	// Idempotent: add credential profile snapshot columns to job_runs for Path Auth.
+	d.conn.Exec(`ALTER TABLE job_runs ADD COLUMN credential_profile_id TEXT`)
+	d.conn.Exec(`ALTER TABLE job_runs ADD COLUMN credential_profile_name TEXT`)
 	// Idempotent: add backup_templates table for Phase 13 scheduled templates.
 	d.conn.Exec(`CREATE TABLE IF NOT EXISTS backup_templates (
 		id          TEXT PRIMARY KEY,

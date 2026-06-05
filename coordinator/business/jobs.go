@@ -316,10 +316,21 @@ func (s *JobService) PostJobResults(jobID string, exitCode int, output, startedA
 		if err := s.db.CreateJobRun(newRunID, jobID, exitCode, output, startedAt, finishedAt); err != nil {
 			return nil, fmt.Errorf("failed to store result: %w", err)
 		}
+		runID = newRunID
 	} else {
 		// Run exists (created by trigger), update it with the result
 		if err := s.db.UpdateJobRun(runID, exitCode, output, startedAt, finishedAt); err != nil {
 			return nil, fmt.Errorf("failed to update result: %w", err)
+		}
+	}
+
+	// Snapshot credential profile info if present
+	credProfileID, err := s.db.GetJobCredentialProfileID(jobID)
+	if err == nil && credProfileID != "" {
+		profile, err := s.db.GetCredentialProfile(credProfileID)
+		if err == nil && profile != nil {
+			// Ignore snapshot errors (not critical if it fails)
+			s.db.SnapshotJobRunCredentials(runID, profile.ID, profile.Name)
 		}
 	}
 

@@ -20,16 +20,17 @@ type ProgressData struct {
 // Last synced: 2026-06-03
 // Job is the domain type returned by all job endpoints.
 type Job struct {
-	ID         string                 `json:"id"`
-	AgentID    string                 `json:"agent_id"`
-	Name       string                 `json:"name"`
-	SourcePath string                 `json:"source_path"`
-	DestPath   string                 `json:"dest_path"`
-	Schedule   *string                `json:"schedule,omitempty"`
-	SyncFlags  map[string]interface{} `json:"sync_flags,omitempty"`
-	Status     string                 `json:"status"`
-	Progress   *ProgressData          `json:"progress,omitempty"`
-	CreatedAt  string                 `json:"created_at"`
+	ID          string                 `json:"id"`
+	AgentID     string                 `json:"agent_id"`
+	Name        string                 `json:"name"`
+	SourcePath  string                 `json:"source_path"`
+	DestPath    string                 `json:"dest_path"`
+	Schedule    *string                `json:"schedule,omitempty"`
+	SyncFlags   map[string]interface{} `json:"sync_flags,omitempty"`
+	Status      string                 `json:"status"`
+	Progress    *ProgressData          `json:"progress,omitempty"`
+	Credentials map[string]interface{} `json:"credentials,omitempty"`
+	CreatedAt   string                 `json:"created_at"`
 }
 
 func newJobID() string {
@@ -45,13 +46,14 @@ func newJobID() string {
 // - Both cannot be provided (validation required)
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		AgentID    string                 `json:"agent_id"`
-		GroupID    *int                   `json:"group_id"`
-		Name       string                 `json:"name"`
-		SourcePath string                 `json:"source_path"`
-		DestPath   string                 `json:"dest_path"`
-		Schedule   *string                `json:"schedule"`
-		SyncFlags  map[string]interface{} `json:"sync_flags"`
+		AgentID              string                 `json:"agent_id"`
+		GroupID              *int                   `json:"group_id"`
+		Name                 string                 `json:"name"`
+		SourcePath           string                 `json:"source_path"`
+		DestPath             string                 `json:"dest_path"`
+		Schedule             *string                `json:"schedule"`
+		SyncFlags            map[string]interface{} `json:"sync_flags"`
+		CredentialProfileID  string                 `json:"credential_profile_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
@@ -70,6 +72,38 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+
+		// Validate and assign credential profile if provided
+		if input.CredentialProfileID != "" {
+			profile, err := s.db.GetCredentialProfile(input.CredentialProfileID)
+			if err != nil {
+				http.Error(w, "failed to validate credential profile", http.StatusInternalServerError)
+				return
+			}
+			if profile == nil {
+				http.Error(w, "credential profile not found", http.StatusNotFound)
+				return
+			}
+
+			// Get agent to check OS compatibility
+			agent, err := s.db.GetAgent(input.AgentID)
+			if err != nil {
+				http.Error(w, "agent not found", http.StatusNotFound)
+				return
+			}
+
+			// Validate credential type matches agent OS
+			if !s.validateCredentialTypeForAgent(profile.Type, agent.OS) {
+				http.Error(w, "credential profile type incompatible with agent OS", http.StatusUnprocessableEntity)
+				return
+			}
+
+			// Assign profile to job
+			if err := s.db.UpdateJobCredentialProfile(jobDTO.ID, input.CredentialProfileID); err != nil {
+				http.Error(w, "failed to assign credential profile to job", http.StatusInternalServerError)
+				return
+			}
 		}
 
 		// Convert DTO to response and append to federation_events log
@@ -153,6 +187,8 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 
 	// Convert service DTOs to response DTOs
 	jobs := make([]Job, len(result.Jobs))
+	isAgentRequest := isAgentTokenRequest(r)
+
 	for i, jobDTO := range result.Jobs {
 		jobs[i] = Job{
 			ID:         jobDTO.ID,
@@ -164,6 +200,17 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 			SyncFlags:  jobDTO.SyncFlags,
 			Status:     jobDTO.Status,
 			CreatedAt:  jobDTO.CreatedAt,
+		}
+
+		// Inject credentials for agent token requests
+		if isAgentRequest {
+			credProfileID, err := s.db.GetJobCredentialProfileID(jobDTO.ID)
+			if err == nil && credProfileID != "" {
+				credentials := s.decryptCredentials(credProfileID)
+				if credentials != nil {
+					jobs[i].Credentials = credentials
+				}
+			}
 		}
 	}
 
@@ -191,6 +238,17 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		SyncFlags:  jobDTO.SyncFlags,
 		Status:     jobDTO.Status,
 		CreatedAt:  jobDTO.CreatedAt,
+	}
+
+	// Inject credentials for agent token requests
+	if isAgentTokenRequest(r) {
+		credProfileID, err := s.db.GetJobCredentialProfileID(id)
+		if err == nil && credProfileID != "" {
+			credentials := s.decryptCredentials(credProfileID)
+			if credentials != nil {
+				j.Credentials = credentials
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
