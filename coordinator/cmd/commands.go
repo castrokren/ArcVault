@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"log"
@@ -114,8 +115,8 @@ func startVersionChecker(currentVersion string) {
 	// Check on startup
 	checkAndCache(currentVersion)
 
-	// Check every 24 hours
-	ticker := time.NewTicker(24 * time.Hour)
+	// Check every hour
+	ticker := time.NewTicker(1 * time.Hour)
 	defer ticker.Stop()
 
 	for range ticker.C {
@@ -194,4 +195,21 @@ func generateToken(length int) (string, error) {
 		hexStr += fmt.Sprintf("%02x", b)
 	}
 	return hexStr, nil
+}
+
+// OpenDatabase opens the coordinator database.
+func OpenDatabase(dbPath string) (*db.DB, error) {
+	return db.Init(dbPath)
+}
+
+// DecodeKeyHex decodes a hex-encoded key and validates it's 32 bytes.
+func DecodeKeyHex(keyHex string) ([]byte, error) {
+	key, err := hex.DecodeString(keyHex)
+	if err != nil {
+		return nil, fmt.Errorf("invalid hex encoding: %w", err)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("key must be 32 bytes (got %d)", len(key))
+	}
+	return key, nil
 }

@@ -49,6 +49,10 @@
               <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="5" cy="5" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="9.5" cy="4.5" r="1.75" stroke="currentColor" stroke-width="1.3"/><path d="M1 12c0-2.21 1.79-4 4-4s4 1.79 4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.5 8c1.65 0 3 1.35 3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
               Groups
             </router-link>
+            <router-link to="/admin/credentials" @click="adminMenuOpen = false">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="2" y="6" width="10" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M4 6V4.5a3 3 0 0 1 6 0V6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="9" r="0.75" fill="currentColor"/></svg>
+              Credentials
+            </router-link>
           </div>
         </div>
       </nav>
@@ -142,7 +146,7 @@ const isAdmin = computed(() => auth.hasRole('admin'))
 
 const userInitials = computed(() => {
   const name = auth.currentUser?.username || ''
-  return name.slice(0, 2).toUpperCase() || '?'
+  return name.slice(0, 2).toUpperCase()
 })
 
 // Reactive update info store

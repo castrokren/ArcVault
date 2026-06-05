@@ -12,11 +12,13 @@ Remove-Item -Recurse -Force "build", "dist", "arcvault.spec" -ErrorAction Silent
 # Create dist
 New-Item -ItemType Directory -Path "dist" -Force | Out-Null
 
-# Build binaries
-Write-Host "Building Go binaries..." -ForegroundColor Cyan
-go build -o dist\coordinator.exe .\coordinator
+# Version — must match arcvault_installer.py self.version and the EXE name below
+$Version = "v0.3.0"
+Write-Host "Building Go binaries at $Version..." -ForegroundColor Cyan
+
+go build -ldflags "-X main.Version=$Version" -o dist\coordinator.exe .\coordinator
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: coordinator build failed" -ForegroundColor Red; exit 1 }
-go build -o dist\agent.exe .\agent
+go build -ldflags "-X main.Version=$Version" -o dist\agent.exe .\agent
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: agent build failed" -ForegroundColor Red; exit 1 }
 
 Write-Host "Binaries built OK" -ForegroundColor Green
