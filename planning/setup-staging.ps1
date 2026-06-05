@@ -63,7 +63,7 @@ $encryptionKey = [System.BitConverter]::ToString($keyBytes).Replace("-", "").ToL
 Write-Success "Encryption key generated (64 hex characters)"
 
 # Save key to file for reference
-$encryptionKey | Out-File "$StagingPath\ENCRYPTION_KEY.txt" -Encoding UTF8
+$encryptionKey | Out-File "$StagingPath\ENCRYPTION_KEY.txt" -Encoding UTF8NoBOM
 Write-Host "⚠️  Key saved to: $StagingPath\ENCRYPTION_KEY.txt" -ForegroundColor Yellow
 Write-Host "⚠️  SAVE THIS KEY SECURELY BEFORE DELETING THE FILE!" -ForegroundColor Yellow
 
@@ -79,7 +79,9 @@ $config = @{
     environment = "staging"
 }
 
-$config | ConvertTo-Json | Out-File "$StagingPath\config.json" -Encoding UTF8
+$configJson = $config | ConvertTo-Json
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText("$StagingPath\config.json", $configJson, $utf8NoBom)
 Write-Success "Configuration created"
 Write-Host "  Port: $Port"
 Write-Host "  Admin Token: $adminToken"
