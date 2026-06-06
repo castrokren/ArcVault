@@ -11,12 +11,18 @@ import (
 
 // JobRun represents a single execution result for a job.
 type JobRun struct {
-	ID         string `json:"id"`
-	JobID      string `json:"job_id"`
-	ExitCode   int    `json:"exit_code"`
-	Output     string `json:"output"`
-	StartedAt  string `json:"started_at"`
-	FinishedAt string `json:"finished_at"`
+	ID            string `json:"id"`
+	JobID         string `json:"job_id"`
+	JobName       string `json:"job_name"`
+	SourcePath    string `json:"source_path"`
+	DestPath      string `json:"dest_path"`
+	AgentID       string `json:"agent_id"`
+	AgentHostname string `json:"agent_hostname"`
+	ExitCode      int    `json:"exit_code"`
+	Output        string `json:"output"`
+	Status        string `json:"status"`
+	StartedAt     string `json:"started_at"`
+	FinishedAt    string `json:"finished_at"`
 }
 
 // handlePostJobResults handles POST /api/jobs/{id}/results

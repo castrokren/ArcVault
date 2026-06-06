@@ -194,11 +194,16 @@ type Job struct {
 
 // JobRun represents a single execution of a job.
 type JobRun struct {
-	ID         string
-	JobID      string
-	StartedAt  string
-	FinishedAt *string
-	Status     string
-	ExitCode   *int
-	Output     *string
+	ID            string
+	JobID         string
+	JobName       string  // resolved via LEFT JOIN jobs
+	SourcePath    string  // resolved via LEFT JOIN jobs
+	DestPath      string  // resolved via LEFT JOIN jobs
+	AgentID       string
+	AgentHostname string  // resolved via LEFT JOIN agents
+	StartedAt     string
+	FinishedAt    *string
+	Status        string
+	ExitCode      *int
+	Output        *string
 }

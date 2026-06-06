@@ -170,8 +170,8 @@ const triggerJob = (id: string, siteID: string | null = null) =>
   request('POST', `/api/jobs/${id}/trigger${siteID ? `?site=${siteID}` : ''}`)
 
 // --- Job Runs ---
-export const getJobRuns = ({ page = 1, limit = 25, jobID = '', agentID = '' } = {}) =>
-  request('GET', `/api/job-runs${buildQuery({ page, limit, job_id: jobID, agent_id: agentID })}`)
+export const getJobRuns = ({ page = 1, limit = 25, jobID = '', agentID = '', status = '' } = {}) =>
+  request('GET', `/api/job-runs${buildQuery({ page, limit, job_id: jobID, agent_id: agentID, status: status || undefined })}`)
 
 // --- Updates ---
 export const checkUpdate = () =>

@@ -87,7 +87,7 @@
               <th>Agent</th>
               <th>Started</th>
               <th>Duration</th>
-              <th>Output</th>
+              <th>Exit</th>
             </tr>
           </thead>
           <tbody>
@@ -95,25 +95,69 @@
               v-for="run in displayRuns"
               :key="run.id"
               class="run-row"
-              :class="run.status"
+              :class="[run.status, { 'run-selected': selectedRun && selectedRun.id === run.id }]"
+              @click="selectRun(run)"
             >
               <td>
                 <span class="status-badge" :class="run.status">{{ run.status }}</span>
               </td>
-              <td class="run-job">{{ run.job_id }}</td>
-              <td class="run-agent">{{ run.agent_id }}</td>
+              <td class="run-job">{{ run.job_name || run.job_id }}</td>
+              <td class="run-agent">{{ run.agent_hostname || run.agent_id }}</td>
               <td class="run-time">{{ fmtTime(run.started_at) }}</td>
               <td class="run-dur">{{ fmtDuration(run.started_at, run.finished_at) }}</td>
-              <td>
-                <button
-                  v-if="run.output"
-                  class="btn-output"
-                  @click="openOutput(run)"
-                >view</button>
-              </td>
+              <td class="run-exit" :class="{ 'exit-nonzero': run.exit_code !== 0 }">{{ run.exit_code }}</td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Detail panel -->
+      <div v-if="selectedRun" class="detail-panel">
+        <div class="detail-header">
+          <div class="detail-title-block">
+            <span class="detail-job-name">{{ selectedRun.job_name || selectedRun.job_id }}</span>
+            <span class="detail-subtitle">Run on {{ selectedRun.agent_hostname || selectedRun.agent_id }} · {{ fmtTime(selectedRun.started_at) }}</span>
+          </div>
+          <div class="detail-header-right">
+            <span class="status-badge" :class="selectedRun.status">{{ selectedRun.status }}</span>
+            <button class="detail-close" @click="selectedRun = null">✕</button>
+          </div>
+        </div>
+
+        <div class="detail-stats">
+          <div class="detail-stat">
+            <span class="detail-stat-label">Started</span>
+            <span class="detail-stat-value">{{ fmtTimeShort(selectedRun.started_at) }}</span>
+          </div>
+          <div class="detail-stat">
+            <span class="detail-stat-label">Finished</span>
+            <span class="detail-stat-value">{{ selectedRun.finished_at ? fmtTimeShort(selectedRun.finished_at) : '—' }}</span>
+          </div>
+          <div class="detail-stat">
+            <span class="detail-stat-label">Duration</span>
+            <span class="detail-stat-value">{{ fmtDuration(selectedRun.started_at, selectedRun.finished_at) }}</span>
+          </div>
+          <div class="detail-stat">
+            <span class="detail-stat-label">Exit code</span>
+            <span class="detail-stat-value" :class="{ 'exit-nonzero': selectedRun.exit_code !== 0 }">{{ selectedRun.exit_code }}</span>
+          </div>
+        </div>
+
+        <div v-if="selectedRun.source_path || selectedRun.dest_path" class="detail-paths">
+          <div v-if="selectedRun.source_path" class="detail-path-item">
+            <span class="detail-stat-label">Source</span>
+            <code class="detail-path">{{ selectedRun.source_path }}</code>
+          </div>
+          <div v-if="selectedRun.dest_path" class="detail-path-item">
+            <span class="detail-stat-label">Destination</span>
+            <code class="detail-path">{{ selectedRun.dest_path }}</code>
+          </div>
+        </div>
+
+        <div class="detail-output-section">
+          <span class="detail-stat-label">Output</span>
+          <pre class="detail-output">{{ selectedRun.output || '(no output recorded)' }}</pre>
+        </div>
       </div>
 
       <!-- Pagination (local only) -->
@@ -128,16 +172,6 @@
       />
     </div>
 
-    <!-- Output modal -->
-    <div v-if="outputModal.visible" class="modal-backdrop" @click.self="outputModal.visible = false">
-      <div class="modal-box">
-        <div class="modal-header">
-          <span class="modal-title">Output — {{ outputModal.jobId }}</span>
-          <button class="modal-close" @click="outputModal.visible = false">✕</button>
-        </div>
-        <pre class="modal-output">{{ outputModal.text }}</pre>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -187,8 +221,8 @@ export default {
       filterJobId: null,
       filterAgentId: null,
 
-      // ── Output modal
-      outputModal: { visible: false, jobId: '', text: '' }
+      // ── Selected run for detail panel
+      selectedRun: null
     }
   },
 
@@ -304,17 +338,19 @@ export default {
     async loadTableRuns(page = 1) {
       this.runsLoading = true
       try {
-        const params = {
+        const resp = await getJobRuns({
           page,
           limit: 25,
-          search: this.search || undefined,
-          status: this.filterStatus || undefined,
-          job_id: this.filterJobId || undefined,
-          agent_id: this.filterAgentId || undefined
-        }
-        const resp = await getJobRuns(params)
+          jobID: this.filterJobId || undefined,
+          agentID: this.filterAgentId || undefined,
+          status: this.filterStatus || undefined
+        })
         this.runs = resp.data ?? []
         this.pagination = { page: resp.page, pages: resp.pages, total: resp.total, limit: resp.limit }
+        // Clear detail panel if selected run is no longer in current page
+        if (this.selectedRun && !this.runs.find(r => r.id === this.selectedRun.id)) {
+          this.selectedRun = null
+        }
       } catch (e) {
         console.error('Run table load failed', e)
       } finally {
@@ -336,8 +372,8 @@ export default {
 
     onPageChange(page) { this.loadTableRuns(page) },
 
-    openOutput(run) {
-      this.outputModal = { visible: true, jobId: run.job_id, text: run.output ?? '(no output)' }
+    selectRun(run) {
+      this.selectedRun = this.selectedRun?.id === run.id ? null : run
     },
 
     fmtTime(ts) {
@@ -346,6 +382,11 @@ export default {
         month: 'short', day: 'numeric',
         hour: '2-digit', minute: '2-digit'
       })
+    },
+
+    fmtTimeShort(ts) {
+      if (!ts) return '—'
+      return new Date(ts).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     },
 
     fmtDuration(start, end) {
@@ -512,8 +553,14 @@ export default {
 .run-row:hover td      { background: var(--bg-elevated); }
 .run-row.failed td     { background: rgba(255, 77, 109, 0.02); }
 
-.run-job, .run-agent   { color: var(--text-primary); font-family: var(--font-mono); font-size: 0.8rem; }
+.run-job               { color: var(--text-primary); font-weight: 500; }
+.run-agent             { color: var(--text-muted); font-size: 0.82rem; }
 .run-time, .run-dur    { color: var(--text-muted); white-space: nowrap; }
+.run-exit              { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.8rem; }
+.exit-nonzero          { color: var(--color-error); font-weight: 600; }
+
+.run-row               { cursor: pointer; }
+.run-row.run-selected td { background: var(--accent-dim); }
 
 /* Use global .badge where possible; status-badge is an alias kept for this view */
 .status-badge {
@@ -546,30 +593,135 @@ export default {
 
 .table-pagination { margin-top: 0.85rem; }
 
-/* Modal-backdrop and modal-box covered globally; only view-specific overrides */
-.modal-box {
-  width: min(680px, 92vw);
-  max-height: 72vh;
+/* ── Detail panel ───────────────────────────────────── */
+.detail-panel {
+  margin-top: 0.75rem;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  overflow: hidden;
 }
 
-.modal-title {
+.detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
+  gap: 0.75rem;
+}
+
+.detail-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.detail-job-name {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.detail-subtitle {
   font-family: var(--font-body);
   font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.detail-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
+}
+
+.detail-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  line-height: 1;
+  transition: color 0.1s;
+}
+.detail-close:hover { color: var(--text-primary); }
+
+.detail-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.detail-stat {
+  padding: 0.65rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  border-right: 1px solid var(--border-subtle);
+}
+.detail-stat:last-child { border-right: none; }
+
+.detail-stat-label {
+  font-family: var(--font-body);
+  font-size: 0.68rem;
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
 
-.modal-output {
-  padding: 1rem 1.1rem;
-  overflow: auto;
+.detail-stat-value {
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.detail-paths {
+  display: flex;
+  gap: 2rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+
+.detail-path-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.detail-path {
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  background: none;
+}
+
+.detail-output-section {
+  padding: 0.65rem 1rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.detail-output {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
   line-height: 1.65;
   color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  padding: 0.65rem 0.85rem;
   white-space: pre-wrap;
   word-break: break-all;
-  flex: 1;
+  max-height: 200px;
+  overflow: auto;
+  margin: 0;
 }
 </style>

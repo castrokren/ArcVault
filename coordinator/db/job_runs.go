@@ -83,14 +83,17 @@ func (d *DB) CountJobRuns(jobID string) (int, error) {
 
 // ListAllJobRuns returns job runs with filters and pagination (for Reports).
 // Supported filter keys: "job_id", "agent_id", "status".
+//
+// Always LEFT JOINs jobs and agents to populate JobName and AgentHostname.
+// The agent_id filter matches against jobs.agent_id (job ownership), not
+// the agent that ran the job directly.
 func (d *DB) ListAllJobRuns(filters map[string]string, limit, offset int) ([]JobRun, int, error) {
-	// Build dynamic query based on filters
-	join := ""
+	joins := ` LEFT JOIN jobs j ON job_runs.job_id = j.id
+               LEFT JOIN agents a ON job_runs.agent_id = a.id`
 	where := " WHERE 1=1"
 	var args []interface{}
 
 	if agentID, ok := filters["agent_id"]; ok && agentID != "" {
-		join = " JOIN jobs j ON job_runs.job_id = j.id"
 		where += " AND j.agent_id = ?"
 		args = append(args, agentID)
 	}
@@ -103,17 +106,29 @@ func (d *DB) ListAllJobRuns(filters map[string]string, limit, offset int) ([]Job
 		args = append(args, st)
 	}
 
-	base := `SELECT job_runs.id, job_runs.job_id, job_runs.started_at, job_runs.finished_at, job_runs.status, job_runs.exit_code, job_runs.output FROM job_runs` + join + where
+	base := `SELECT
+		job_runs.id,
+		job_runs.job_id,
+		COALESCE(j.name, '')        AS job_name,
+		COALESCE(j.source_path, '') AS source_path,
+		COALESCE(j.dest_path, '')   AS dest_path,
+		COALESCE(job_runs.agent_id, '') AS agent_id,
+		COALESCE(a.hostname, '')    AS agent_hostname,
+		job_runs.started_at,
+		job_runs.finished_at,
+		job_runs.status,
+		job_runs.exit_code,
+		job_runs.output
+	FROM job_runs` + joins + where
 
-	// Count
+	// Count (no SELECT columns needed, just the joins + where)
 	countArgs := append([]interface{}{}, args...)
 	var total int
-	err := d.conn.QueryRow("SELECT COUNT(*) FROM job_runs"+join+where, countArgs...).Scan(&total)
+	err := d.conn.QueryRow("SELECT COUNT(*) FROM job_runs"+joins+where, countArgs...).Scan(&total)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// Add sorting and pagination to main query
 	query := base + ` ORDER BY job_runs.started_at DESC LIMIT ? OFFSET ?`
 	args = append(args, limit, offset)
 
@@ -126,7 +141,20 @@ func (d *DB) ListAllJobRuns(filters map[string]string, limit, offset int) ([]Job
 	var runs []JobRun
 	for rows.Next() {
 		var run JobRun
-		if err := rows.Scan(&run.ID, &run.JobID, &run.StartedAt, &run.FinishedAt, &run.Status, &run.ExitCode, &run.Output); err != nil {
+		if err := rows.Scan(
+			&run.ID,
+			&run.JobID,
+			&run.JobName,
+			&run.SourcePath,
+			&run.DestPath,
+			&run.AgentID,
+			&run.AgentHostname,
+			&run.StartedAt,
+			&run.FinishedAt,
+			&run.Status,
+			&run.ExitCode,
+			&run.Output,
+		); err != nil {
 			return nil, 0, err
 		}
 		runs = append(runs, run)

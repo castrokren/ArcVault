@@ -60,6 +60,9 @@ func (s *Server) handleListAllJobRuns(w http.ResponseWriter, r *http.Request) {
 	if agentID := q.Get("agent_id"); agentID != "" {
 		filters["agent_id"] = agentID
 	}
+	if status := q.Get("status"); status != "" {
+		filters["status"] = status
+	}
 
 	offset := (p.Page - 1) * p.Limit
 	dbRuns, total, err := s.db.ListAllJobRuns(filters, p.Limit, offset)
@@ -70,7 +73,17 @@ func (s *Server) handleListAllJobRuns(w http.ResponseWriter, r *http.Request) {
 
 	runs := make([]JobRun, 0, len(dbRuns))
 	for _, dbRun := range dbRuns {
-		run := JobRun{ID: dbRun.ID, JobID: dbRun.JobID, StartedAt: dbRun.StartedAt}
+		run := JobRun{
+			ID:            dbRun.ID,
+			JobID:         dbRun.JobID,
+			JobName:       dbRun.JobName,
+			SourcePath:    dbRun.SourcePath,
+			DestPath:      dbRun.DestPath,
+			AgentID:       dbRun.AgentID,
+			AgentHostname: dbRun.AgentHostname,
+			Status:        dbRun.Status,
+			StartedAt:     dbRun.StartedAt,
+		}
 		if dbRun.ExitCode != nil {
 			run.ExitCode = *dbRun.ExitCode
 		}
