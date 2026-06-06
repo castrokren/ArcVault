@@ -74,13 +74,6 @@
             >
               Update
             </button>
-            <button
-              v-if="agent.rollback_available"
-              class="btn-rollback-agent"
-              @click="openRollbackModal(agent)"
-            >
-              ↩ Rollback
-            </button>
           </td>
         </tr>
       </tbody>
@@ -105,21 +98,15 @@
       @close="modalOpen = false"
     />
 
-    <RollbackModal
-      v-if="!selectedSite && rollbackModal.show"
-      target="agent"
-      :agentId="rollbackModal.agentId"
-      @close="rollbackModal.show = false"
-      @complete="onRollbackComplete"
-    />
+
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch, inject } from 'vue'
 import { getAgents, getFederationAgents } from '../api'
+import { formatDate, fmtStaleTime } from '../utils/format.js'
 import AgentUpdateModal from '../components/AgentUpdateModal.vue'
-import RollbackModal from '../components/RollbackModal.vue'
 import Pagination from '../components/Pagination.vue'
 import { useFederationLag } from '../composables/useFederationLag.js'
 
@@ -145,7 +132,6 @@ const searchQuery = ref('')
 const statusFilter = ref('all')
 const modalOpen = ref(false)
 const selectedAgent = ref(null)
-const rollbackModal = ref({ show: false, agentId: null })
 
 const updateStore = inject('updateStore', { available: false, latest: '' })
 
@@ -160,15 +146,6 @@ function updateAvailable(agent) {
 function openUpdateModal(agent) {
   selectedAgent.value = agent
   modalOpen.value = true
-}
-
-function openRollbackModal(agent) {
-  rollbackModal.value = { show: true, agentId: agent.id }
-}
-
-function onRollbackComplete() {
-  rollbackModal.value.show = false
-  load()
 }
 
 async function load() {
@@ -211,19 +188,6 @@ function setStatus(s) {
 function goToPage(n) {
   page.value = n
   load()
-}
-
-function formatDate(d) {
-  if (!d) return '—'
-  return new Date(d).toLocaleString()
-}
-
-function fmtStaleTime(iso) {
-  if (!iso) return 'an unknown time ago'
-  const secs = Math.floor((Date.now() - new Date(iso)) / 1000)
-  if (secs < 60) return `${secs}s ago`
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
-  return `${Math.floor(secs / 3600)}h ago`
 }
 
 watch(selectedSite, () => {
@@ -344,16 +308,4 @@ onMounted(load)
 }
 .btn-update-agent:hover { background: #e08e00; }
 
-.btn-rollback-agent {
-  padding: 0.3rem 0.8rem;
-  background: transparent;
-  color: #e6a817;
-  border: 1px solid #e6a817;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.8rem;
-  font-weight: 600;
-  transition: background 0.15s;
-}
-.btn-rollback-agent:hover { background: rgba(230, 168, 23, 0.15); }
 </style>

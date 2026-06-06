@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const GroupSchema = z.object({
+const GroupSchema = z.object({
   id: z.number(),
   name: z.string(),
   description: z.string(),

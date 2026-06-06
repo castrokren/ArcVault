@@ -12,6 +12,6 @@ export const RefreshTokenResponseSchema = z.object({
   must_change_password: z.boolean()
 })
 
-export const ErrorResponseSchema = z.object({
+const ErrorResponseSchema = z.object({
   error: z.string()
 })

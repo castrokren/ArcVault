@@ -24,6 +24,15 @@ func LoadKey() ([]byte, error) {
 	if keyHex == "" {
 		return nil, ErrKeyNotSet
 	}
+	return LoadKeyFromString(keyHex)
+}
+
+// LoadKeyFromString decodes a hex-encoded 32-byte key from a string value.
+// Use this when the key comes from config rather than the environment.
+func LoadKeyFromString(keyHex string) ([]byte, error) {
+	if keyHex == "" {
+		return nil, ErrKeyNotSet
+	}
 
 	key, err := hex.DecodeString(keyHex)
 	if err != nil {

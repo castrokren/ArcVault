@@ -179,7 +179,8 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, inject } from 'vue'
-import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups, getJobRuns } from '../api'
+import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups, getJobRuns, getToken } from '../api'
+import { formatDate, fmtStaleTime } from '../utils/format.js'
 import Pagination from '../components/Pagination.vue'
 import ScheduleBuilder from '../components/ScheduleBuilder.vue'
 import SyncFlagsBuilder from '../components/SyncFlagsBuilder.vue'
@@ -264,12 +265,12 @@ async function loadCredentials() {
   try {
     const response = await fetch('/api/credential-profiles', {
       headers: {
-        Authorization: `Bearer ${localStorage.getItem('token')}`,
+        Authorization: `Bearer ${getToken()}`,
       },
     })
     if (response.ok) {
       const data = await response.json()
-      credentials.value = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : [])
+      credentials.value = Array.isArray(data) ? data : []
       filterCredentials()
     }
   } catch (e) {
@@ -379,19 +380,6 @@ async function viewLogs(jobId) {
     logsLoading.value = false
     showLogsModal.value = true
   }
-}
-
-function formatDate(d) {
-  if (!d) return '—'
-  return new Date(d).toLocaleString()
-}
-
-function fmtStaleTime(iso) {
-  if (!iso) return 'an unknown time ago'
-  const secs = Math.floor((Date.now() - new Date(iso)) / 1000)
-  if (secs < 60) return `${secs}s ago`
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
-  return `${Math.floor(secs / 3600)}h ago`
 }
 
 async function loadAgentsAndGroups() {

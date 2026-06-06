@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type * as Types from './types/api'
+import { describeCron } from './utils/cron'
 import { AgentListSchema } from './schemas/agents'
 import { JobListSchema } from './schemas/jobs'
 import { GroupListSchema } from './schemas/groups'
@@ -9,7 +10,7 @@ import { VersionResponseSchema } from './schemas/status'
 const BASE_URL = ''
 
 // --- API Contract Error ---
-export class ApiContractError extends Error {
+class ApiContractError extends Error {
   constructor(
     public endpoint: string,
     public zodError: z.ZodError<any>
@@ -84,7 +85,7 @@ function validateResponse<T>(endpoint: string, schema: z.Schema<T>, data: any): 
 }
 
 // --- Auth ---
-export const login = async (username: string, password: string): Promise<Types.LoginResponse> => {
+const login = async (username: string, password: string): Promise<Types.LoginResponse> => {
   const res = await fetch(`${BASE_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -93,15 +94,15 @@ export const login = async (username: string, password: string): Promise<Types.L
   return validateResponse('/api/auth/login', LoginResponseSchema, res)
 }
 
-export const logout = () =>
+const logout = () =>
   request('POST', '/api/auth/logout')
 
-export const refreshToken = async (): Promise<Types.RefreshTokenResponse> => {
+const refreshToken = async (): Promise<Types.RefreshTokenResponse> => {
   const res = await request('POST', '/api/auth/refresh')
   return validateResponse('/api/auth/refresh', RefreshTokenResponseSchema, res)
 }
 
-export const changePassword = (currentPassword: string, newPassword: string) =>
+const changePassword = (currentPassword: string, newPassword: string) =>
   request('PUT', '/api/auth/change-password', {
     old_password: currentPassword,
     new_password: newPassword,
@@ -156,37 +157,27 @@ export const getJobs = async ({ page = 1, limit = 25, search = '', status = '', 
   return res
 }
 
-export const getJob = (id: string) => request('GET', `/api/jobs/${id}`)
+const getJob = (id: string) => request('GET', `/api/jobs/${id}`)
 
 export const createJob = (job: Partial<Types.Job>) => request('POST', '/api/jobs', job)
 
 export const deleteJob = (id: string) => request('DELETE', `/api/jobs/${id}`)
 
-export const updateJobStatus = (id: string, status: string) =>
+const updateJobStatus = (id: string, status: string) =>
   request('PATCH', `/api/jobs/${id}/status`, { status })
 
-export const triggerJob = (id: string, siteID: string | null = null) =>
+const triggerJob = (id: string, siteID: string | null = null) =>
   request('POST', `/api/jobs/${id}/trigger${siteID ? `?site=${siteID}` : ''}`)
 
 // --- Job Runs ---
 export const getJobRuns = ({ page = 1, limit = 25, jobID = '', agentID = '' } = {}) =>
   request('GET', `/api/job-runs${buildQuery({ page, limit, job_id: jobID, agent_id: agentID })}`)
 
-// --- Rollback ---
-export const getRollbackAvailable = () =>
-  request('GET', '/api/rollback-available')
-
-export const applyRollback = () =>
-  request('POST', '/api/rollback')
-
-export const applyAgentRollback = (agentId: string) =>
-  request('POST', `/api/agents/${agentId}/rollback`)
-
 // --- Updates ---
 export const checkUpdate = () =>
   request('GET', '/api/update/check')
 
-export const getVersion = async (): Promise<Types.VersionResponse> => {
+const getVersion = async (): Promise<Types.VersionResponse> => {
   const res = await request('GET', '/api/version')
   return validateResponse('/api/version', VersionResponseSchema, res)
 }
@@ -201,7 +192,7 @@ export const applyAgentUpdate = (agentId: string) =>
 export const getTemplates = ({ page = 1, limit = 25, search = '' } = {}) =>
   request('GET', `/api/templates${buildQuery({ page, limit, search })}`)
 
-export const getTemplate = (id: string) => request('GET', `/api/templates/${id}`)
+const getTemplate = (id: string) => request('GET', `/api/templates/${id}`)
 
 export const createTemplate = (template: Partial<Types.Template>) => request('POST', '/api/templates', template)
 
@@ -219,7 +210,7 @@ export const listFederation = () =>
 export const createFederation = (data: Partial<Types.FederationNode>) =>
   request('POST', '/api/federation', data)
 
-export const getFederation = (id: string) =>
+const getFederation = (id: string) =>
   request('GET', `/api/federation/${id}`)
 
 export const updateFederation = (id: string, data: Partial<Types.FederationNode>) =>
@@ -249,91 +240,18 @@ export function saveToken(token: string) {
   localStorage.setItem('arcvault_token', token)
 }
 
-export function clearToken() {
+function clearToken() {
   localStorage.removeItem('arcvault_jwt')
   localStorage.removeItem('arcvault_token')
 }
 
-export function hasToken() {
+function hasToken() {
   return !!getToken()
 }
 
 // --- Cron Preview ---
 export function cronPreview(expr: string): string {
-  if (!expr || !expr.trim()) return ''
-
-  const parts = expr.trim().split(/\s+/)
-  if (parts.length !== 5) return expr
-
-  const [min, hour, dom, month, dow] = parts
-
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-  const months = ['January', 'February', 'March', 'April', 'May', 'June',
-                  'July', 'August', 'September', 'October', 'November', 'December']
-
-  function fmtTime(h: string, m: string) {
-    const hh = parseInt(h, 10)
-    const mm = parseInt(m, 10)
-    const suffix = hh >= 12 ? 'PM' : 'AM'
-    const h12 = hh === 0 ? 12 : hh > 12 ? hh - 12 : hh
-    const mmStr = mm === 0 ? '' : `:${String(mm).padStart(2, '0')}`
-    return `${h12}${mmStr} ${suffix}`
-  }
-
-  if (min.startsWith('*/') && hour === '*' && dom === '*' && month === '*' && dow === '*') {
-    const n = min.slice(2)
-    return `Every ${n} minute${n === '1' ? '' : 's'}`
-  }
-
-  if (!min.includes('*') && !min.includes('/') && hour === '*' && dom === '*' && month === '*' && dow === '*') {
-    return `Every hour at minute ${min}`
-  }
-
-  if (!min.includes('*') && !min.includes('/') &&
-      !hour.includes('*') && !hour.includes('/') &&
-      dom === '*' && month === '*' && dow === '*') {
-    return `Every day at ${fmtTime(hour, min)}`
-  }
-
-  if (!min.includes('*') && !min.includes('/') &&
-      !hour.includes('*') && !hour.includes('/') &&
-      dom === '*' && month === '*' &&
-      !dow.includes('*') && !dow.includes('/') && !dow.includes(',')) {
-    const d = parseInt(dow, 10)
-    const dayName = d >= 0 && d <= 6 ? days[d] : `day ${dow}`
-    return `Every ${dayName} at ${fmtTime(hour, min)}`
-  }
-
-  if (!min.includes('*') && !min.includes('/') &&
-      !hour.includes('*') && !hour.includes('/') &&
-      !dom.includes('*') && !dom.includes('/') &&
-      month === '*' && dow === '*') {
-    return `Monthly on day ${dom} at ${fmtTime(hour, min)}`
-  }
-
-  if (!min.includes('*') && !min.includes('/') &&
-      !hour.includes('*') && !hour.includes('/') &&
-      !dom.includes('*') && !dom.includes('/') &&
-      !month.includes('*') && !month.includes('/') &&
-      dow === '*') {
-    const mo = parseInt(month, 10)
-    const monthName = mo >= 1 && mo <= 12 ? months[mo - 1] : `month ${month}`
-    return `Yearly on ${monthName} ${dom} at ${fmtTime(hour, min)}`
-  }
-
-  if (!min.includes('*') && !min.includes('/') &&
-      !hour.includes('*') && !hour.includes('/') &&
-      dom === '*' && month === '*' && dow === '1-5') {
-    return `Weekdays at ${fmtTime(hour, min)}`
-  }
-
-  if (!min.includes('*') && !min.includes('/') &&
-      !hour.includes('*') && !hour.includes('/') &&
-      dom === '*' && month === '*' && (dow === '0,6' || dow === '6,0')) {
-    return `Weekends at ${fmtTime(hour, min)}`
-  }
-
-  return expr
+  return describeCron(expr)
 }
 
 // --- Alerts (Phase 17) ---
@@ -343,7 +261,7 @@ export const getAlertRules = () =>
 export const createAlertRule = (rule: Partial<Types.AlertRule>) =>
   request('POST', '/api/alert-rules', rule)
 
-export const updateAlertRule = (id: number, rule: Partial<Types.AlertRule>) =>
+const updateAlertRule = (id: number, rule: Partial<Types.AlertRule>) =>
   request('PUT', `/api/alert-rules/${id}`, rule)
 
 export const deleteAlertRule = (id: number) =>

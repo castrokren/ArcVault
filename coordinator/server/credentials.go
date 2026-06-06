@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
-	"os"
 
 	"arcvault/coordinator/internal/credcrypto"
 )
@@ -18,18 +17,20 @@ type CredentialProfileResponse struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// loadCredentialKey returns the encryption key from config or falls back to env var.
+func (s *Server) loadCredentialKey() ([]byte, error) {
+	if s.cfg.CredentialKey != "" {
+		return credcrypto.LoadKeyFromString(s.cfg.CredentialKey)
+	}
+	return credcrypto.LoadKey()
+}
+
 // handleCreateCredentialProfile handles POST /api/credential-profiles
 func (s *Server) handleCreateCredentialProfile(w http.ResponseWriter, r *http.Request) {
-	// Check if encryption key is set
-	if os.Getenv("ARCVAULT_CREDENTIAL_KEY") == "" {
-		http.Error(w, "encryption key not configured", http.StatusServiceUnavailable)
-		return
-	}
-
-	// Load encryption key
-	key, err := credcrypto.LoadKey()
+	// Load encryption key (config takes priority over env var)
+	key, err := s.loadCredentialKey()
 	if err != nil {
-		http.Error(w, "encryption key error", http.StatusServiceUnavailable)
+		http.Error(w, "encryption key not configured", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -99,7 +100,7 @@ func (s *Server) handleListCredentialProfiles(w http.ResponseWriter, r *http.Req
 	}
 
 	// Convert to response format without encrypted data
-	var responses []*CredentialProfileResponse
+	responses := make([]*CredentialProfileResponse, 0)
 	for _, p := range profiles {
 		responses = append(responses, &CredentialProfileResponse{
 			ID:        p.ID,
@@ -173,13 +174,7 @@ func isAgentTokenRequest(r *http.Request) bool {
 // decryptCredentials decrypts a credential profile's encrypted data
 // Returns nil if key not available
 func (s *Server) decryptCredentials(profileID string) map[string]interface{} {
-	// Check if key is available
-	if os.Getenv("ARCVAULT_CREDENTIAL_KEY") == "" {
-		return nil
-	}
-
-	// Load encryption key
-	key, err := credcrypto.LoadKey()
+	key, err := s.loadCredentialKey()
 	if err != nil {
 		return nil
 	}

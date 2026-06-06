@@ -128,6 +128,19 @@ Write-Host "  Copied binaries -> installer\windows\" -ForegroundColor Green
 # Step 7: Start services
 Write-Host ""
 Write-Host "Step 7: Starting services..." -ForegroundColor Yellow
+
+# Verify credential_key is present in config.json — warn if missing
+$coordConfig = "C:\ArcVault\config.json"
+if (Test-Path $coordConfig) {
+    $cfg = Get-Content $coordConfig | ConvertFrom-Json
+    if (-not $cfg.credential_key) {
+        Write-Host ""
+        Write-Host "  WARNING: credential_key not found in C:\ArcVault\config.json!" -ForegroundColor Red
+        Write-Host "  Credential profiles will not work. Add it manually or re-run the installer." -ForegroundColor Yellow
+        Write-Host ""
+    }
+}
+
 sc.exe start arcvault-coordinator
 Start-Sleep -Seconds 3
 

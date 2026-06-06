@@ -109,6 +109,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { cronPreview } from '../api'
+import { parseCronParts } from '../utils/cron.js'
 
 const props = defineProps({
   modelValue: { type: String, default: '' }
@@ -162,19 +163,18 @@ function fmtTime(h, m) {
 // ── Parse incoming cron string → mode + sub-state ────────
 
 function parseValue(val) {
-  if (!val || !val.trim()) {
-    mode.value = 'off'
+  const p = parseCronParts(val)
+  if (!p) {
+    if (!val || !val.trim()) {
+      mode.value = 'off'
+    } else {
+      mode.value = 'custom'
+      customExpr.value = val
+    }
     return
   }
 
-  const parts = val.trim().split(/\s+/)
-  if (parts.length !== 5) {
-    mode.value = 'custom'
-    customExpr.value = val
-    return
-  }
-
-  const [min, hour, dom, month, dow] = parts
+  const { min, hour, dom, month, dow } = p
 
   // Interval: */N * * * *
   if (min.startsWith('*/') && hour === '*' && dom === '*' && month === '*' && dow === '*') {

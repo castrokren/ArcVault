@@ -30,7 +30,6 @@ export interface Agent {
   status: string
   last_seen?: string
   registered_at: string
-  rollback_available: boolean
 }
 
 export interface Group {

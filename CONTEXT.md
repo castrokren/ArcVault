@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** June 4, 2026 | **v0.2.4** | **Refactor In Progress ⚙️**
+**Last updated:** June 6, 2026 | **v0.4.0** | **Clean ✅**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -108,6 +108,20 @@
   - **Installer build version fix**: `scripts/build.ps1` now injects `-X main.Version=v0.3.0` into both Go binaries; was building without ldflags → agent showed `v0.0.0-dev`, coordinator reported `v0.2.0`
   - **Files changed**: `coordinator/server/update.go`, `coordinator/cmd/commands.go`, `coordinator/server/server.go`, `dashboard/src/App.vue`, `installer/windows/arcvault_installer.py`, `agent/service/agent_service_windows.go`, `coordinator/service/service_windows.go`, `scripts/build.ps1`, `CONTEXT.md`
 
+✅ **Session 16** (June 6, 2026): Credential Profiles — Auth & Key Storage Fixes — COMPLETE
+  - **Credentials unauthorized fix**: `Credentials.vue` and `Jobs.vue` were using wrong token sources (`this.$parent.$data.token`, `localStorage.getItem('token')`) — replaced all with `getToken()` from `api.ts`
+  - **Admin dropdown**: Removed credentials link from Admin dropdown (kept in main nav)
+  - **Nil slice bug**: `handleListCredentialProfiles` returned JSON `null` when empty — fixed with `make([]*CredentialProfileResponse, 0)`
+  - **Error handling**: `Credentials.vue` was parsing plain-text error responses as JSON — fixed with `response.text()`
+  - **Credential key storage** (root cause): Windows SCM does NOT read named `REG_SZ` values from a service's `Environment` sub-key — only a `REG_MULTI_SZ` value on the parent key works. Moved `credential_key` into `config.json` (alongside `admin_token`, `jwt_secret`)
+    - Added `CredentialKey` field to `coordinator/config/config.go`
+    - Added `LoadKeyFromString()` to `coordinator/internal/credcrypto/crypto.go`
+    - `credentials.go` now uses `loadCredentialKey()` helper (config first, env var fallback)
+    - Installer reads existing key from `config.json` on reinstall (preserves key across upgrades)
+    - `rebuild-and-restart.ps1` warns if `credential_key` missing from `config.json`
+  - **Jobs.vue dropdown**: Credentials not showing in job form — wrong localStorage key + wrong `data.data` shape assumption fixed
+  - **Files changed**: `coordinator/config/config.go`, `coordinator/internal/credcrypto/crypto.go`, `coordinator/server/credentials.go`, `dashboard/src/views/admin/Credentials.vue`, `dashboard/src/views/Jobs.vue`, `dashboard/src/App.vue`, `installer/windows/arcvault_installer.py`, `scripts/rebuild-and-restart.ps1`
+
 ✅ **Session 14** (June 4, 2026): ArcVault Refactor — Breaking API/Service/DB Coupling — COMPLETE
   - **Goal**: Eliminate tight coupling between handlers and database; create three-layer architecture (Handler → Service → DB Interface)
   - **Housekeeping**: Deleted 260MB of old files (session contexts, build artifacts, temp files)
@@ -162,7 +176,7 @@ cd C:\Projects\ArcVault2.0
 - ✅ Single binary deployment (coordinator) with embedded Vue dashboard
 - ✅ Per-agent tokens (in addition to admin token)
 - ✅ Self-update system (coordinator + agents, live WebSocket progress)
-- ✅ Bidirectional rollback (one-version-back)
+- ✅ Bidirectional rollback (one-version-back, CLI only — `coordinator rollback` / `coordinator rollback-agent <id>`)
 - ✅ Server-side pagination & filtering (all list endpoints)
 - ✅ Failure notifications (webhook + email)
 - ✅ JWT-based RBAC: Three roles (admin, operator, viewer)
@@ -173,6 +187,7 @@ cd C:\Projects\ArcVault2.0
 - ✅ Job cancellation
 - ✅ Schedule builder UI (Interval/Daily/Weekly/Monthly/Custom, live cron preview)
 - ✅ Delete agents (admin only, 409 blocks if running jobs)
+- ✅ Credential profiles (AES-256-GCM encrypted, key in config.json, selectable per job)
 
 ## Quick Setup
 
@@ -193,4 +208,4 @@ sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/300
 - **Project instructions & routing:** [CLAUDE.md](CLAUDE.md)
 - **Phase history & architecture:** [MEMORY.md](MEMORY.md)
 - **Current branch:** main
-- **Latest release:** v0.3.0
+- **Latest release:** v0.4.0

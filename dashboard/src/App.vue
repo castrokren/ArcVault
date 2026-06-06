@@ -22,6 +22,10 @@
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4h10M2 7h6M2 10h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
           Jobs
         </router-link>
+        <router-link to="/admin/credentials">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="2" y="6" width="10" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M4 6V4.5a3 3 0 0 1 6 0V6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="9" r="0.75" fill="currentColor"/></svg>
+          Credentials
+        </router-link>
         <router-link to="/history">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.3"/><path d="M7 4.5V7l2 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
           History
@@ -49,25 +53,11 @@
               <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="5" cy="5" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="9.5" cy="4.5" r="1.75" stroke="currentColor" stroke-width="1.3"/><path d="M1 12c0-2.21 1.79-4 4-4s4 1.79 4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M9.5 8c1.65 0 3 1.35 3 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
               Groups
             </router-link>
-            <router-link to="/admin/credentials" @click="adminMenuOpen = false">
-              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="2" y="6" width="10" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M4 6V4.5a3 3 0 0 1 6 0V6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="9" r="0.75" fill="currentColor"/></svg>
-              Credentials
-            </router-link>
           </div>
         </div>
       </nav>
 
       <div class="nav-right">
-        <button
-          v-if="rollbackAvailable"
-          class="btn-rollback-header"
-          title="Roll back coordinator to previous version"
-          @click="showRollbackModal = true"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6a4 4 0 1 1 4 4H3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 4v2h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Rollback
-        </button>
-
         <button class="theme-toggle" @click="toggleTheme" :title="`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`">
           <!-- Sun -->
           <svg v-if="theme === 'dark'" width="15" height="15" viewBox="0 0 15 15" fill="none"><circle cx="7.5" cy="7.5" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M7.5 1v1.5M7.5 12.5V14M14 7.5h-1.5M2.5 7.5H1M12.07 2.93l-1.06 1.06M4 11l-1.06 1.06M12.07 12.07l-1.06-1.06M4 4 2.93 2.93" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
@@ -112,32 +102,24 @@
       @success="showChangePasswordModal = false"
     />
 
-    <RollbackModal
-      v-if="showRollbackModal"
-      target="coordinator"
-      @close="showRollbackModal = false"
-      @complete="onCoordinatorRollbackComplete"
-    />
+
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, provide, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getRollbackAvailable, checkUpdate } from './api'
+import { checkUpdate } from './api'
 import { useAuth } from './composables/useAuth.js'
 import { useWebSocket } from './composables/useWebSocket.js'
 import UpdateBanner from './components/UpdateBanner.vue'
 import UpdateModal from './components/UpdateModal.vue'
-import RollbackModal from './components/RollbackModal.vue'
 import ChangePasswordModal from './components/ChangePasswordModal.vue'
 
 const router = useRouter()
 const auth = useAuth()
 const updateModalOpen = ref(false)
-const showRollbackModal = ref(false)
 const showChangePasswordModal = ref(false)
-const rollbackAvailable = ref(false)
 const adminMenuOpen = ref(false)
 const theme = ref(localStorage.getItem('arcvault-theme') || 'dark')
 const { connected: wsConnected, lastEvent, connect } = useWebSocket()
@@ -167,7 +149,6 @@ onMounted(() => {
     console.log('App mounted: connecting websocket and checking coordinator updates')
     connect()
     checkForUpdates()
-    checkRollbackAvailable()
   }
 })
 
@@ -204,22 +185,8 @@ function checkForUpdates() {
     })
 }
 
-async function checkRollbackAvailable() {
-  try {
-    const data = await getRollbackAvailable()
-    rollbackAvailable.value = data.available === true
-  } catch {
-    rollbackAvailable.value = false
-  }
-}
-
 function showUpdateModal() {
   updateModalOpen.value = true
-}
-
-function onCoordinatorRollbackComplete() {
-  showRollbackModal.value = false
-  rollbackAvailable.value = false
 }
 
 async function handleLogout() {
@@ -418,27 +385,6 @@ async function handleLogout() {
   align-items: center;
   gap: 0.4rem;
   flex-shrink: 0;
-}
-
-/* Rollback button */
-.btn-rollback-header {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.3rem 0.75rem;
-  background: transparent;
-  color: var(--color-warning);
-  border: 1px solid rgba(245, 158, 11, 0.35);
-  border-radius: 5px;
-  cursor: pointer;
-  font-family: var(--font-body);
-  font-size: 0.78rem;
-  font-weight: 600;
-  transition: background 0.15s;
-}
-
-.btn-rollback-header:hover {
-  background: var(--bg-warning);
 }
 
 /* Theme toggle */

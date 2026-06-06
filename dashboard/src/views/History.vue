@@ -146,6 +146,7 @@ import JobTimeline from '../components/JobTimeline.vue'
 import AgentRunChart from '../components/AgentRunChart.vue'
 import Pagination from '../components/Pagination.vue'
 import { getJobRuns, getFederationHistory } from '../api'
+import { fmtStaleTime } from '../utils/format.js'
 import { inject, ref } from 'vue'
 import { useFederationLag } from '../composables/useFederationLag.js'
 
@@ -354,13 +355,7 @@ export default {
       return `${Math.floor(secs / 60)}m ${secs % 60}s`
     },
 
-    fmtStaleTime(iso) {
-      if (!iso) return 'an unknown time ago'
-      const secs = Math.floor((Date.now() - new Date(iso)) / 1000)
-      if (secs < 60) return `${secs}s ago`
-      if (secs < 3600) return `${Math.floor(secs / 60)}m ago`
-      return `${Math.floor(secs / 3600)}h ago`
-    }
+    fmtStaleTime(iso) { return fmtStaleTime(iso) }
   }
 }
 </script>

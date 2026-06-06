@@ -1,8 +1,6 @@
 package server
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 )
@@ -31,12 +29,6 @@ type Job struct {
 	Progress    *ProgressData          `json:"progress,omitempty"`
 	Credentials map[string]interface{} `json:"credentials,omitempty"`
 	CreatedAt   string                 `json:"created_at"`
-}
-
-func newJobID() string {
-	b := make([]byte, 8)
-	rand.Read(b)
-	return "job-" + hex.EncodeToString(b)
 }
 
 // handleCreateJob handles POST /api/jobs

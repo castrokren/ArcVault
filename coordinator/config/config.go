@@ -14,6 +14,7 @@ type Config struct {
 	DatabasePath               string              `json:"database_path"`
 	AdminToken                 string              `json:"admin_token"`
 	JWTSecret                  string              `json:"jwt_secret"`
+	CredentialKey              string              `json:"credential_key,omitempty"`
 	Environment                string              `json:"environment"`
 	CoordinatorID              string              `json:"coordinator_id,omitempty"`
 	AlertHistoryRetentionDays  int                 `json:"alert_history_retention_days,omitempty"`

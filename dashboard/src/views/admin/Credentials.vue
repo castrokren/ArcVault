@@ -264,6 +264,8 @@
 </template>
 
 <script>
+import { getToken } from '../../api'
+
 export default {
   name: 'Credentials',
   data() {
@@ -292,7 +294,7 @@ export default {
       try {
         const response = await fetch('/api/credential-profiles', {
           headers: {
-            Authorization: `Bearer ${this.$parent.$data.token}`,
+            Authorization: `Bearer ${getToken()}`,
           },
         });
 
@@ -321,7 +323,7 @@ export default {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${this.$parent.$data.token}`,
+            Authorization: `Bearer ${getToken()}`,
           },
           body: JSON.stringify({
             name: this.newCredential.name,
@@ -331,8 +333,8 @@ export default {
         });
 
         if (!response.ok) {
-          const error = await response.json();
-          throw new Error(error.error || `Failed to create credential: ${response.status}`);
+          const text = await response.text();
+          throw new Error(text || `Failed to create credential: ${response.status}`);
         }
 
         alert('Credential created successfully');
@@ -355,7 +357,7 @@ export default {
         const response = await fetch(`/api/credential-profiles/${cred.id}`, {
           method: 'DELETE',
           headers: {
-            Authorization: `Bearer ${this.$parent.$data.token}`,
+            Authorization: `Bearer ${getToken()}`,
           },
         });
 

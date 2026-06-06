@@ -1,13 +1,13 @@
 import { z } from 'zod'
 
-export const ProgressDataSchema = z.object({
+const ProgressDataSchema = z.object({
   files_processed: z.number(),
   bytes_transferred: z.number(),
   total_files: z.number(),
   total_bytes: z.number()
 })
 
-export const JobSchema = z.object({
+const JobSchema = z.object({
   id: z.string(),
   agent_id: z.string(),
   name: z.string(),
