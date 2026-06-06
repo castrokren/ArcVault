@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** June 6, 2026 | **v0.4.0** | **Clean ✅**
+**Last updated:** June 6, 2026 | **Coordinator v0.4.0** | **Agent v0.4.0** | **Clean ✅**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -208,4 +208,5 @@ sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/300
 - **Project instructions & routing:** [CLAUDE.md](CLAUDE.md)
 - **Phase history & architecture:** [MEMORY.md](MEMORY.md)
 - **Current branch:** main
-- **Latest release:** v0.4.0
+- **Latest release:** v0.4.0 (Coordinator + Agent)
+- **Rollback:** CLI-only — `coordinator rollback` / `coordinator rollback-agent <id>`
