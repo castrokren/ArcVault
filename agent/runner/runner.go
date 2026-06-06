@@ -33,8 +33,10 @@ type Job struct {
 }
 
 // Executor is a function that runs a job and returns exit code + output.
+// The report callback receives parsed progress (0–100) and log lines as the
+// backup proceeds. Pass Noop in tests to discard progress.
 // Swappable for tests or for real robocopy/rsync in production.
-type Executor func(job Job) (exitCode int, output string)
+type Executor func(job Job, report ProgressFunc) (exitCode int, output string)
 
 // Config holds everything the runner needs to talk to the coordinator.
 type Config struct {
@@ -185,8 +187,13 @@ func (r *Runner) process(job Job) {
 		return
 	}
 
-	// 3. execute
-	exitCode, output := r.executor(job)
+	// 3. execute the job
+	log.Printf("Runner: executing job %s (src=%q dst=%q)", job.ID, job.SourcePath, job.DestPath)
+	exitCode, output := r.executor(job, Noop)
+	log.Printf("Runner: job %s finished — exit code %d, output length %d bytes", job.ID, exitCode, len(output))
+	if len(output) > 0 {
+		log.Printf("Runner: job %s output (first 512 bytes):\n%s", job.ID, truncate(output, 512))
+	}
 
 	// 4. post result
 	if err := r.postResult(job.ID, exitCode, output); err != nil {
@@ -280,4 +287,12 @@ func (r *Runner) postResult(jobID string, exitCode int, output string) error {
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(respBody))
 	}
 	return nil
+}
+
+// truncate returns at most n bytes of s, appending "…" if trimmed.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }

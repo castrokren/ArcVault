@@ -173,9 +173,6 @@ const triggerJob = (id: string, siteID: string | null = null) =>
 export const getJobRuns = ({ page = 1, limit = 25, jobID = '', agentID = '', status = '' } = {}) =>
   request('GET', `/api/job-runs${buildQuery({ page, limit, job_id: jobID, agent_id: agentID, status: status || undefined })}`)
 
-export const getJobProgress = (jobId: string) =>
-  request('GET', `/api/jobs/${jobId}/progress`)
-
 // --- Updates ---
 export const checkUpdate = () =>
   request('GET', '/api/update/check')

@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"arcvault/coordinator/business"
@@ -15,6 +16,12 @@ import (
 
 // Version is injected at build time via -ldflags.
 var Version = "dev"
+
+// tokenCacheEntry holds a validated agent token with an expiry.
+type tokenCacheEntry struct {
+	agentID   string
+	expiresAt time.Time
+}
 
 type Server struct {
 	cfg            *config.Config
@@ -30,6 +37,8 @@ type Server struct {
 	jobService     *business.JobService
 	userService    *business.UserService
 	groupService   *business.GroupService
+	tokenCacheMu   sync.Mutex
+	tokenCache     map[string]tokenCacheEntry // token → validated entry
 }
 
 func New(cfg *config.Config, database *db.DB) *Server {
@@ -45,17 +54,18 @@ func NewWithFS(cfg *config.Config, database *db.DB, staticFS fs.FS) *Server {
 
 	s := &Server{
 		cfg:            cfg,
-		db:            database,
-		router:        http.NewServeMux(),
-		hub:           newHub(),
-		fedHub:        NewFederationHub(database),
-		staticFS:      staticFS,
-		Notifier:      notifications.NewDispatcher(cfg.Notifications),
-		coordinatorID: coordinatorID,
-		agentService:  business.NewAgentService(database),
-		jobService:    business.NewJobService(database),
-		userService:   business.NewUserService(database),
-		groupService:  business.NewGroupService(database),
+		db:             database,
+		router:         http.NewServeMux(),
+		hub:            newHub(),
+		fedHub:         NewFederationHub(database),
+		staticFS:       staticFS,
+		Notifier:       notifications.NewDispatcher(cfg.Notifications),
+		coordinatorID:  coordinatorID,
+		agentService:   business.NewAgentService(database),
+		jobService:     business.NewJobService(database),
+		userService:    business.NewUserService(database),
+		groupService:   business.NewGroupService(database),
+		tokenCache:     make(map[string]tokenCacheEntry),
 	}
 
 	if cfg.Federation != nil {
@@ -83,7 +93,14 @@ func (s *Server) Start() error {
 		go s.fedClient.Start()
 	}
 
-	return http.ListenAndServe(addr, corsMiddleware(s.router))
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      corsMiddleware(s.router),
+		ReadTimeout:  60 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+	return srv.ListenAndServe()
 }
 
 // === Middleware Helper Functions ===
@@ -183,8 +200,6 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /api/agents/register", s.authMiddleware(s.handleRegister))
 	s.router.HandleFunc("POST /api/agents/{id}/heartbeat", s.authMiddleware(s.handleHeartbeat))
 	s.router.HandleFunc("POST /api/jobs/{id}/results", s.authMiddleware(s.handlePostJobResults))
-	s.router.HandleFunc("POST /api/jobs/{id}/progress", s.authMiddleware(s.handleProgress))
-	s.router.HandleFunc("GET /api/jobs/{id}/progress", s.viewerRoute(s.handleGetProgress))
 	s.router.HandleFunc("GET /api/jobs/{id}/logs", s.viewerRoute(s.handleGetJobLogs))
 	// Agent list (viewer+) and delete (admin only)
 	s.router.HandleFunc("GET /api/agents", s.viewerRoute(s.handleListAgents))
@@ -197,11 +212,11 @@ func (s *Server) registerRoutes() {
 
 	// Jobs endpoints
 	s.router.HandleFunc("POST /api/jobs", s.operatorRoute(s.handleCreateJob))
-	s.router.HandleFunc("GET /api/jobs", s.viewerRoute(s.handleListJobs))
+	s.router.HandleFunc("GET /api/jobs", s.agentOrViewerRoute(s.handleListJobs))
 	s.router.HandleFunc("GET /api/jobs/{id}", s.viewerRoute(s.handleGetJob))
 	s.router.HandleFunc("DELETE /api/jobs/{id}", s.adminRoute(s.handleDeleteJob))
 	s.router.HandleFunc("POST /api/jobs/{id}/cancel", s.operatorRoute(s.handleCancelJob))
-	s.router.HandleFunc("PATCH /api/jobs/{id}/status", s.operatorRoute(s.handleUpdateJobStatus))
+	s.router.HandleFunc("PATCH /api/jobs/{id}/status", s.agentOrOperatorRoute(s.handleUpdateJobStatus))
 	s.router.HandleFunc("GET /api/jobs/{id}/runs", s.viewerRoute(s.handleGetJobRuns))
 	s.router.HandleFunc("GET /api/job-runs", s.viewerRoute(s.handleListAllJobRuns))
 
@@ -293,6 +308,46 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		http.Error(w, "invalid token", http.StatusUnauthorized)
+	}
+}
+
+// agentOrViewerRoute accepts an agent token OR the admin token OR a valid JWT
+// with viewer+ role. Used for endpoints called by both agents and dashboard users.
+func (s *Server) agentOrViewerRoute(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("Authorization")
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+		if token == s.cfg.AdminToken {
+			next(w, r)
+			return
+		}
+		if _, err := s.db.ValidateToken(token); err == nil {
+			next(w, r)
+			return
+		}
+		s.viewerRoute(next)(w, r)
+	}
+}
+
+// agentOrOperatorRoute accepts an agent token OR the admin token OR a valid JWT
+// with operator+ role. Used for status updates called by both agents and operators.
+func (s *Server) agentOrOperatorRoute(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("Authorization")
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+		if token == s.cfg.AdminToken {
+			next(w, r)
+			return
+		}
+		if _, err := s.db.ValidateToken(token); err == nil {
+			next(w, r)
+			return
+		}
+		s.operatorRoute(next)(w, r)
 	}
 }
 

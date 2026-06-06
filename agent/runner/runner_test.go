@@ -61,6 +61,12 @@ func (f *fakeCoordinator) server(t *testing.T) *httptest.Server {
 		json.NewEncoder(w).Encode(jobResponse{ID: id, Status: body.Status})
 	})
 
+	// POST /api/jobs/{id}/progress (progress reporter calls; accept and discard)
+	mux.HandleFunc("POST /api/jobs/{id}/progress", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"success":true}`))
+	})
+
 	// POST /api/jobs/{id}/results
 	mux.HandleFunc("POST /api/jobs/{id}/results", func(w http.ResponseWriter, r *http.Request) {
 		id := r.PathValue("id")
@@ -258,13 +264,13 @@ func TestRunner_doesNothingWhenNoJobsPending(t *testing.T) {
 
 // --- test executors ---
 
-// echoExecutor simulates a successful backup (exit code 0)
-func echoExecutor(job Job) (exitCode int, output string) {
+// echoExecutor simulates a successful backup (exit code 0). Ignores progress.
+func echoExecutor(job Job, _ ProgressFunc) (exitCode int, output string) {
 	return 0, "ok"
 }
 
-// failExecutor simulates a failed backup (exit code 1)
-func failExecutor(job Job) (exitCode int, output string) {
+// failExecutor simulates a failed backup (exit code 1). Ignores progress.
+func failExecutor(job Job, _ ProgressFunc) (exitCode int, output string) {
 	return 1, "error: source not found"
 }
 

@@ -512,28 +512,37 @@ func (d *DB) EnsureDefaultAdmin() error {
 	return nil
 }
 
-// UpdateProgressAndLogs stores job progress percentage, log lines, and status
+// UpdateProgressAndLogs stores job progress percentage, log lines, and status.
+// All writes are batched in a single transaction to avoid N round-trips to
+// SQLite (which is especially important with SetMaxOpenConns(1)).
 func (d *DB) UpdateProgressAndLogs(jobID string, percentage int, logs []string, status string) error {
-	// Update progress and status in job_runs
-	_, err := d.conn.Exec(
-		`UPDATE job_runs SET progress = ?, status = ? WHERE job_id = ?`,
-		percentage, status, jobID,
-	)
+	tx, err := d.conn.Begin()
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback() //nolint:errcheck
 
-	// Insert log lines
-	for _, line := range logs {
-		_, err := d.conn.Exec(
-			`INSERT INTO job_logs (job_id, line) VALUES (?, ?)`,
-			jobID, line,
-		)
+	if _, err := tx.Exec(
+		`UPDATE job_runs SET progress = ?, status = ? WHERE job_id = ?`,
+		percentage, status, jobID,
+	); err != nil {
+		return err
+	}
+
+	if len(logs) > 0 {
+		stmt, err := tx.Prepare(`INSERT INTO job_logs (job_id, line) VALUES (?, ?)`)
 		if err != nil {
 			return err
 		}
+		defer stmt.Close()
+		for _, line := range logs {
+			if _, err := stmt.Exec(jobID, line); err != nil {
+				return err
+			}
+		}
 	}
-	return nil
+
+	return tx.Commit()
 }
 
 // ProgressData holds progress information for a job

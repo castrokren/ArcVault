@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -34,6 +35,11 @@ func newHub() *Hub {
 }
 
 // Broadcast sends an event to every connected dashboard client.
+//
+// The mutex is held only long enough to snapshot the client list.
+// Network writes happen after the lock is released so a slow or
+// disconnected client cannot stall other hub operations or HTTP handlers.
+// A 5-second write deadline prevents any single write from blocking forever.
 func (h *Hub) Broadcast(event Event) {
 	msg, err := json.Marshal(event)
 	if err != nil {
@@ -41,15 +47,32 @@ func (h *Hub) Broadcast(event Event) {
 		return
 	}
 
+	// Snapshot clients under lock — release before doing any I/O.
 	h.mu.Lock()
-	defer h.mu.Unlock()
-
+	clients := make([]*websocket.Conn, 0, len(h.clients))
 	for conn := range h.clients {
+		clients = append(clients, conn)
+	}
+	h.mu.Unlock()
+
+	// Write to each client; collect any that have gone dead.
+	var dead []*websocket.Conn
+	for _, conn := range clients {
+		conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 			log.Printf("Hub: removing dead client: %v", err)
+			dead = append(dead, conn)
+		}
+	}
+
+	// Remove dead clients.
+	if len(dead) > 0 {
+		h.mu.Lock()
+		for _, conn := range dead {
 			conn.Close()
 			delete(h.clients, conn)
 		}
+		h.mu.Unlock()
 	}
 }
 

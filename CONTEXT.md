@@ -133,6 +133,23 @@
   - **Pattern Proven**: Applied to 2 domains, both work flawlessly; remaining work is straightforward repetition
   - All 10 steps complete — see arcvault_refactor_session.md for full details
 
+✅ **Session 17** (June 6, 2026): Progress Module + Agent Route Auth Fix — COMPLETE
+  - **Built**: `agent/runner/progress.go` — `ProgressFunc` type, throttled `progressReporter` (1 req/sec, pct==100 always flushes), pure parsers `ParseRobocopyLine` / `ParseRsyncLine`, `SplitOnCRLF` for bare `\r` tokens
+  - **Built**: `agent/runner/progress_test.go` — 13 unit tests; 46 total passing in package
+  - **Modified**: `agent/runner/executor.go` — removed `/NP` from robocopy (was suppressing output), changed rsync to `--info=progress2`, added `streamRobocopy` / `streamRsync` / `waitCode`; executor signature now `func(Job, ProgressFunc) (int, string)`
+  - **Modified**: `agent/runner/runner.go` — `process()` now creates `progressReporter` and passes `reporter.Report` to executor
+  - **Fixed (middleware bug)**: `GET /api/jobs` and `PATCH /api/jobs/{id}/status` were JWT-only — agent tokens rejected with 403. Added `agentOrViewerRoute` and `agentOrOperatorRoute` to `coordinator/server/server.go`
+  - **Result**: Jobs now execute (exit code 9 from robocopy = partial success). Open issue: robocopy output is "(no output)" — stderr not captured or streaming not wiring output back correctly. Debug next session.
+
+✅ **Session 18** (June 6, 2026): Robocopy Output Fix + Agent Log File + Auto Token Regen — COMPLETE
+  - **Fixed (data race)**: `streamRobocopy` / `streamRsync` used same `bytes.Buffer` for stdout (TeeReader) and stderr (cmd.Stderr) concurrently — separated into `stdoutBuf` / `stderrBuf`
+  - **Fixed (exit code range)**: `waitCode` and `extractExitCode` now normalize robocopy codes 1–15 to 0 (was 1–7); code 9 = partial success, not failure
+  - **Fixed (scanner buffer)**: Added 256 KB scanner buffer to both streamers — default 64 KB could silently truncate wide robocopy lines
+  - **Added**: `agent/service/runner_windows.go` — `setupLogFile()` creates `C:\ArcVault-Agent\logs\arcvault-agent.log` on service start; all `log.*` output now persisted
+  - **Added**: Debug logging in `runner.go` — logs src/dst paths, exit code, output length, and first 512 bytes of output per job
+  - **Fixed (auto token regen)**: `scripts/rebuild-and-restart.ps1` now validates agent token against coordinator before starting the agent, regenerates if stale, writes new token to `agent-config.yaml`
+  - **Result**: Backup ran successfully; output captured in dashboard ✅
+
 ## Core Commands
 ```bash
 # Initialize coordinator

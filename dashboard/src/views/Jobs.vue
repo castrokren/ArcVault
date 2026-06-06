@@ -132,12 +132,6 @@
           <td class="mono">{{ job.dest_path }}</td>
           <td>
             <span class="badge" :class="job.status">{{ job.status }}</span>
-            <div v-if="job.status === 'running'" class="job-progress">
-              <div class="job-progress-track">
-                <div class="job-progress-fill" :style="{ width: (jobProgress[job.id] ?? 0) + '%' }"></div>
-              </div>
-              <span class="job-progress-pct">{{ jobProgress[job.id] ?? 0 }}%</span>
-            </div>
           </td>
           <td>{{ formatDate(job.created_at) }}</td>
           <td v-if="!selectedSite">
@@ -187,7 +181,7 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, inject } from 'vue'
-import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups, getJobRuns, getJobProgress, getToken } from '../api'
+import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups, getJobRuns, getToken } from '../api'
 import { formatDate, fmtStaleTime } from '../utils/format.js'
 import Pagination from '../components/Pagination.vue'
 import ScheduleBuilder from '../components/ScheduleBuilder.vue'
@@ -225,19 +219,6 @@ const filteredCredentials = ref([])
 
 const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', credential_profile_id: '', sync_flags: { mirror: false, max_age: null, min_age: null, max_size: null, exclude_files: [], exclude_dirs: [] } })
 
-// Progress tracking: keyed by job_id → percentage (0-100)
-const jobProgress = ref({})
-
-async function fetchProgressForRunning(jobList) {
-  const running = jobList.filter(j => j.status === 'running')
-  await Promise.all(running.map(async j => {
-    try {
-      const p = await getJobProgress(j.id)
-      jobProgress.value[j.id] = p.percentage ?? 0
-    } catch { /* not fatal */ }
-  }))
-}
-
 // Logs modal state
 const showLogsModal = ref(false)
 const logsJobName = ref('')
@@ -263,7 +244,7 @@ async function load() {
         search: searchQuery.value,
         status: statusFilter.value === 'all' ? '' : statusFilter.value,
       })
-      await fetchProgressForRunning(result.value.data || [])
+
     }
   } catch (e) {
     error.value = e.message
@@ -426,12 +407,6 @@ watch(() => props.lastEvent, (ev) => {
   if (!ev || selectedSite.value) return
   if (ev.type === 'job.updated' || ev.type === 'job.result') {
     load()
-  } else if (ev.type === 'progress' && ev.payload?.job_id) {
-    jobProgress.value[ev.payload.job_id] = ev.payload.percentage ?? 0
-    // When the job completes via progress event, refresh the table
-    if (ev.payload.status === 'completed' || ev.payload.status === 'failed') {
-      load()
-    }
   }
 })
 
@@ -617,34 +592,6 @@ button.primary {
 .badge.running   { background: #1a2a3a; color: #4f8ef7; }
 .badge.completed { background: #1a3a1a; color: #4caf50; }
 .badge.failed    { background: #3a1a1a; color: #e55; }
-
-.job-progress {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.3rem;
-}
-.job-progress-track {
-  flex: 1;
-  min-width: 60px;
-  height: 4px;
-  background: #2a2a3e;
-  border-radius: 2px;
-  overflow: hidden;
-}
-.job-progress-fill {
-  height: 100%;
-  background: #4f8ef7;
-  border-radius: 2px;
-  transition: width 0.4s ease;
-}
-.job-progress-pct {
-  font-size: 0.75rem;
-  color: #4f8ef7;
-  white-space: nowrap;
-  min-width: 2.5rem;
-  text-align: right;
-}
 
 button.danger-sm {
   padding: 0.2rem 0.6rem;

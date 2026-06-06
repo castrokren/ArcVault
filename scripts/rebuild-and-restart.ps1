@@ -131,7 +131,7 @@ Write-Host "  Copied binaries -> installer\windows\" -ForegroundColor Green
 Write-Host ""
 Write-Host "Step 7: Starting services..." -ForegroundColor Yellow
 
-# Verify credential_key is present in config.json — warn if missing
+# Verify credential_key is present in config.json - warn if missing
 $coordConfig = "C:\ArcVault\config.json"
 if (Test-Path $coordConfig) {
     $cfg = Get-Content $coordConfig | ConvertFrom-Json
@@ -158,7 +158,7 @@ try {
     exit 1
 }
 
-# Step 8: Validate agent token — regenerate if stale
+# Step 8: Validate agent token - regenerate if stale
 Write-Host ""
 Write-Host "Step 8: Validating agent token..." -ForegroundColor Yellow
 
@@ -185,7 +185,7 @@ if ((Test-Path $agentConfigPath) -and (Test-Path $coordConfigPath)) {
     if ($tokenOk) {
         Write-Host "  Agent token is valid." -ForegroundColor Green
     } else {
-        Write-Host "  Agent token is invalid or stale — regenerating..." -ForegroundColor Yellow
+        Write-Host "  Agent token is invalid or stale - regenerating..." -ForegroundColor Yellow
         try {
             $resp = Invoke-RestMethod -Uri "http://localhost:8080/api/agent-tokens" `
                 -Method POST `
@@ -216,18 +216,19 @@ sc.exe start arcvault-agent
 Start-Sleep -Seconds 4
 
 $token  = (Get-Content $coordConfigPath -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue).admin_token
-$agents = Invoke-RestMethod -Uri "http://localhost:8080/api/agents" `
-    -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -ErrorAction SilentlyContinue
+$agents = Invoke-RestMethod -Uri "http://localhost:8080/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -ErrorAction SilentlyContinue
 
 if ($agents -and $agents.data.Count -gt 0) {
-    Write-Host "  SUCCESS: $($agents.data.Count) agent(s) registered:" -ForegroundColor Green
+    $agentCount = $agents.data.Count
+    Write-Host "  SUCCESS: $agentCount agent(s) registered:" -ForegroundColor Green
     foreach ($a in $agents.data) {
-        Write-Host "    - $($a.id)  $($a.hostname)  status: $($a.status)" -ForegroundColor Green
+        $aId = $a.id; $aHost = $a.hostname; $aSt = $a.status
+        Write-Host "    - $aId  $aHost  status: $aSt" -ForegroundColor Green
     }
 } elseif ($agents) {
-    Write-Host "  No agents found yet — wait 10s and refresh the dashboard." -ForegroundColor Yellow
+    Write-Host "  No agents found yet - wait 10s and refresh the dashboard." -ForegroundColor Yellow
 } else {
-    Write-Host "  Could not query agents API — check coordinator logs." -ForegroundColor Yellow
+    Write-Host "  Could not query agents API - check coordinator logs." -ForegroundColor Yellow
 }
 
 Write-Host ""

@@ -89,7 +89,7 @@ func (d *DB) CountJobRuns(jobID string) (int, error) {
 // the agent that ran the job directly.
 func (d *DB) ListAllJobRuns(filters map[string]string, limit, offset int) ([]JobRun, int, error) {
 	joins := ` LEFT JOIN jobs j ON job_runs.job_id = j.id
-               LEFT JOIN agents a ON job_runs.agent_id = a.id`
+               LEFT JOIN agents a ON j.agent_id = a.id`
 	where := " WHERE 1=1"
 	var args []interface{}
 
@@ -112,7 +112,7 @@ func (d *DB) ListAllJobRuns(filters map[string]string, limit, offset int) ([]Job
 		COALESCE(j.name, '')        AS job_name,
 		COALESCE(j.source_path, '') AS source_path,
 		COALESCE(j.dest_path, '')   AS dest_path,
-		COALESCE(job_runs.agent_id, '') AS agent_id,
+		COALESCE(j.agent_id, '')        AS agent_id,
 		COALESCE(a.hostname, '')    AS agent_hostname,
 		job_runs.started_at,
 		job_runs.finished_at,
