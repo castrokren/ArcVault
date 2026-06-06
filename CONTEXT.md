@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** June 6, 2026 | **Coordinator v0.4.0** | **Agent v0.4.0** | **Clean ✅**
+**Last updated:** June 6, 2026 (Session 19) | **Coordinator v0.4.0** | **Agent v0.4.0** | **Stable ✅**
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -140,6 +140,14 @@
   - **Modified**: `agent/runner/runner.go` — `process()` now creates `progressReporter` and passes `reporter.Report` to executor
   - **Fixed (middleware bug)**: `GET /api/jobs` and `PATCH /api/jobs/{id}/status` were JWT-only — agent tokens rejected with 403. Added `agentOrViewerRoute` and `agentOrOperatorRoute` to `coordinator/server/server.go`
   - **Result**: Jobs now execute (exit code 9 from robocopy = partial success). Open issue: robocopy output is "(no output)" — stderr not captured or streaming not wiring output back correctly. Debug next session.
+
+✅ **Session 19** (June 6, 2026): Coordinator Freeze Root Cause Fixed + Progress Reporting Removed — COMPLETE
+  - **Root cause found**: `checkMissedSchedules()` (runs every 60s) opens a `rows` cursor then makes nested DB calls inside the loop (`GetAlertRulesForJob` + 2x `QueryRow`). With `SetMaxOpenConns(1)`, those nested calls block forever on the connection held by `rows` → all HTTP handlers queue behind the deadlocked goroutine → coordinator appears frozen
+  - **Fix**: Removed `conn.SetMaxOpenConns(1)` from `coordinator/db/db.go`. WAL mode + `_busy_timeout=5000` already handle write serialization at the SQLite level; no pool restriction needed
+  - **Also fixed (prior sub-session)**: WebSocket hub `Broadcast` held `h.mu` during network writes — slow browser blocked all hub ops. Fixed: snapshot clients, release lock, then write. Added 5s write deadline per connection
+  - **Also added**: HTTP server timeouts (`ReadTimeout`/`WriteTimeout`/`IdleTimeout` = 60/60/120s) in `coordinator/server/server.go`
+  - **Progress reporting removed**: Agent no longer POSTs to `/api/jobs/{id}/progress`. Jobs show RUNNING badge until complete; logs viewable after job finishes. Removed: `progressReporter` from agent, POST route + handler from coordinator, progress bar + `jobProgress` ref from `Jobs.vue`
+  - **Files changed**: `coordinator/db/db.go`, `coordinator/server/hub.go`, `coordinator/server/server.go`, `coordinator/server/progress.go`, `agent/runner/runner.go`, `agent/runner/progress.go`, `dashboard/src/api.ts`, `dashboard/src/views/Jobs.vue`
 
 ✅ **Session 18** (June 6, 2026): Robocopy Output Fix + Agent Log File + Auto Token Regen — COMPLETE
   - **Fixed (data race)**: `streamRobocopy` / `streamRsync` used same `bytes.Buffer` for stdout (TeeReader) and stderr (cmd.Stderr) concurrently — separated into `stdoutBuf` / `stderrBuf`
