@@ -65,8 +65,10 @@ Set-Location $ProjectRoot
 # Step 3: Sync dashboard into coordinator embed folder (REQUIRED before go build)
 Write-Host ""
 Write-Host "Step 3: Syncing dashboard into coordinator embed folder..." -ForegroundColor Yellow
-Remove-Item -Recurse -Force "coordinator\static\dist\*" -ErrorAction SilentlyContinue
-Copy-Item -Recurse "dashboard\dist\*" "coordinator\static\dist\" -Force
+$embedDist = "$ProjectRoot\coordinator\static\dist"
+Remove-Item -Recurse -Force $embedDist -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $embedDist | Out-Null
+Copy-Item -Recurse "$ProjectRoot\dashboard\dist\*" "$embedDist\" -Force
 Write-Host "  Synced dashboard\dist -> coordinator\static\dist" -ForegroundColor Green
 
 # Determine version from git tag (falls back to v0.0.0-dev)
@@ -156,27 +158,76 @@ try {
     exit 1
 }
 
+# Step 8: Validate agent token — regenerate if stale
+Write-Host ""
+Write-Host "Step 8: Validating agent token..." -ForegroundColor Yellow
+
+$agentConfigPath = "C:\ArcVault-Agent\agent-config.yaml"
+$coordConfigPath = "C:\ArcVault\config.json"
+
+if ((Test-Path $agentConfigPath) -and (Test-Path $coordConfigPath)) {
+    $adminToken  = (Get-Content $coordConfigPath | ConvertFrom-Json).admin_token
+    $agentConfig = Get-Content $agentConfigPath -Raw
+
+    # Pull agent_id and current auth_token from agent-config.yaml
+    $agentId    = ($agentConfig | Select-String "agent_id:\s*(.+)").Matches[0].Groups[1].Value.Trim()
+    $agentToken = ($agentConfig | Select-String "auth_token:\s*(.+)").Matches[0].Groups[1].Value.Trim()
+
+    # Check whether the token is still valid against the coordinator
+    try {
+        $checkResp = Invoke-WebRequest -Uri "http://localhost:8080/api/jobs?agent_id=$agentId&status=pending" `
+            -Headers @{ Authorization = "Bearer $agentToken" } -TimeoutSec 5 -UseBasicParsing
+        $tokenOk = ($checkResp.StatusCode -eq 200)
+    } catch {
+        $tokenOk = $false
+    }
+
+    if ($tokenOk) {
+        Write-Host "  Agent token is valid." -ForegroundColor Green
+    } else {
+        Write-Host "  Agent token is invalid or stale — regenerating..." -ForegroundColor Yellow
+        try {
+            $resp = Invoke-RestMethod -Uri "http://localhost:8080/api/agent-tokens" `
+                -Method POST `
+                -Headers @{ Authorization = "Bearer $adminToken"; "Content-Type" = "application/json" } `
+                -Body (@{ agent_id = $agentId } | ConvertTo-Json) -TimeoutSec 5
+
+            $newToken = $resp.token
+            # Update auth_token in agent-config.yaml in-place.
+            # Use single-quoted '$1' so PowerShell treats it as a regex backreference,
+            # then concatenate the actual token value.
+            # [^\r\n]+ avoids consuming the \r in \r\n line endings (.*$ would eat it)
+            $agentConfig = $agentConfig -replace '(?m)^(\s*auth_token:\s*)[^\r\n]+', ('$1' + $newToken)
+            [System.IO.File]::WriteAllText($agentConfigPath, $agentConfig)
+            Write-Host "  Token regenerated and saved to agent-config.yaml." -ForegroundColor Green
+        } catch {
+            Write-Host "  WARNING: Could not regenerate agent token: $_" -ForegroundColor Red
+            Write-Host "  Run manually: coordinator create-agent-token [agent-id]" -ForegroundColor Yellow
+        }
+    }
+} else {
+    Write-Host "  Skipping token check (agent or coordinator config not found)." -ForegroundColor Yellow
+}
+
+# Step 9: Start agent + verify it registered
+Write-Host ""
+Write-Host "Step 9: Starting agent..." -ForegroundColor Yellow
 sc.exe start arcvault-agent
 Start-Sleep -Seconds 4
 
-# Step 8: Verify agent registered
-Write-Host ""
-Write-Host "Step 8: Verifying agent registered..." -ForegroundColor Yellow
+$token  = (Get-Content $coordConfigPath -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue).admin_token
+$agents = Invoke-RestMethod -Uri "http://localhost:8080/api/agents" `
+    -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -ErrorAction SilentlyContinue
 
-try {
-    $token = (Get-Content "C:\ArcVault\config.json" | ConvertFrom-Json).admin_token
-    $agents = Invoke-RestMethod -Uri "http://localhost:8080/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5
-    $count = $agents.data.Count
-    if ($count -gt 0) {
-        Write-Host "  SUCCESS: $count agent(s) registered:" -ForegroundColor Green
-        foreach ($a in $agents.data) {
-            Write-Host "    - $($a.id) | $($a.hostname) | status: $($a.status)" -ForegroundColor Green
-        }
-    } else {
-        Write-Host "  No agents found yet. Wait 10s and refresh the dashboard." -ForegroundColor Yellow
+if ($agents -and $agents.data.Count -gt 0) {
+    Write-Host "  SUCCESS: $($agents.data.Count) agent(s) registered:" -ForegroundColor Green
+    foreach ($a in $agents.data) {
+        Write-Host "    - $($a.id)  $($a.hostname)  status: $($a.status)" -ForegroundColor Green
     }
-} catch {
-    Write-Host "  Could not query agents API: $_" -ForegroundColor Yellow
+} elseif ($agents) {
+    Write-Host "  No agents found yet — wait 10s and refresh the dashboard." -ForegroundColor Yellow
+} else {
+    Write-Host "  Could not query agents API — check coordinator logs." -ForegroundColor Yellow
 }
 
 Write-Host ""
