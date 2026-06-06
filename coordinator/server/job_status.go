@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -39,12 +40,14 @@ func (s *Server) handleUpdateJobStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.jobService.UpdateJobStatus(id, input.Status); err != nil {
+		log.Printf("ERROR handleUpdateJobStatus: job=%s status=%s err=%v", id, input.Status, err)
 		http.Error(w, "failed to update job", http.StatusInternalServerError)
 		return
 	}
 
 	job, err := s.jobService.GetJob(id)
 	if err != nil {
+		log.Printf("ERROR handleUpdateJobStatus: job=%s GetJob err=%v", id, err)
 		http.Error(w, "failed to fetch updated job", http.StatusInternalServerError)
 		return
 	}

@@ -44,10 +44,15 @@ func Init(dbPath string) (*DB, error) {
 		return nil, fmt.Errorf("could not create db directory: %w", err)
 	}
 
-	conn, err := sql.Open("sqlite", dbPath)
+	// busy_timeout: retry writes for up to 5s instead of returning SQLITE_BUSY immediately.
+	// _journal_mode=WAL: allows concurrent reads + one writer (better than default DELETE journal).
+	dsn := dbPath + "?_busy_timeout=5000&_journal_mode=WAL"
+	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("could not open database: %w", err)
 	}
+	// Single writer connection prevents SQLITE_BUSY under Go's connection pool.
+	conn.SetMaxOpenConns(1)
 
 	if err := conn.Ping(); err != nil {
 		return nil, fmt.Errorf("could not connect to database: %w", err)
