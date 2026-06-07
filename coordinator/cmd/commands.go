@@ -15,6 +15,7 @@ import (
 
 	"arcvault/coordinator/config"
 	"arcvault/coordinator/db"
+	"arcvault/coordinator/internal/tlscert"
 	"arcvault/coordinator/server"
 	"arcvault/coordinator/updater"
 	"golang.org/x/crypto/bcrypt"
@@ -25,16 +26,23 @@ func InitCommand() error {
 	fmt.Println("=====================================")
 	reader := bufio.NewReader(os.Stdin)
 
-	fmt.Print("Enter port (default 8080): ")
+	fmt.Print("Enter port (default 443): ")
 	portStr, _ := reader.ReadString('\n')
 	portStr = strings.TrimSpace(portStr)
-	port := 8080
+	port := 443
 	if portStr != "" {
 		p, err := strconv.Atoi(portStr)
 		if err != nil {
 			return fmt.Errorf("invalid port: %v", err)
 		}
 		port = p
+	}
+
+	fmt.Print("Enter host (IP or hostname, for TLS cert): ")
+	host, _ := reader.ReadString('\n')
+	host = strings.TrimSpace(host)
+	if host == "" {
+		return fmt.Errorf("host is required")
 	}
 
 	homeDir, _ := os.UserHomeDir()
@@ -46,6 +54,22 @@ func InitCommand() error {
 		dbPath = defaultDB
 	}
 
+	// Get exe directory for cert files
+	exePath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %v", err)
+	}
+	exeDir := filepath.Dir(exePath)
+	certPath := filepath.Join(exeDir, "cert.pem")
+	keyPath := filepath.Join(exeDir, "key.pem")
+
+	// Generate TLS cert
+	fmt.Print("\nGenerating TLS certificate...")
+	if err := tlscert.Generate(host, certPath, keyPath); err != nil {
+		return fmt.Errorf("failed to generate TLS certificate: %v", err)
+	}
+	fmt.Printf(" done\n")
+
 	token, err := generateToken(32)
 	if err != nil {
 		return fmt.Errorf("failed to generate admin token: %v", err)
@@ -56,6 +80,9 @@ func InitCommand() error {
 		DatabasePath: dbPath,
 		AdminToken:   token,
 		Environment:  "development",
+		Host:         host,
+		CertFile:     certPath,
+		KeyFile:      keyPath,
 	}
 
 	if err := config.Save(cfg); err != nil {
@@ -65,6 +92,7 @@ func InitCommand() error {
 	configPath, _ := config.GetConfigPath()
 	fmt.Printf("\nConfiguration saved to: %s\n", configPath)
 	fmt.Printf("Database will be initialized at: %s\n", dbPath)
+	fmt.Printf("TLS certificate: %s\n", certPath)
 	fmt.Printf("Admin token (save this): %s\n\n", token)
 	fmt.Println("Next step: Run 'coordinator start'")
 	return nil
@@ -212,4 +240,28 @@ func DecodeKeyHex(keyHex string) ([]byte, error) {
 		return nil, fmt.Errorf("key must be 32 bytes (got %d)", len(key))
 	}
 	return key, nil
+}
+
+// RekeyCertCommand regenerates the TLS certificate.
+func RekeyCertCommand() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	if cfg.Host == "" {
+		return fmt.Errorf("host not configured (run 'coordinator init' first)")
+	}
+
+	if cfg.CertFile == "" || cfg.KeyFile == "" {
+		return fmt.Errorf("cert/key paths not configured")
+	}
+
+	fmt.Printf("Regenerating TLS certificate for host: %s\n", cfg.Host)
+	if err := tlscert.Generate(cfg.Host, cfg.CertFile, cfg.KeyFile); err != nil {
+		return fmt.Errorf("failed to generate certificate: %w", err)
+	}
+
+	fmt.Printf("Certificate regenerated: %s\n", cfg.CertFile)
+	return nil
 }

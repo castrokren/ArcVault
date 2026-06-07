@@ -82,7 +82,6 @@ func NewWithStatic(cfg *config.Config, database *db.DB, staticDir string) *Serve
 
 func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.cfg.Port)
-	log.Printf("ArcVault Coordinator listening on %s", addr)
 
 	s.StartOfflineDetector(60*time.Second, 90*time.Second)
 	s.StartScheduler()
@@ -100,7 +99,21 @@ func (s *Server) Start() error {
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-	return srv.ListenAndServe()
+
+	// Handle TLS or external terminator
+	if s.cfg.ExternalTLS {
+		// External TLS (reverse proxy, etc.) — serve plain HTTP
+		log.Printf("ArcVault Coordinator listening on %s (external TLS)", addr)
+		return srv.ListenAndServe()
+	}
+
+	// HTTPS via self-signed cert
+	if s.cfg.CertFile == "" || s.cfg.KeyFile == "" {
+		log.Fatal("TLS certificate paths not configured. Run 'coordinator init' to set up TLS.")
+	}
+
+	log.Printf("ArcVault Coordinator listening on %s (HTTPS)", addr)
+	return srv.ListenAndServeTLS(s.cfg.CertFile, s.cfg.KeyFile)
 }
 
 // === Middleware Helper Functions ===
@@ -256,6 +269,10 @@ func (s *Server) registerRoutes() {
 
 	// Admin utility endpoints
 	s.router.HandleFunc("GET /api/admin/token", s.adminRoute(s.handleGetAdminToken))
+	s.router.HandleFunc("GET /api/admin/bootstrap.ps1", s.adminRoute(s.handleBootstrapScript))
+
+	// Downloads (agent.exe auth: agent token OR admin token)
+	s.router.HandleFunc("GET /downloads/agent.exe", s.agentOrAdminRoute(s.handleDownloadAgent))
 
 	// Alert rules endpoints (Phase 17: Enhanced monitoring & alerting)
 	s.router.HandleFunc("GET /api/alert-rules", s.viewerRoute(s.handleListAlertRules))
@@ -351,6 +368,26 @@ func (s *Server) agentOrOperatorRoute(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		s.operatorRoute(next)(w, r)
+	}
+}
+
+// agentOrAdminRoute accepts an agent token OR the admin token OR a valid JWT
+// with admin role. Used for agent downloads.
+func (s *Server) agentOrAdminRoute(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token := r.Header.Get("Authorization")
+		if len(token) > 7 && token[:7] == "Bearer " {
+			token = token[7:]
+		}
+		if token == s.cfg.AdminToken {
+			next(w, r)
+			return
+		}
+		if _, err := s.db.ValidateToken(token); err == nil {
+			next(w, r)
+			return
+		}
+		s.adminRoute(next)(w, r)
 	}
 }
 

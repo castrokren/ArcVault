@@ -96,6 +96,12 @@ func main() {
 
 		fmt.Println("Credentials rekeyed successfully")
 		os.Exit(0)
+	case "rekey-cert":
+		if err := cmd.RekeyCertCommand(); err != nil {
+			log.Fatalf("rekey-cert failed: %v", err)
+		}
+		fmt.Println("TLS certificate regenerated successfully")
+		os.Exit(0)
 	case "check-update":
 		if err := cmd.CheckUpdateCommand(Version); err != nil {
 			log.Fatalf("check-update failed: %v", err)
@@ -134,6 +140,7 @@ func printUsage() {
 	fmt.Println("  start                         - Start the coordinator server")
 	fmt.Println("  create-agent-token <agent-id> - Generate a token for an agent")
 	fmt.Println("  rekey <args>                  - Rotate credential encryption keys")
+	fmt.Println("  rekey-cert                    - Regenerate TLS certificate")
 	fmt.Println("  check-update                  - Check for available updates")
 	fmt.Println("  install-service               - Install as a system service (requires admin/root)")
 	fmt.Println("  uninstall-service             - Remove the system service (requires admin/root)")

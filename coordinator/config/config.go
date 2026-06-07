@@ -20,6 +20,10 @@ type Config struct {
 	AlertHistoryRetentionDays  int                 `json:"alert_history_retention_days,omitempty"`
 	Notifications              *NotificationConfig `json:"notifications,omitempty"`
 	Federation                 *FederationConfig   `json:"federation,omitempty"`
+	Host                       string              `json:"host,omitempty"`
+	CertFile                   string              `json:"cert_file,omitempty"`
+	KeyFile                    string              `json:"key_file,omitempty"`
+	ExternalTLS                bool                `json:"external_tls,omitempty"`
 }
 
 type NotificationConfig struct {
