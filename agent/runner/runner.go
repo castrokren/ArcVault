@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"arcvault/agent/config"
 )
 
 // JobCredentials holds credentials for a job (e.g., SMB username/password, SSH key).
@@ -43,6 +45,7 @@ type Config struct {
 	AgentID        string
 	CoordinatorURL string
 	AuthToken      string
+	CACertFile     string
 	PollInterval   time.Duration
 	Client         *http.Client
 }
@@ -64,10 +67,16 @@ func New(cfg Config, executor Executor) (*Runner, error) {
 		cfg.PollInterval = 30 * time.Second
 	}
 	if cfg.Client == nil {
+		tlsConfig, err := config.BuildTLSConfig(cfg.CACertFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build TLS config: %w", err)
+		}
+
 		transport := &http.Transport{
-			MaxIdleConns:    10,
-			IdleConnTimeout: 90 * time.Second,
-			DisableKeepAlives: false,
+			MaxIdleConns:       10,
+			IdleConnTimeout:    90 * time.Second,
+			DisableKeepAlives:  false,
+			TLSClientConfig:    tlsConfig,
 		}
 		cfg.Client = &http.Client{
 			Transport: transport,

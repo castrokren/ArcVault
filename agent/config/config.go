@@ -14,6 +14,7 @@ type Config struct {
 	CoordinatorURL string   `yaml:"coordinator_url"`
 	Coordinators   []string `yaml:"coordinators,omitempty"`
 	AuthToken      string   `yaml:"auth_token"`
+	CACertFile     string   `yaml:"ca_cert_file,omitempty"`
 }
 
 func Load(path string) (*Config, error) {

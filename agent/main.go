@@ -73,6 +73,7 @@ func runAgent() {
 		AgentID:        cfg.AgentID,
 		CoordinatorURL: cfg.CoordinatorURL,
 		AuthToken:      cfg.AuthToken,
+		CACertFile:     cfg.CACertFile,
 		Interval:       30 * time.Second,
 	}
 
@@ -90,6 +91,7 @@ func runAgent() {
 		AgentID:        cfg.AgentID,
 		CoordinatorURL: cfg.CoordinatorURL,
 		AuthToken:      cfg.AuthToken,
+		CACertFile:     cfg.CACertFile,
 		PollInterval:   30 * time.Second,
 	}, runner.RealExecutor)
 	if err != nil {
@@ -103,6 +105,7 @@ func runAgent() {
 		CoordinatorURL: cfg.CoordinatorURL,
 		Coordinators:   cfg.Coordinators,
 		AuthToken:      cfg.AuthToken,
+		CACertFile:     cfg.CACertFile,
 	}
 	go wsClient.Start()
 

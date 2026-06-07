@@ -13,6 +13,7 @@ import (
 
 	"github.com/gorilla/websocket"
 
+	"arcvault/agent/config"
 	"arcvault/agent/updater"
 )
 
@@ -22,6 +23,7 @@ type Client struct {
 	CoordinatorURL  string   // http(s)://host:port (single, backward compat)
 	Coordinators    []string // list of coordinator URLs for failover
 	AuthToken       string
+	CACertFile      string
 	lastSuccessfulCoordinator string // track which coordinator the agent is currently homed to
 }
 
@@ -81,7 +83,20 @@ func (c *Client) Start() {
 }
 
 func (c *Client) run(url string) error {
-	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	// Build TLS config for WebSocket client
+	tlsConfig, err := config.BuildTLSConfig(c.CACertFile)
+	if err != nil {
+		return fmt.Errorf("failed to build TLS config: %w", err)
+	}
+
+	// Create a custom dialer with TLS config
+	dialer := &websocket.Dialer{
+		Proxy:            websocket.DefaultDialer.Proxy,
+		HandshakeTimeout: 45 * time.Second,
+		TLSClientConfig:  tlsConfig,
+	}
+
+	conn, _, err := dialer.Dial(url, nil)
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
 	}

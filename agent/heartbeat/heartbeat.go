@@ -9,13 +9,17 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"arcvault/agent/config"
 )
 
 type Config struct {
-AgentID        string
-CoordinatorURL string
-AuthToken      string
-Interval       time.Duration
+	AgentID        string
+	CoordinatorURL string
+	AuthToken      string
+	CACertFile     string
+	Interval       time.Duration
+	Client         *http.Client
 }
 
 type heartbeatResponse struct {
@@ -24,48 +28,84 @@ Time   string `json:"time"`
 }
 
 func Start(cfg Config) {
-if cfg.Interval == 0 {
-cfg.Interval = 30 * time.Second
-}
+	if cfg.Interval == 0 {
+		cfg.Interval = 30 * time.Second
+	}
 
-log.Printf("Heartbeat loop started (every %s)", cfg.Interval)
+	// Initialize HTTP client if not provided
+	if cfg.Client == nil {
+		tlsConfig, err := config.BuildTLSConfig(cfg.CACertFile)
+		if err != nil {
+			log.Fatalf("failed to build TLS config: %v", err)
+		}
 
-for {
-if err := send(cfg); err != nil {
-log.Printf("Heartbeat failed: %v", err)
-}
-time.Sleep(cfg.Interval)
-}
+		transport := &http.Transport{
+			MaxIdleConns:    10,
+			IdleConnTimeout: 90 * time.Second,
+			TLSClientConfig: tlsConfig,
+		}
+		cfg.Client = &http.Client{
+			Transport: transport,
+			Timeout:   30 * time.Second,
+		}
+	}
+
+	log.Printf("Heartbeat loop started (every %s)", cfg.Interval)
+
+	for {
+		if err := send(cfg); err != nil {
+			log.Printf("Heartbeat failed: %v", err)
+		}
+		time.Sleep(cfg.Interval)
+	}
 }
 
 func Register(cfg Config, hostname, os, arch, version string) error {
-body, _ := json.Marshal(map[string]string{
-"agent_id": cfg.AgentID,
-"hostname": hostname,
-"os":       os,
-"arch":     arch,
-"version":  version,
-})
+	// Initialize HTTP client if not provided
+	if cfg.Client == nil {
+		tlsConfig, err := config.BuildTLSConfig(cfg.CACertFile)
+		if err != nil {
+			return fmt.Errorf("failed to build TLS config: %w", err)
+		}
 
-req, err := http.NewRequest("POST", cfg.CoordinatorURL+"/api/agents/register", bytes.NewBuffer(body))
-if err != nil {
-return err
-}
-req.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
-req.Header.Set("Content-Type", "application/json")
+		transport := &http.Transport{
+			MaxIdleConns:    10,
+			IdleConnTimeout: 90 * time.Second,
+			TLSClientConfig: tlsConfig,
+		}
+		cfg.Client = &http.Client{
+			Transport: transport,
+			Timeout:   30 * time.Second,
+		}
+	}
 
-resp, err := http.DefaultClient.Do(req)
-if err != nil {
-return fmt.Errorf("registration request failed: %w", err)
-}
-defer resp.Body.Close()
+	body, _ := json.Marshal(map[string]string{
+		"agent_id": cfg.AgentID,
+		"hostname": hostname,
+		"os":       os,
+		"arch":     arch,
+		"version":  version,
+	})
 
-if resp.StatusCode != http.StatusCreated {
-return fmt.Errorf("registration failed with status %d", resp.StatusCode)
-}
+	req, err := http.NewRequest("POST", cfg.CoordinatorURL+"/api/agents/register", bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
+	req.Header.Set("Content-Type", "application/json")
 
-log.Printf("Registered with coordinator as %s", cfg.AgentID)
-return nil
+	resp, err := cfg.Client.Do(req)
+	if err != nil {
+		return fmt.Errorf("registration request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("registration failed with status %d", resp.StatusCode)
+	}
+
+	log.Printf("Registered with coordinator as %s", cfg.AgentID)
+	return nil
 }
 
 func send(cfg Config) error {
@@ -86,7 +126,7 @@ func send(cfg Config) error {
 	req.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := cfg.Client.Do(req)
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
