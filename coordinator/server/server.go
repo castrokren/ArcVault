@@ -254,6 +254,9 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /api/federation/sync/ack", s.adminRoute(s.handleFederationSyncAck))
 	s.router.HandleFunc("GET /api/federation/health", s.viewerRoute(s.handleFederationHealth))
 
+	// Admin utility endpoints
+	s.router.HandleFunc("GET /api/admin/token", s.adminRoute(s.handleGetAdminToken))
+
 	// Alert rules endpoints (Phase 17: Enhanced monitoring & alerting)
 	s.router.HandleFunc("GET /api/alert-rules", s.viewerRoute(s.handleListAlertRules))
 	s.router.HandleFunc("POST /api/alert-rules", s.adminRoute(s.handleCreateAlertRule))

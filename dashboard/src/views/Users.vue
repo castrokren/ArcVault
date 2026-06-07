@@ -2,9 +2,15 @@
   <div class="users-container">
     <div class="users-header">
       <h1>User Management</h1>
-      <button class="btn btn-primary" @click="showCreateUserModal = true">
-        + Create User
-      </button>
+      <div class="users-header-actions">
+        <button class="btn btn-secondary" @click="copyAdminToken" :disabled="copyingToken" title="Copy the coordinator admin token for new agent installs">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="margin-right:4px;vertical-align:-2px"><rect x="4" y="4" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M2 10V2h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          {{ copyTokenLabel }}
+        </button>
+        <button class="btn btn-primary" @click="showCreateUserModal = true">
+          + Create User
+        </button>
+      </div>
     </div>
 
     <div v-if="loading" class="loading">Loading users...</div>
@@ -346,6 +352,29 @@ async function confirmDelete() {
 
 // Re-fetch when page changes
 watch(page, () => fetchUsers())
+
+// Copy admin token
+const copyingToken = ref(false)
+const copyTokenLabel = ref('Copy Admin Token')
+
+async function copyAdminToken() {
+  copyingToken.value = true
+  try {
+    const res = await fetch('/api/admin/token', {
+      headers: { Authorization: `Bearer ${auth.getToken()}` },
+    })
+    if (!res.ok) throw new Error(`Failed to fetch token (${res.status})`)
+    const { token } = await res.json()
+    await navigator.clipboard.writeText(token)
+    copyTokenLabel.value = 'Copied!'
+    setTimeout(() => { copyTokenLabel.value = 'Copy Admin Token' }, 2000)
+  } catch (err) {
+    copyTokenLabel.value = 'Error'
+    setTimeout(() => { copyTokenLabel.value = 'Copy Admin Token' }, 2000)
+  } finally {
+    copyingToken.value = false
+  }
+}
 </script>
 
 <script>
@@ -376,6 +405,12 @@ import { watch } from 'vue'
   font-family: var(--font-display);
   font-size: 1.3rem;
   color: var(--text-primary);
+}
+
+.users-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .loading,

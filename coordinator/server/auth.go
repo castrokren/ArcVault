@@ -393,6 +393,18 @@ func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleGetAdminToken handles GET /api/admin/token — admin only
+// Returns the coordinator's admin token from config (used for agent registration and installer setup).
+func (s *Server) handleGetAdminToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"token": s.cfg.AdminToken})
+}
+
 // bcryptHash hashes a password using bcrypt
 func bcryptHash(password string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)

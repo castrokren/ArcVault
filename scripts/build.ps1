@@ -13,7 +13,7 @@ Remove-Item -Recurse -Force "build", "dist", "arcvault.spec" -ErrorAction Silent
 New-Item -ItemType Directory -Path "dist" -Force | Out-Null
 
 # Version — must match arcvault_installer.py self.version and the EXE name below
-$Version = "v0.3.0"
+$Version = "v0.4.0"
 Write-Host "Building Go binaries at $Version..." -ForegroundColor Cyan
 
 go build -ldflags "-X main.Version=$Version" -o dist\coordinator.exe .\coordinator
@@ -60,7 +60,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='ArcVault-Setup-0.3.0-windows-amd64',
+    name='ArcVault-Setup-0.4.0-windows-amd64',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -92,7 +92,7 @@ Write-Host "PyInstaller compilation done" -ForegroundColor Green
 Write-Host ""
 
 # Verify
-$outExe = "dist\ArcVault-Setup-0.3.0-windows-amd64.exe"
+$outExe = "dist\ArcVault-Setup-0.4.0-windows-amd64.exe"
 if (Test-Path $outExe) {
     $size = [math]::Round((Get-Item $outExe).Length / 1MB, 1)
     Write-Host "====================================" -ForegroundColor Green
