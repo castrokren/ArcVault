@@ -149,6 +149,16 @@
   - **Progress reporting removed**: Agent no longer POSTs to `/api/jobs/{id}/progress`. Jobs show RUNNING badge until complete; logs viewable after job finishes. Removed: `progressReporter` from agent, POST route + handler from coordinator, progress bar + `jobProgress` ref from `Jobs.vue`
   - **Files changed**: `coordinator/db/db.go`, `coordinator/server/hub.go`, `coordinator/server/server.go`, `coordinator/server/progress.go`, `agent/runner/runner.go`, `agent/runner/progress.go`, `dashboard/src/api.ts`, `dashboard/src/views/Jobs.vue`
 
+✅ **Session 20** (June 6, 2026): Installer UI Redesign — COMPLETE
+  - **Full redesign** of `installer/windows/arcvault_installer.py` to match coordinator dashboard design system
+  - **Design tokens**: Same palette as `dashboard/src/style.css` (`_BG_BASE="#07090e"`, `_ACCENT="#00d4aa"`, etc.); dark surfaces, teal accent, muted text
+  - **Icon**: ArcVault favicon SVG converted to 64×64 base64 PNG, shown as window icon via `tk.PhotoImage(data=_ICON_B64)` + `iconphoto()`
+  - **Version**: `self.version = "0.4.0"` (was 0.3.0); displayed in header badge and title bar
+  - **Entry screen**: Component selection is now the first screen — two clickable cards (Coordinator / Agent); canvas-drawn circle bubble toggles from empty outline to filled teal with white checkmark on click; card border highlights teal
+  - **Auto-populate rule**: URL + auth token fields in Agent config are pre-filled (readonly) only when installing both coordinator AND agent in the same run; agent-only installs show blank editable fields
+  - **File write warning**: The Edit tool causes null-byte truncation when writing this file through the Windows mount; always use `bash` heredoc (`cat > ... << 'PYEOF'`) then strip trailing nulls if needed
+  - **Files changed**: `installer/windows/arcvault_installer.py`
+
 ✅ **Session 18** (June 6, 2026): Robocopy Output Fix + Agent Log File + Auto Token Regen — COMPLETE
   - **Fixed (data race)**: `streamRobocopy` / `streamRsync` used same `bytes.Buffer` for stdout (TeeReader) and stderr (cmd.Stderr) concurrently — separated into `stdoutBuf` / `stderrBuf`
   - **Fixed (exit code range)**: `waitCode` and `extractExitCode` now normalize robocopy codes 1–15 to 0 (was 1–7); code 9 = partial success, not failure
