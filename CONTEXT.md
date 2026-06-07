@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** June 6, 2026 (Session 19) | **Coordinator v0.4.0** | **Agent v0.4.0** | **Stable ✅**
+**Last updated:** June 7, 2026 (Session 20+) | **Coordinator v0.5.0** | **Agent v0.5.0** | **HTTPS + Bootstrap** ✅
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
