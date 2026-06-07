@@ -272,3 +272,38 @@ export const getAlertHistory = () =>
 
 export const retryAlert = (id: string) =>
   request('POST', `/api/alert-history/${id}/retry`)
+
+// --- Agent Bootstrap ---
+export async function downloadBootstrapScript() {
+  const token = getToken()
+  if (!token) {
+    throw new Error('No authentication token')
+  }
+
+  const res = await fetch(`${BASE_URL}/api/admin/bootstrap.ps1`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (res.status === 401) {
+    handle401()
+    throw new Error('Session expired. Please log in again.')
+  }
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Failed to download bootstrap script: ${res.status} ${text}`)
+  }
+
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = 'bootstrap.ps1'
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
