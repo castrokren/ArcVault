@@ -34,12 +34,18 @@ if ($CleanBuild) {
 if (-not (Test-Path "dist")) { New-Item -ItemType Directory -Path "dist" -Force | Out-Null }
 if (-not (Test-Path "deployment")) { New-Item -ItemType Directory -Path "deployment" -Force | Out-Null }
 
+# Determine version from git tag
+$Version = (git describe --tags --abbrev=0 2>$null)
+if (-not $Version) { $Version = "v0.0.0-dev" }
+$VersionClean = $Version.TrimStart("v")
+Write-Host "Building version: $Version" -ForegroundColor Cyan
+
 if (-not $SkipBinaries) {
     Write-Host ""
     Write-Host "==> Step 4: Building Go binaries..." -ForegroundColor Cyan
     foreach ($b in @(@{n="coordinator";p=".\coordinator"}, @{n="agent";p=".\agent"}, @{n="arcvault-setup";p=".\cmd\setup"})) {
         Write-Host "Building $($b.n)..."
-        go build -o "dist\$($b.n).exe" $b.p
+        go build -ldflags "-X main.Version=$Version" -o "dist\$($b.n).exe" $b.p
         if ($LASTEXITCODE -ne 0) { Write-Host "FAIL $($b.n)" -ForegroundColor Red; exit 1 }
         Write-Host "OK $($b.n).exe" -ForegroundColor Green
     }
@@ -62,7 +68,7 @@ foreach ($b in @("coordinator.exe", "agent.exe", "arcvault-setup.exe")) {
 Write-Host ""
 Write-Host "==> Step 6: Creating PyInstaller spec..." -ForegroundColor Cyan
 
-@'
+@"
 # -*- mode: python ; coding: utf-8 -*-
 block_cipher = None
 
@@ -96,7 +102,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='ArcVault-Setup-1.1.0-windows-amd64',
+    name='ArcVault-Setup-$VersionClean-windows-amd64',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -109,7 +115,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
 )
-'@ | Out-File -FilePath "arcvault.spec" -Encoding UTF8
+"@ | Out-File -FilePath "arcvault.spec" -Encoding UTF8
 
 Write-Host "OK arcvault.spec created" -ForegroundColor Green
 
@@ -123,7 +129,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "FAIL PyInstaller failed" -ForegroundColor
 Write-Host ""
 Write-Host "==> Step 8: Verifying installer..." -ForegroundColor Cyan
 
-$out = "deployment\ArcVault-Setup-1.1.0-windows-amd64.exe"
+$out = "deployment\ArcVault-Setup-$VersionClean-windows-amd64.exe"
 if (Test-Path $out) {
     $size = [math]::Round((Get-Item $out).Length / 1MB, 1)
     Write-Host ""

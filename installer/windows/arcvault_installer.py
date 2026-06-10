@@ -397,7 +397,7 @@ class ArcVaultInstaller:
         tk.Frame(frame, bg=_BG_BASE, height=18).pack()
 
         if "coordinator" in self.components:
-            default_url = f"http://localhost:{self.coordinator_port}"
+            default_url = f"https://localhost"
             self.coordinator_url = default_url
             url_var = row("Coordinator URL:", width=36)
             url_var.insert(0, default_url)
@@ -612,10 +612,21 @@ class ArcVaultInstaller:
 
     def write_agent_config(self):
         self.AGENT_DIR.mkdir(parents=True, exist_ok=True)
+
+        # Strip trailing slash from coordinator URL to avoid double-slash in API paths
+        coordinator_url = self.coordinator_url.rstrip("/")
+
+        # Copy coordinator cert for TLS pinning
+        cert_dest = self.AGENT_DIR / "coordinator.crt"
+        coord_cert = self.COORD_DIR / "cert.pem"
+        if coord_cert.exists():
+            shutil.copy2(str(coord_cert), str(cert_dest))
+
         content = (
             f"agent_id: {self.agent_id}\n"
-            f"coordinator_url: {self.coordinator_url}\n"
+            f"coordinator_url: {coordinator_url}\n"
             f"auth_token: {self.agent_token}\n"
+            f"ca_cert_file: {cert_dest}\n"
         )
         with open(self.AGENT_DIR / "agent-config.yaml", "w") as f:
             f.write(content)
