@@ -1,4 +1,4 @@
-package tlscert
+﻿package tlscert
 
 import (
 	"crypto/ecdsa"
@@ -141,8 +141,7 @@ func ReadCertPEM(certPath string) ([]byte, error) {
 	if block.Type != "CERTIFICATE" {
 		return nil, errors.New("invalid PEM block type, expected CERTIFICATE")
 	}
-
-	return block.Bytes, nil
+	return pemBytes, nil
 }
 
 // Load loads a certificate and private key from PEM files.
@@ -158,3 +157,4 @@ func Load(certPath string, keyPath string) error {
 	}
 	return nil
 }
+

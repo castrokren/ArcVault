@@ -1,4 +1,4 @@
-package server
+﻿package server
 
 import (
 	"crypto/sha1"
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-
+	"path/filepath"
 	"arcvault/coordinator/internal/bootstrap"
 	"arcvault/coordinator/internal/tlscert"
 )
@@ -39,7 +39,7 @@ func (s *Server) handleBootstrapScript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	agentExePath := exePath[:len(exePath)-len(".exe")] + "\\agent.exe"
+	agentExePath := filepath.Join(filepath.Dir(exePath), "agent.exe")
 	agentExeData, err := os.ReadFile(agentExePath)
 	if err != nil {
 		http.Error(w, "agent.exe not found in coordinator directory", http.StatusInternalServerError)
@@ -72,3 +72,4 @@ func (s *Server) handleBootstrapScript(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, script)
 }
+

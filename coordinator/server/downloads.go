@@ -1,10 +1,11 @@
-package server
+﻿package server
 
 import (
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 )
 
 // handleDownloadAgent serves agent.exe with auth check.
@@ -18,7 +19,7 @@ func (s *Server) handleDownloadAgent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Replace coordinator.exe with agent.exe
-	agentExePath := exePath[:len(exePath)-len(".exe")] + "\\agent.exe"
+	agentExePath := filepath.Join(filepath.Dir(exePath), "agent.exe")
 
 	// Check if file exists
 	fi, err := os.Stat(agentExePath)
@@ -44,3 +45,4 @@ func (s *Server) handleDownloadAgent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	io.Copy(w, file)
 }
+
