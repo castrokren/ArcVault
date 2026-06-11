@@ -19,29 +19,31 @@ sc.exe failure arcvault-coordinator reset= 0 actions= none 2>$null
 sc.exe stop arcvault-agent 2>$null
 sc.exe stop arcvault-coordinator 2>$null
 
-# Wait for port 8080 to be free (up to 20 seconds)
-Write-Host "  Waiting for port 8080 to be released..."
-$waited = 0
-while ($waited -lt 20) {
+# Wait for coordinator process to fully exit so the binary file lock is released
+Write-Host "  Waiting for coordinator.exe to exit..."
+$waitedProc = 0
+while ($waitedProc -lt 15) {
     Start-Sleep -Seconds 1
-    $portInUse = netstat -ano | Select-String ":8080 " | Select-String "LISTENING"
-    if (-not $portInUse) {
-        Write-Host "  Port 8080 is free." -ForegroundColor Green
+    $proc = Get-Process -Name "coordinator" -ErrorAction SilentlyContinue
+    if (-not $proc) {
+        Write-Host "  coordinator.exe has exited." -ForegroundColor Green
         break
     }
-    $waited++
-    if ($waited % 5 -eq 0) { Write-Host "  Still waiting... ($waited s)" }
+    $waitedProc++
 }
-if ($waited -ge 20) {
-    # Force-kill whatever is still on 8080
-    $netLines = netstat -ano | Select-String ":8080 " | Select-String "LISTENING"
-    foreach ($line in $netLines) {
-        $pid8080 = ($line.ToString().Trim() -split '\s+')[-1]
-        if ($pid8080 -match '^\d+$' -and $pid8080 -ne "0") {
-            taskkill /F /PID $pid8080 2>$null
-        }
-    }
+if ($waitedProc -ge 15) {
+    Write-Host "  Force-killing coordinator.exe..." -ForegroundColor Yellow
+    Stop-Process -Name "coordinator" -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
+}
+
+# Also wait for port 8080 to be free
+$waited = 0
+while ($waited -lt 10) {
+    Start-Sleep -Seconds 1
+    $portInUse = netstat -ano | Select-String ":8080 " | Select-String "LISTENING"
+    if (-not $portInUse) { break }
+    $waited++
 }
 
 # Step 2: Build dashboard
@@ -133,6 +135,11 @@ Write-Host "  Copied binaries -> installer\windows\" -ForegroundColor Green
 Write-Host ""
 Write-Host "Step 7: Starting services..." -ForegroundColor Yellow
 
+# Allow self-signed cert for localhost health checks (PS 5.1 compatible)
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+} 
+
 # Verify credential_key is present in config.json - warn if missing
 $coordConfig = "C:\ArcVault\config.json"
 if (Test-Path $coordConfig) {
@@ -153,7 +160,7 @@ sc.exe failure arcvault-coordinator reset= 86400 actions= restart/3000/restart/3
 Write-Host "  SCM failure recovery re-enabled." -ForegroundColor Green
 
 try {
-    $health = Invoke-RestMethod -Uri "https://localhost:8080/health" -SkipCertificateCheck -TimeoutSec 5
+    $health = Invoke-RestMethod -Uri "https://localhost:8080/health" -TimeoutSec 5
     Write-Host "  Coordinator health: $($health.status)" -ForegroundColor Green
 } catch {
     Write-Host "  ERROR: Coordinator not responding." -ForegroundColor Red
@@ -176,7 +183,7 @@ if ((Test-Path $agentConfigPath) -and (Test-Path $coordConfigPath)) {
 
     try {
         $resp = Invoke-RestMethod -Uri "https://localhost:8080/api/agent-tokens" `
-            -Method POST -SkipCertificateCheck `
+            -Method POST `
             -Headers @{ Authorization = "Bearer $adminToken"; "Content-Type" = "application/json" } `
             -Body (@{ agent_id = $agentId } | ConvertTo-Json) -TimeoutSec 5
 
@@ -201,7 +208,7 @@ sc.exe start arcvault-agent
 Start-Sleep -Seconds 4
 
 $token  = (Get-Content $coordConfigPath -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue).admin_token
-$agents = Invoke-RestMethod -Uri "https://localhost:8080/api/agents" -SkipCertificateCheck -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -ErrorAction SilentlyContinue
+$agents = Invoke-RestMethod -Uri "https://localhost:8080/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -ErrorAction SilentlyContinue
 
 if ($agents -and $agents.data.Count -gt 0) {
     $agentCount = $agents.data.Count
