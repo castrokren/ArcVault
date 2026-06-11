@@ -73,7 +73,7 @@ New-Item -ItemType Directory -Force -Path $embedDist | Out-Null
 Copy-Item -Recurse "$ProjectRoot\dashboard\dist\*" "$embedDist\" -Force
 Write-Host "  Synced dashboard\dist -> coordinator\static\dist" -ForegroundColor Green
 
-# Version — must match build.ps1 and arcvault_installer.py
+# Version - must match build.ps1 and arcvault_installer.py
 # UPDATE ALL THREE when bumping: build.ps1 $Version, rebuild-and-restart.ps1 $Version, installer py self.version
 $Version = "v0.5.1"
 & "$PSScriptRoot\check-version-sync.ps1" -Expected $Version
@@ -135,7 +135,7 @@ Write-Host "  Copied binaries -> installer\windows\" -ForegroundColor Green
 Write-Host ""
 Write-Host "Step 7: Starting services..." -ForegroundColor Yellow
 
-# Derive coordinator URL from its actual config — never hardcode protocol or port
+# Derive coordinator URL from its actual config - never hardcode protocol or port
 $coordCfgPath = "C:\ArcVault\config.json"
 $coordPort = 8080
 $coordScheme = "http"
@@ -158,18 +158,20 @@ sc.exe start arcvault-coordinator
 sc.exe failure arcvault-coordinator reset= 86400 actions= restart/3000/restart/3000/restart/3000 2>$null
 Write-Host "  SCM failure recovery re-enabled." -ForegroundColor Green
 
-# Retry health check — coordinator may need several seconds to initialize
+# Retry health check - coordinator may need several seconds to initialize
 Write-Host "  Waiting for coordinator to become healthy..."
 $healthy = $false
-for ($i = 1; $i -le 20; $i++) {
+$attempts = 0
+while (-not $healthy -and $attempts -lt 20) {
     Start-Sleep -Seconds 2
-    try {
-        $health = Invoke-RestMethod -Uri "$coordBase/health" -TimeoutSec 3
-        Write-Host "  Coordinator healthy (${i}): $($health.status)" -ForegroundColor Green
+    $attempts++
+    $resp = $null
+    try { $resp = Invoke-RestMethod -Uri "$coordBase/health" -TimeoutSec 3 } catch {}
+    if ($resp) {
+        Write-Host "  Coordinator healthy: $($resp.status)" -ForegroundColor Green
         $healthy = $true
-        break
-    } catch {
-        if ($i % 5 -eq 0) { Write-Host "  Still waiting... ($($i*2)s) — $_" }
+    } elseif ($attempts % 5 -eq 0) {
+        Write-Host "  Still waiting... ($($attempts * 2)s)"
     }
 }
 if (-not $healthy) {
@@ -178,7 +180,7 @@ if (-not $healthy) {
     exit 1
 }
 
-# Step 8: Regenerate agent token (always — coordinator reinstall wipes tokens)
+# Step 8: Regenerate agent token (always - coordinator reinstall wipes tokens)
 Write-Host ""
 Write-Host "Step 8: Regenerating agent token..." -ForegroundColor Yellow
 
