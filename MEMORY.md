@@ -1,8 +1,8 @@
 # ArcVault Project Memory
 **Project Name:** ArcVault  
 **Type:** OS-agnostic Backup Orchestrator  
-**Current Status:** Phase 21a-4 Complete (v1.1.0 Hot Fix) — CRITICAL BUGS FIXED  
-**Last Updated:** May 29, 2026  
+**Current Status:** v0.5.0 Complete — TLS bootstrap, agent deployment, installer verified  
+**Last Updated:** June 10, 2026  
 **Quick Status:** See [CONTEXT.md](CONTEXT.md) for status and quick reference
 
 ### Phase 21a-4 Hot Fix: Jobs Stuck in Pending (RESOLVED)
@@ -43,7 +43,8 @@ ArcVault solves key limitations in RoboBackup:
 | 16 | v0.9.0 | Federation HA (events log, state sync, health monitoring, agent failover) | ✅ Complete |
 | 17 | v1.0.0 | Enhanced monitoring & alerting (alert rules, webhook retry, Slack/Teams, history tracking) | ✅ Complete |
 | 21a-4 | v1.1.0 | Hot fix: Jobs stuck in pending (missing sync_flags + robocopy hanging) | ✅ Complete |
-| 18+ | — | CLI tooling, additional backends, advanced analytics | 🔮 Future |
+| 21 | v0.5.0 | TLS bootstrap deployment, cert chain fix, installer ca_cert_file fix, full workflow verified | ✅ Complete |
+| 22+ | — | CLI tooling, additional backends, advanced analytics | 🔮 Future |
 
 ---
 
