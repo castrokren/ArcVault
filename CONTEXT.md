@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** June 10, 2026 (Session 21) | **Coordinator v0.5.0** | **Agent v0.5.0** | **HTTPS + Bootstrap** ✅
+**Last updated:** June 10, 2026 (Session 21) | **Coordinator v0.5.0** | **Agent v0.5.0** | **HTTPS + Bootstrap + Installer** ✅
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -166,6 +166,8 @@
   - **cert mismatch on REMOTE**: bootstrap curl step failed (AV/write block on agent.exe), so `coordinator.crt` wasn't updated. Fixed by extracting live cert from TLS handshake using PowerShell .NET SslStream and writing as PEM
   - **Result**: SMILOW3FLSP001 online and heartbeating live in coordinator dashboard ✅
   - **Key lesson**: `rekey-cert` is the correct tool for cert regeneration — no OpenSSL needed. Bootstrap endpoint requires admin auth at `/api/admin/bootstrap.ps1`. Use PowerShell SslStream to pull cert from TLS handshake when SMB isn't available.
+  - **Installer fixes**: `write_agent_config` now copies `cert.pem` → `coordinator.crt` and writes `ca_cert_file`; strips trailing slash from coordinator URL; default URL changed to `https://localhost`; `build-windows-installer.ps1` now injects version via ldflags from git tag
+  - **Full installer workflow verified**: built `ArcVault-Setup-0.5.0-windows-amd64.exe`, ran on local machine, agent registered successfully ✅
 
 ✅ **Session 18** (June 6, 2026): Robocopy Output Fix + Agent Log File + Auto Token Regen — COMPLETE
   - **Fixed (data race)**: `streamRobocopy` / `streamRsync` used same `bytes.Buffer` for stdout (TeeReader) and stderr (cmd.Stderr) concurrently — separated into `stdoutBuf` / `stderrBuf`
@@ -225,3 +227,31 @@ cd C:\Projects\ArcVault2.0
 - ✅ JWT-based RBAC: Three roles (admin, operator, viewer)
 - ✅ User management: Create/list/delete/update roles with bcrypt password hashing
 - ✅ Agent groups: Organize agents by environment or function
+- ✅ Real-time job progress tracking via WebSocket
+- ✅ Robocopy/Rsync advanced flags (Mirror, MaxAge, MinSize, ExcludeFiles, etc.)
+- ✅ Job cancellation
+- ✅ Schedule builder UI (Interval/Daily/Weekly/Monthly/Custom, live cron preview)
+- ✅ Delete agents (admin only, 409 blocks if running jobs)
+- ✅ Credential profiles (AES-256-GCM encrypted, key in config.json, selectable per job)
+
+## Quick Setup
+
+**Per-agent token:**
+```bash
+coordinator create-agent-token agent-01
+# Copy token to agent-config.yaml as auth_token
+```
+
+**Service installation (Windows admin PowerShell):**
+```powershell
+coordinator install-service
+sc start arcvault-coordinator
+sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/3000/restart/3000
+```
+
+## Reference
+- **Project instructions & routing:** [CLAUDE.md](CLAUDE.md)
+- **Phase history & architecture:** [MEMORY.md](MEMORY.md)
+- **Current branch:** main
+- **Latest release:** v0.4.0 (Coordinator + Agent)
+- **Rollback:** CLI-only — `coordinator rollback` / `coordinator rollback-agent <id>`
