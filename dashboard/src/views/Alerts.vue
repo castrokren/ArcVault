@@ -331,7 +331,7 @@ h2 {
 .btn-delete {
   background: var(--bg-error) !important;
   color: var(--color-error) !important;
-  border: 1px solid rgba(255,77,109,0.3) !important;
+  border: 1px solid rgba(255,92,122,0.3) !important;
   padding: 0.25rem 0.75rem !important;
   font-size: 0.78rem !important;
 }

@@ -338,15 +338,15 @@ const rsyncCommand = computed(() => {
   border-radius: 3px;
   font-family: inherit;
   font-size: 0.95em;
-  background: var(--input-bg, #fff);
-  color: var(--text-primary, #333);
+  background: var(--bg-input);
+  color: var(--text-primary);
 }
 
 .form-group input[type='number']:focus,
 .form-group textarea:focus {
   outline: none;
-  border-color: var(--focus-color, #0066cc);
-  box-shadow: 0 0 0 2px var(--focus-shadow, rgba(0, 102, 204, 0.1));
+  border-color: var(--accent);
+  box-shadow: var(--glow-accent);
 }
 
 .form-group textarea {

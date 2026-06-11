@@ -159,7 +159,11 @@
           <button class="close-btn" @click="showLogsModal = false">✕</button>
         </div>
         <div class="modal-body">
-          <div v-if="logsLoading" class="loading">Loading logs...</div>
+          <div v-if="logsLoading" class="skeleton-group" aria-busy="true">
+            <div class="skeleton skeleton-line" style="width: 55%"></div>
+            <div class="skeleton skeleton-line" style="width: 80%"></div>
+            <div class="skeleton skeleton-line" style="width: 40%"></div>
+          </div>
           <div v-else-if="logsError" class="error">{{ logsError }}</div>
           <div v-else-if="!latestRun" class="empty">No runs found for this job.</div>
           <div v-else class="logs-container">

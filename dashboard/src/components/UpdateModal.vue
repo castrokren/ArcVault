@@ -263,7 +263,8 @@ onUnmounted(() => {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -271,10 +272,11 @@ onUnmounted(() => {
 }
 
 .modal {
-  background: var(--bg-card);
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
-  box-shadow: var(--shadow-lg);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-lg), var(--edge-highlight);
+  animation: modal-pop 0.18s ease-out;
   width: 500px;
   max-width: 95vw;
   max-height: 90vh;

@@ -7,7 +7,11 @@
       </button>
     </div>
 
-    <div v-if="loading" class="loading">Loading groups...</div>
+    <div v-if="loading" class="skeleton-group" aria-busy="true">
+      <div class="skeleton skeleton-line" style="width: 38%"></div>
+      <div class="skeleton skeleton-block"></div>
+      <div class="skeleton skeleton-line" style="width: 62%"></div>
+    </div>
 
     <div v-else-if="error" class="error-message">
       {{ error }}
@@ -520,7 +524,7 @@ async function confirmDelete() {
 .error-message {
   padding: 0.6rem 0.9rem;
   background: var(--bg-error);
-  border: 1px solid rgba(255,77,109,0.3);
+  border: 1px solid rgba(255,92,122,0.3);
   border-radius: 6px;
   color: var(--color-error);
   font-family: var(--font-body);
@@ -700,7 +704,7 @@ async function confirmDelete() {
 .btn-danger {
   background: var(--bg-error);
   color: var(--color-error);
-  border-color: rgba(255,77,109,0.35);
+  border-color: rgba(255,92,122,0.35);
 }
 .btn-danger:hover:not(:disabled) { background: var(--color-error); color: var(--bg-base); }
 

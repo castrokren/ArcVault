@@ -8,7 +8,11 @@
       </div>
     </div>
 
-    <div v-if="loading" class="loading">Loading...</div>
+    <div v-if="loading" class="skeleton-group" aria-busy="true">
+      <div class="skeleton skeleton-line" style="width: 38%"></div>
+      <div class="skeleton skeleton-block"></div>
+      <div class="skeleton skeleton-line" style="width: 62%"></div>
+    </div>
 
     <div v-else-if="subs.length === 0" class="empty">
       No sub-coordinators registered. Add one to get started.
@@ -28,12 +32,12 @@
       <tbody>
         <tr v-for="sub in subs" :key="sub.id">
           <td>{{ sub.name }}</td>
-          <td class="url-cell">{{ sub.url }}</td>
+          <td class="url-cell mono">{{ sub.url }}</td>
           <td>
             <span class="status-badge" :class="sub.status">{{ sub.status }}</span>
           </td>
           <td>{{ sub.last_seen ? fmtDate(sub.last_seen) : '—' }}</td>
-          <td>{{ sub.version || '—' }}</td>
+          <td class="mono">{{ sub.version || '—' }}</td>
           <td class="actions-cell">
             <button class="btn-sm" @click="openEdit(sub)">Edit</button>
             <button class="btn-sm" @click="forceSync(sub)" :disabled="syncing === sub.id">
@@ -327,7 +331,7 @@ onMounted(load)
   padding: 0.22rem 0.6rem;
   background: transparent;
   color: var(--color-error);
-  border: 1px solid rgba(255,77,109,0.4);
+  border: 1px solid rgba(255,92,122,0.4);
   border-radius: 4px;
   cursor: pointer;
   font-family: var(--font-body);

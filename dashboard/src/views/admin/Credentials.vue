@@ -7,7 +7,11 @@
       </button>
     </div>
 
-    <div v-if="loading" class="loading">Loading credentials...</div>
+    <div v-if="loading" class="skeleton-group" aria-busy="true">
+      <div class="skeleton skeleton-line" style="width: 38%"></div>
+      <div class="skeleton skeleton-block"></div>
+      <div class="skeleton skeleton-line" style="width: 62%"></div>
+    </div>
 
     <div v-else-if="error" class="error-message">
       {{ error }}

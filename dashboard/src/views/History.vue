@@ -14,6 +14,29 @@
     </div>
 
     <!-- ── Visualization panels (local only) ─────────────── -->
+    <!-- Stat cards (local only, fed from already-fetched runs) -->
+    <div v-if="!selectedSite && !tlLoading" class="history-stats history-section">
+      <div class="stat-card">
+        <span class="stat-label">Recent Runs</span>
+        <span class="stat-value">{{ statTotals.total }}</span>
+        <Sparkline class="stat-spark" :points="statBuckets.total" color="var(--accent-2)" />
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Completed</span>
+        <span class="stat-value">{{ statTotals.completed }}</span>
+        <Sparkline class="stat-spark" :points="statBuckets.completed" color="var(--color-success)" />
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Failed</span>
+        <span class="stat-value">{{ statTotals.failed }}</span>
+        <Sparkline class="stat-spark" :points="statBuckets.failed" color="var(--color-error)" />
+      </div>
+      <div class="stat-card">
+        <span class="stat-label">Success Rate</span>
+        <span class="stat-value">{{ statTotals.rate }}</span>
+      </div>
+    </div>
+
     <template v-if="!selectedSite">
       <JobTimeline
         :job-rows="timelineRows"
@@ -70,8 +93,10 @@
         </span>
       </div>
 
-      <div v-if="runsLoading" class="table-loading">
-        <span class="tl-loading-dot"></span> loading…
+      <div v-if="runsLoading" class="table-loading" aria-busy="true">
+        <div class="skeleton skeleton-line" style="width: 45%"></div>
+        <div class="skeleton skeleton-line" style="width: 70%"></div>
+        <div class="skeleton skeleton-line" style="width: 55%"></div>
       </div>
 
       <div v-else-if="displayRuns.length === 0" class="table-empty">
@@ -179,6 +204,7 @@
 import JobTimeline from '../components/JobTimeline.vue'
 import AgentRunChart from '../components/AgentRunChart.vue'
 import Pagination from '../components/Pagination.vue'
+import Sparkline from '../components/Sparkline.vue'
 import { getJobRuns, getFederationHistory } from '../api'
 import { fmtStaleTime } from '../utils/format.js'
 import { inject, ref } from 'vue'
@@ -186,7 +212,7 @@ import { useFederationLag } from '../composables/useFederationLag.js'
 
 export default {
   name: 'HistoryView',
-  components: { JobTimeline, AgentRunChart, Pagination },
+  components: { JobTimeline, AgentRunChart, Pagination, Sparkline },
 
   setup() {
     const selectedSite = inject('selectedSite', ref(null))
@@ -253,6 +279,37 @@ export default {
         const failCount = sorted.filter(r => r.status === 'failed').length
         return { ...row, runs: sorted, okCount, failCount }
       })
+    },
+
+    statBuckets() {
+      const days = 14
+      const buckets = {
+        total: Array(days).fill(0),
+        completed: Array(days).fill(0),
+        failed: Array(days).fill(0)
+      }
+      const now = Date.now()
+      for (const r of this.tlRuns) {
+        const age = Math.floor((now - new Date(r.started_at)) / 86400000)
+        if (age < 0 || age >= days) continue
+        const i = days - 1 - age
+        buckets.total[i]++
+        if (r.status === 'completed') buckets.completed[i]++
+        if (r.status === 'failed') buckets.failed[i]++
+      }
+      return buckets
+    },
+
+    statTotals() {
+      const completed = this.tlRuns.filter(r => r.status === 'completed').length
+      const failed = this.tlRuns.filter(r => r.status === 'failed').length
+      const done = completed + failed
+      return {
+        total: this.tlRuns.length,
+        completed,
+        failed,
+        rate: done ? Math.round((completed / done) * 100) + '%' : '—'
+      }
     },
 
     agentChartData() {
@@ -416,6 +473,12 @@ export default {
 
 .history-section { margin-bottom: 1.1rem; }
 
+.history-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.9rem;
+}
+
 .section-label {
   font-family: var(--font-body);
   font-size: 0.68rem;
@@ -551,7 +614,7 @@ export default {
 }
 .run-row:last-child td { border-bottom: none; }
 .run-row:hover td      { background: var(--bg-elevated); }
-.run-row.failed td     { background: rgba(255, 77, 109, 0.02); }
+.run-row.failed td     { background: rgba(255, 92, 122, 0.02); }
 
 .run-job               { color: var(--text-primary); font-weight: 500; }
 .run-agent             { color: var(--text-muted); font-size: 0.82rem; }

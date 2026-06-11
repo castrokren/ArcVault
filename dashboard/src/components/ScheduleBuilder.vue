@@ -385,7 +385,7 @@ function emitValue() {
   outline: none;
   transition: border-color 0.15s;
 }
-.sb-body select:focus { border-color: var(--accent-border); }
+.sb-body select:focus { border-color: var(--accent); box-shadow: var(--glow-accent); }
 
 /* ── Weekly day picker ──────────────────────────────────── */
 .sb-weekly {
@@ -439,7 +439,7 @@ function emitValue() {
   outline: none;
   transition: border-color 0.15s;
 }
-.sb-custom-input:focus { border-color: var(--accent-border); }
+.sb-custom-input:focus { border-color: var(--accent); box-shadow: var(--glow-accent); }
 
 /* ── Preview ────────────────────────────────────────────── */
 .sb-preview {

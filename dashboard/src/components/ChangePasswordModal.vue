@@ -185,7 +185,8 @@ function handleClose() {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -193,9 +194,10 @@ function handleClose() {
 }
 
 .modal-dialog {
-  background: var(--bg-card);
-  border: 1px solid var(--border-default);
-  border-radius: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  animation: modal-pop 0.18s ease-out;
   width: 100%;
   max-width: 450px;
   box-shadow: var(--shadow-lg);
@@ -275,8 +277,8 @@ function handleClose() {
 
 .form-group input[type='password']:focus {
   outline: none;
-  border-color: var(--accent-border);
-  box-shadow: 0 0 0 3px var(--accent-dim);
+  border-color: var(--accent);
+  box-shadow: var(--glow-accent);
 }
 
 .form-group input:disabled {
@@ -310,7 +312,7 @@ function handleClose() {
 .error-message {
   padding: 0.65rem 0.85rem;
   background: var(--bg-error);
-  border: 1px solid rgba(255, 77, 109, 0.3);
+  border: 1px solid rgba(255, 92, 122, 0.3);
   border-radius: 5px;
   color: var(--color-error);
   font-family: var(--font-body);

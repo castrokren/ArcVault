@@ -1,10 +1,24 @@
 <template>
   <div class="login-page">
 
-    <!-- Atmospheric background -->
-    <div class="bg-orb bg-orb--a" aria-hidden="true"></div>
-    <div class="bg-orb bg-orb--b" aria-hidden="true"></div>
-    <div class="bg-grid" aria-hidden="true"></div>
+    <!-- Orbit scene background -->
+    <div class="orbit-scene" aria-hidden="true">
+      <svg viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
+        <g class="orbit-rings">
+          <circle cx="400" cy="400" r="180" />
+          <circle cx="400" cy="400" r="260" />
+          <circle cx="400" cy="400" r="340" />
+        </g>
+        <g class="orbit-cw">
+          <path class="arc arc-accent" d="M 660 400 A 260 260 0 0 1 400 660" />
+          <circle class="dot dot-accent" cx="660" cy="400" r="4" />
+        </g>
+        <g class="orbit-ccw">
+          <path class="arc arc-accent2" d="M 400 220 A 180 180 0 0 0 220 400" />
+          <circle class="dot dot-accent2" cx="400" cy="220" r="3.5" />
+        </g>
+      </svg>
+    </div>
 
     <div class="login-shell">
 
@@ -235,51 +249,57 @@ async function handleChangePassword() {
   padding: 2rem;
 }
 
-/* ── Background atmosphere ───────────────────────────────── */
-.bg-orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  pointer-events: none;
-}
-
-.bg-orb--a {
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(0, 212, 170, 0.12) 0%, transparent 70%);
-  top: -100px;
-  left: -100px;
-  animation: orb-drift-a 12s ease-in-out infinite alternate;
-}
-
-.bg-orb--b {
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, rgba(91, 141, 238, 0.10) 0%, transparent 70%);
-  bottom: -80px;
-  right: -60px;
-  animation: orb-drift-b 15s ease-in-out infinite alternate;
-}
-
-@keyframes orb-drift-a {
-  from { transform: translate(0, 0) scale(1); }
-  to   { transform: translate(60px, 40px) scale(1.1); }
-}
-
-@keyframes orb-drift-b {
-  from { transform: translate(0, 0) scale(1); }
-  to   { transform: translate(-40px, -60px) scale(0.9); }
-}
-
-/* Dot grid overlay */
-.bg-grid {
+/* ── Orbit scene (concentric rings + counter-rotating arcs) ── */
+.orbit-scene {
   position: absolute;
   inset: 0;
-  background-image: radial-gradient(circle, var(--border-subtle) 1px, transparent 1px);
-  background-size: 28px 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
-  mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 20%, transparent 80%);
-  -webkit-mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 20%, transparent 80%);
+}
+
+.orbit-scene svg {
+  width: min(150vmin, 920px);
+  height: min(150vmin, 920px);
+  flex-shrink: 0;
+}
+
+.orbit-rings circle {
+  fill: none;
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+}
+
+.orbit-cw,
+.orbit-ccw {
+  transform-origin: 400px 400px;
+}
+
+.orbit-cw  { animation: orbit-spin 75s linear infinite; }
+.orbit-ccw { animation: orbit-spin 90s linear infinite reverse; }
+
+@keyframes orbit-spin {
+  to { transform: rotate(360deg); }
+}
+
+.arc {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.arc-accent  { stroke: var(--accent);   opacity: 0.45; }
+.arc-accent2 { stroke: var(--accent-2); opacity: 0.45; }
+
+.dot-accent  { fill: var(--accent); }
+.dot-accent2 { fill: var(--accent-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .orbit-cw,
+  .orbit-ccw {
+    animation: none;
+  }
 }
 
 /* ── Content ─────────────────────────────────────────────── */
@@ -430,7 +450,7 @@ async function handleChangePassword() {
 .input-wrap input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-dim);
+  box-shadow: var(--glow-accent);
 }
 
 .input-wrap input:disabled {
@@ -445,7 +465,7 @@ async function handleChangePassword() {
   gap: 0.4rem;
   padding: 0.6rem 0.85rem;
   background: var(--bg-error);
-  border: 1px solid rgba(255, 77, 109, 0.3);
+  border: 1px solid rgba(255, 92, 122, 0.3);
   border-radius: 6px;
   color: var(--color-error);
   font-family: var(--font-body);
@@ -462,9 +482,9 @@ async function handleChangePassword() {
   padding: 0.65rem 1rem;
   margin-top: 0.25rem;
   background: var(--accent);
-  color: var(--bg-base);
+  color: var(--text-inverse);
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   font-family: var(--font-display);
   font-size: 0.9rem;
   font-weight: 700;
@@ -513,13 +533,11 @@ async function handleChangePassword() {
 }
 
 /* ── Light theme adjustments ─────────────────────────────── */
-[data-theme="light"] .bg-orb--a {
-  background: radial-gradient(circle, rgba(0, 168, 135, 0.08) 0%, transparent 70%);
+[data-theme="light"] .orbit-rings circle {
+  stroke: var(--border-default);
 }
-[data-theme="light"] .bg-orb--b {
-  background: radial-gradient(circle, rgba(59, 111, 212, 0.06) 0%, transparent 70%);
-}
-[data-theme="light"] .bg-grid {
-  background-image: radial-gradient(circle, var(--border-default) 1px, transparent 1px);
+[data-theme="light"] .arc-accent,
+[data-theme="light"] .arc-accent2 {
+  opacity: 0.35;
 }
 </style>

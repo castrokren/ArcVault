@@ -91,7 +91,11 @@
     <UpdateBanner v-if="updateStore.available" :onUpdate="showUpdateModal" />
 
     <main>
-      <router-view :lastEvent="lastEvent" />
+      <router-view v-slot="{ Component }">
+        <Transition name="view" mode="out-in">
+          <component :is="Component" :lastEvent="lastEvent" />
+        </Transition>
+      </router-view>
     </main>
 
     <UpdateModal :isOpen="updateModalOpen" :lastEvent="lastEvent" @close="updateModalOpen = false" />
@@ -243,14 +247,15 @@ async function handleLogout() {
 }
 
 .nav-version {
-  font-family: var(--font-body);
-  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
   font-weight: 500;
   color: var(--text-muted);
-  opacity: 0.7;
-  margin-left: 0.2rem;
-  align-self: flex-end;
-  padding-bottom: 0.05rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  margin-left: 0.3rem;
 }
 
 .nav-divider {
@@ -270,6 +275,7 @@ async function handleLogout() {
 }
 
 .nav-links a {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.35rem;
@@ -301,8 +307,25 @@ async function handleLogout() {
 
 .nav-links a.router-link-active {
   color: var(--text-primary);
-  background: var(--bg-elevated);
   font-weight: 600;
+}
+
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  left: 0.65rem;
+  right: 0.65rem;
+  bottom: -3px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.2s ease;
+}
+
+.nav-links a.router-link-active::after {
+  transform: scaleX(1);
 }
 
 .nav-links a.router-link-active svg {
@@ -344,7 +367,7 @@ async function handleLogout() {
   top: calc(100% + 4px);
   left: 0;
   background: var(--bg-surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-default);
   border-radius: 7px;
   padding: 0.3rem;
   min-width: 130px;
