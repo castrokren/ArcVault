@@ -287,7 +287,7 @@ func (s *Server) registerRoutes() {
 	// Admin utility endpoints
 	s.router.HandleFunc("GET /api/admin/token", s.adminRoute(s.handleGetAdminToken))
 	s.router.HandleFunc("GET /api/admin/bootstrap.ps1", s.adminRoute(s.handleBootstrapScript))
-	s.router.HandleFunc("GET /api/admin/installer", s.adminRoute(s.handleDownloadInstaller))
+	s.router.HandleFunc("GET /downloads/installer", s.adminRoute(s.handleDownloadInstaller))
 
 	// Downloads (agent.exe auth: agent token OR admin token)
 	s.router.HandleFunc("GET /downloads/agent.exe", s.agentOrAdminRoute(s.handleDownloadAgent))

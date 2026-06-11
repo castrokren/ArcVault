@@ -135,35 +135,46 @@ Write-Host "  Copied binaries -> installer\windows\" -ForegroundColor Green
 Write-Host ""
 Write-Host "Step 7: Starting services..." -ForegroundColor Yellow
 
-# Allow self-signed cert for localhost health checks (PS 5.1 compatible)
-if ($PSVersionTable.PSVersion.Major -lt 7) {
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-} 
+# Derive coordinator URL from its actual config — never hardcode protocol or port
+$coordCfgPath = "C:\ArcVault\config.json"
+$coordPort = 8080
+$coordScheme = "http"
+if (Test-Path $coordCfgPath) {
+    $coordCfg = Get-Content $coordCfgPath -Raw | ConvertFrom-Json
+    if ($coordCfg.port) { $coordPort = $coordCfg.port }
+    if ($coordCfg.cert_file -and $coordCfg.key_file) { $coordScheme = "https" }
+}
+$coordBase = "${coordScheme}://localhost:${coordPort}"
+Write-Host "  Coordinator URL: $coordBase" -ForegroundColor Cyan
 
-# Verify credential_key is present in config.json - warn if missing
-$coordConfig = "C:\ArcVault\config.json"
-if (Test-Path $coordConfig) {
-    $cfg = Get-Content $coordConfig | ConvertFrom-Json
-    if (-not $cfg.credential_key) {
-        Write-Host ""
-        Write-Host "  WARNING: credential_key not found in C:\ArcVault\config.json!" -ForegroundColor Red
-        Write-Host "  Credential profiles will not work. Add it manually or re-run the installer." -ForegroundColor Yellow
-        Write-Host ""
-    }
+# PS 5.1 compatible TLS bypass for self-signed certs
+if ($coordScheme -eq "https" -and $PSVersionTable.PSVersion.Major -lt 7) {
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 }
 
 sc.exe start arcvault-coordinator
-Start-Sleep -Seconds 3
 
 # Re-enable SCM auto-restart now that the new binary is in place
 sc.exe failure arcvault-coordinator reset= 86400 actions= restart/3000/restart/3000/restart/3000 2>$null
 Write-Host "  SCM failure recovery re-enabled." -ForegroundColor Green
 
-try {
-    $health = Invoke-RestMethod -Uri "https://localhost:8080/health" -TimeoutSec 5
-    Write-Host "  Coordinator health: $($health.status)" -ForegroundColor Green
-} catch {
-    Write-Host "  ERROR: Coordinator not responding." -ForegroundColor Red
+# Retry health check — coordinator may need several seconds to initialize
+Write-Host "  Waiting for coordinator to become healthy..."
+$healthy = $false
+for ($i = 1; $i -le 20; $i++) {
+    Start-Sleep -Seconds 2
+    try {
+        $health = Invoke-RestMethod -Uri "$coordBase/health" -TimeoutSec 3
+        Write-Host "  Coordinator healthy (${i}): $($health.status)" -ForegroundColor Green
+        $healthy = $true
+        break
+    } catch {
+        if ($i % 5 -eq 0) { Write-Host "  Still waiting... ($($i*2)s) — $_" }
+    }
+}
+if (-not $healthy) {
+    Write-Host "  ERROR: Coordinator did not respond after 40s." -ForegroundColor Red
+    Write-Host "  Run directly to see the error: C:\ArcVault\coordinator.exe start" -ForegroundColor Yellow
     exit 1
 }
 
@@ -224,4 +235,4 @@ if ($agents -and $agents.data.Count -gt 0) {
 }
 
 Write-Host ""
-Write-Host "=== Done! Open https://localhost:8080 in your browser. ===" -ForegroundColor Cyan
+Write-Host "=== Done! Open $coordBase in your browser. ===" -ForegroundColor Cyan
