@@ -8,3 +8,10 @@ test-results.txt
 installer-inputs.txt
 build/
 deployment/
+
+# Secrets and credentials — never commit
+*.pem
+*.key
+config.json
+.env
+.env.local
