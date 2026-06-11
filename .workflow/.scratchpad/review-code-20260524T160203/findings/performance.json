@@ -1,0 +1,44 @@
+{
+  "dimension": "Performance",
+  "findings": [
+    {
+      "id": "PERF-001",
+      "severity": "High",
+      "category": "blocking-io",
+      "file": "agent/runner/runner.go",
+      "lines": [99, 152, 178],
+      "title": "HTTP client requests have no timeout",
+      "description": "http.DefaultClient has no timeout configured. Long-running network operations (e.g., hung TCP connection) will block the runner indefinitely, blocking the entire polling loop.",
+      "scenario": "If coordinator becomes unresponsive, runner goroutine hangs forever, never processes new jobs.",
+      "fix": "Create custom http.Client with timeouts:\n```go\nclient := &http.Client{\n  Timeout: 30 * time.Second,\n}\n```",
+      "impact": "Critical for reliability. Runner can become unresponsive if coordinator has network issues.",
+      "recommendation": "Make timeout configurable via Config struct."
+    },
+    {
+      "id": "PERF-002",
+      "severity": "Medium",
+      "category": "inefficient-algorithm",
+      "file": "agent/runner/runner.go",
+      "lines": [55, 85],
+      "title": "No connection pooling or reuse optimization",
+      "description": "Each API call creates a new HTTP connection. Under high job load, this creates TCP connection churn.",
+      "currentBehavior": "Each call to fetchPendingJobs(), updateStatus(), postResult() uses default client which does maintain connection pool, but it's not optimized.",
+      "fix": "Create a custom http.Client with transport configuration in New() function.",
+      "impact": "Increased latency and resource usage under high load.",
+      "example": "transport := &http.Transport{MaxIdleConns: 10, IdleConnTimeout: 90 * time.Second}"
+    },
+    {
+      "id": "PERF-003",
+      "severity": "Medium",
+      "category": "complexity",
+      "file": "agent/runner/runner.go",
+      "lines": [85, 86],
+      "title": "No batching of job processing",
+      "description": "Each job is processed synchronously in sequence. If job execution is slow, it blocks polling for new jobs.",
+      "currentApproach": "for _, job := range jobs { r.process(job) }",
+      "consideration": "Depends on use case - if job execution is slow, should process in parallel goroutines.",
+      "fix": "Consider processing jobs concurrently with goroutine pool or worker pattern.",
+      "impact": "If executor() is slow, job throughput is limited."
+    }
+  ]
+}

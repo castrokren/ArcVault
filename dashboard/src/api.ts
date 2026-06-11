@@ -273,6 +273,46 @@ export const getAlertHistory = () =>
 export const retryAlert = (id: string) =>
   request('POST', `/api/alert-history/${id}/retry`)
 
+// --- Installer Download ---
+export async function downloadInstaller() {
+  const token = getToken()
+  if (!token) {
+    throw new Error('No authentication token')
+  }
+
+  const res = await fetch(`${BASE_URL}/api/admin/installer`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  })
+
+  if (res.status === 401) {
+    handle401()
+    throw new Error('Session expired. Please log in again.')
+  }
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Failed to download installer: ${res.status} ${text}`)
+  }
+
+  // Extract filename from Content-Disposition header
+  const disposition = res.headers.get('Content-Disposition') || ''
+  const match = disposition.match(/filename=(.+)$/)
+  const filename = match ? match[1] : 'ArcVault-Setup.exe'
+
+  const blob = await res.blob()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 // --- Agent Bootstrap ---
 export async function downloadBootstrapScript() {
   const token = getToken()

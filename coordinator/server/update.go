@@ -181,6 +181,25 @@ func performUpdate(currentVersion string, s *Server) error {
 		return err
 	}
 
+	// Verify checksum
+	progress(updater.ProgressEvent{
+		Type:    "update_progress",
+		Step:    "verifying",
+		Pct:     65,
+		Message: "Verifying checksum...",
+	})
+
+	if err := updater.VerifyChecksum(info.ChecksumURL, filepath.Base(info.AssetURL), tmpPath); err != nil {
+		os.Remove(tmpPath)
+		progress(updater.ProgressEvent{
+			Type:    "update_progress",
+			Step:    "error",
+			Pct:     -1,
+			Message: fmt.Sprintf("checksum verification failed: %s", err.Error()),
+		})
+		return err
+	}
+
 	// Verify binary
 	progress(updater.ProgressEvent{
 		Type:    "update_progress",

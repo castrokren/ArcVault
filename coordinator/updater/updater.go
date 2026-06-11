@@ -2,6 +2,8 @@ package updater
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -20,6 +22,7 @@ type UpdateInfo struct {
 	UpdateAvailable bool   `json:"update_available"`
 	ReleaseURL      string `json:"release_url"`
 	AssetURL        string `json:"asset_url"`
+	ChecksumURL     string `json:"checksum_url"` // URL to SHA256SUMS file
 }
 
 type ProgressEvent struct {
@@ -74,6 +77,15 @@ func CheckLatestRelease(currentVersion string) (*UpdateInfo, error) {
 		return nil, err
 	}
 
+	// Find SHA256SUMS file
+	checksumURL := ""
+	for _, asset := range release.Assets {
+		if strings.EqualFold(asset.Name, "SHA256SUMS") || strings.EqualFold(asset.Name, "sha256sums.txt") {
+			checksumURL = asset.DownloadURL
+			break
+		}
+	}
+
 	log.Printf("GitHub release check: current=%s latest=%s tag=%s asset_url=%s assets=%d", currentVersion, latestVersion, release.TagName, assetURL, len(release.Assets))
 
 	updateAvailable := compareVersions(currentVersion, latestVersion) < 0
@@ -84,6 +96,7 @@ func CheckLatestRelease(currentVersion string) (*UpdateInfo, error) {
 		UpdateAvailable: updateAvailable,
 		ReleaseURL:      release.HTMLURL,
 		AssetURL:        assetURL,
+		ChecksumURL:     checksumURL,
 	}, nil
 }
 
@@ -212,6 +225,59 @@ func DownloadBinary(assetURL, destPath string, progress func(pct int)) error {
 	}
 
 	progress(100)
+	return nil
+}
+
+// VerifyChecksum downloads the SHA256SUMS file from checksumURL and verifies
+// that the file at localPath matches the expected hash for assetName.
+// Returns nil if the checksum matches or if checksumURL is empty (skips check).
+func VerifyChecksum(checksumURL, assetName, localPath string) error {
+	if checksumURL == "" {
+		log.Printf("Updater: no checksum URL available, skipping integrity check")
+		return nil
+	}
+
+	resp, err := http.Get(checksumURL)
+	if err != nil {
+		return fmt.Errorf("failed to download checksums: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read checksums: %w", err)
+	}
+
+	// Parse "hash  filename" lines
+	var expected string
+	for _, line := range strings.Split(string(body), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 2 && strings.EqualFold(fields[1], assetName) {
+			expected = strings.ToLower(fields[0])
+			break
+		}
+	}
+	if expected == "" {
+		return fmt.Errorf("checksum for %s not found in SHA256SUMS", assetName)
+	}
+
+	// Hash the local file
+	f, err := os.Open(localPath)
+	if err != nil {
+		return fmt.Errorf("failed to open downloaded file: %w", err)
+	}
+	defer f.Close()
+
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return fmt.Errorf("failed to hash file: %w", err)
+	}
+	actual := hex.EncodeToString(h.Sum(nil))
+
+	if actual != expected {
+		return fmt.Errorf("checksum mismatch: expected %s, got %s", expected, actual)
+	}
+	log.Printf("Updater: checksum verified OK for %s (%s)", assetName, actual[:12]+"...")
 	return nil
 }
 

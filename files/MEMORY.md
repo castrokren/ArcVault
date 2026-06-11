@@ -1,0 +1,127 @@
+# Memory Index
+
+**Updated:** June 3, 2026 | **Current Version:** v0.2.4
+
+## Current Status
+
+✅ **v0.2.4 Released & Running** — Bug fixes session complete
+  - Nav bar hidden when logged out
+  - Agent Update badge false positive fixed
+  - Agent version now injected via ldflags, --version flag added
+  - rebuild-and-restart.ps1 fixed (deploy paths, SCM recovery, ldflags)
+  - SyncFlagsBuilder wired into Jobs form (was imported but never rendered)
+  - Version badge added to nav brand (shows updateStore.current)
+  - build.ps1 created: full build pipeline — Vue → copy dist → Go build → deploy
+  - Root cause of stale dashboard fixed: dist must be copied to coordinator/static/dist before Go build
+
+🎯 **Next:** Begin Phase 22 (scope TBD)
+
+## Memory Files
+
+- [Phase 22 Complete](phase22_complete.md) — Full integration testing suite, stress tests, agent disconnect recovery validation
+- [History Tab Fix](history_tab_fix.md) — Bug fix for Agent Run Breakdown chart
+- [Phase 21a-4 Implementation](phase21a4_implementation.md) — Jobs stuck in pending hot fix
+- [Phase 21a-4 Lessons Learned](phase21a4_lessons_learned.md) — Debugging insights from hot fix
+- [JWT Token Refresh Fix (Session 7)](#jwt-token-refresh-fix) — Update endpoints returning 401
+- [Windows Self-Update Fix (Session 8)](#windows-self-update-fix) — Full update flow fix for Windows service mode
+- [Asset Resolution Fix (Session 9)](#asset-resolution-fix) — resolveAsset fallback for plain coordinator.exe
+
+## Quick Reference
+
+### Latest Issues Fixed
+
+| Date | Issue | Root Cause | Fix |
+|------|-------|-----------|-----|
+| May 29 | History tab blank | Missing API parameters + no backend filtering + missing agent_id | Added after/search/status params to API, fixed JOIN, updated status field |
+| May 29 | Job status stuck as running | Status field not updated on completion | Updated job_results.go to set status based on exit_code |
+| June 2 | Update endpoints return 401 | UpdateModal using api.js refreshToken() which doesn't save token | Changed to useAuth().refreshToken() which persists token |
+| June 3 | Coordinator self-update broken | Stale dashboard + missing --version + ARCVAULT_SERVICE not set + can't self-restart | Copy dist before build, set env var in RunService, os.Exit(1) + SCM recovery |
+| June 3 | Nav bar visible when logged out | `<header>` had no auth guard | Added `v-if="auth.isAuthenticated.value"` to header in App.vue |
+| June 3 | Agent Update badge false positive | `updateAvailable()` reused coordinator updateStore.available + latest | Compare agent.version against updateStore.current instead |
+| June 3 | Agent version hardcoded to 0.1.0 | Version read from config file with hardcoded fallback | Moved to ldflags `-X main.Version`, added `--version` flag, removed from config |
+| June 3 | rebuild-and-restart.ps1 deploying to wrong path | Deploy target was C:\ArcVault\ not installer\windows\ | Fixed paths, added SCM disable/re-enable, added ldflags version injection |
+| June 3 | Update button missing after update | v0.2.3 not yet released; resolveAsset couldn't find coordinator.exe asset | Released v0.2.3, added plain name fallback to resolveAsset() |
+| June 3 | SyncFlagsBuilder missing from Jobs form | Component imported but never placed in template; form-grid CSS broke layout | Added outside form-grid in sync-flags-row wrapper |
+| June 3 | Stale dashboard after rebuild | coordinator/static/dist had accumulated all previous builds | build.ps1 clears and recopies dist before Go build |
+
+### Windows Self-Update Architecture
+
+**How it works:**
+1. Frontend calls POST /api/update/apply with JWT token
+2. Backend downloads release binary from GitHub to coordinator.download.tmp
+3. VerifyBinary() runs the binary with --version — must return non-empty string
+4. StageBinary() renames tmp → coordinator.new
+5. ExecuteUpdate() checks IsServiceMode() — requires ARCVAULT_SERVICE=1 env var
+6. ApplyUpdate() (Windows): renames coordinator.exe → coordinator.exe.old, renames coordinator.new → coordinator.exe
+7. os.Exit(1) triggers SCM failure recovery → service restarts with new binary
+
+**Critical requirements:**
+- Release binary MUST support `--version` flag
+- `ARCVAULT_SERVICE=1` must be set in RunService() before svc.Run()
+- SCM failure recovery must be configured after every fresh install:
+  `sc.exe failure arcvault-coordinator reset=86400 actions=restart/3000/restart/3000/restart/3000`
+- Dashboard dist must be copied to coordinator/static/dist before building coordinator binary
+
+**Asset naming:**
+- Preferred: `coordinator_windows_amd64.exe` (platform-specific)
+- Fallback: `coordinator.exe` (plain name — added Session 9)
+- resolveAsset() in coordinator/updater/updater.go handles both
+
+**Files involved:**
+- `coordinator/service/runner_windows.go` — sets ARCVAULT_SERVICE=1
+- `coordinator/updater/updater_windows.go` — ApplyUpdate with rename+exit
+- `coordinator/updater/updater.go` — VerifyBinary, ExecuteUpdate, IsServiceMode, resolveAsset
+- `coordinator/server/update.go` — handleApplyUpdate, performUpdate
+
+### Windows Service Installation Notes
+
+**Services created by setup wizard:**
+- `arcvault-coordinator` → `C:\Projects\ArcVault2.0\installer\windows\coordinator.exe run-service`
+- `arcvault-agent` → `C:\Projects\ArcVault2.0\installer\windows\agent.exe run-service`
+- Config files in same directory: `config.json` (coordinator), `agent-config.yaml` (agent)
+- Config paths are relative to exe directory via `filepath.Join(filepath.Dir(exe), "config.json")`
+
+**Token mismatch lesson (Session 6):**
+- Agent token must be valid in coordinator's database
+- Regenerate using coordinator binary from installer directory, not project root
+- Mismatched tokens → agent 401 → service exit code 1067
+
+### Production Readiness
+
+ArcVault v0.2.4 is **RELEASE READY**:
+- ✅ Coordinator self-update working end-to-end on Windows
+- ✅ Asset resolution works for both coordinator_windows_amd64.exe and coordinator.exe naming
+- ✅ Dashboard 401 fix deployed
+- ✅ Service naming standardized (arcvault-coordinator, arcvault-agent)
+- ✅ Agent service startup verified (DESKTOP-EE77F38 online)
+- ⚠️ SCM failure recovery must be manually configured after fresh install (not automated yet)
+
+---
+
+## Asset Resolution Fix (Session 9, June 3, 2026)
+
+**Issue:** Update button disappeared after coordinator self-updated; running v0.2.2, GitHub showed v0.2.2 as latest because v0.2.3 hadn't been released yet.
+
+**Secondary bug found:** resolveAsset() only matched platform-specific names (coordinator_windows_amd64.exe). GitHub release had asset named coordinator.exe — would cause silent failure on future updates.
+
+**Fix:** Added plain name fallback loop to resolveAsset() in coordinator/updater/updater.go. Checks coordinator_windows_amd64.exe first, falls back to coordinator.exe.
+
+**Result:** v0.2.3 released with fix, service running clean, update flow verified end-to-end.
+
+---
+
+## JWT Token Refresh Fix (Session 7, June 2, 2026)
+
+**Issue:** Update endpoints returning 401 — UpdateModal/AgentUpdateModal using api.js refreshToken() which doesn't persist token to localStorage. Fixed by switching to useAuth().refreshToken(). Commit: c3ab937.
+
+---
+
+## Windows Self-Update Fix (Session 8, June 3, 2026)
+
+Four cascading issues fixed: stale dashboard embedding, missing --version flag in release binary, ARCVAULT_SERVICE env var never set, service can't self-restart via net start. Solutions: copy dist before build, --version in main.go switch, os.Setenv in RunService(), os.Exit(1) + SCM recovery actions.
+
+**Lesson:** Never try to restart a Windows service from within its own process. Use os.Exit(1) + SCM failure recovery.
+
+---
+
+**See also:** C:\Projects\ArcVault2.0\CONTEXT.md for full version history

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -136,8 +137,15 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	if len(token) > 7 && token[:7] == "Bearer " {
 		token = token[7:]
 	}
+	// Note: ?token= query param removed — tokens must be in Authorization header.
+	// Try Sec-WebSocket-Protocol header as fallback (for browser clients).
 	if token == "" {
-		token = r.URL.Query().Get("token")
+		for _, proto := range r.Header["Sec-Websocket-Protocol"] {
+			if strings.HasPrefix(proto, "bearer.") {
+				token = strings.TrimPrefix(proto, "bearer.")
+				break
+			}
+		}
 	}
 	// Accept admin token OR any valid JWT (issued after Phase 15 login).
 	if token != s.cfg.AdminToken {
@@ -147,7 +155,15 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	// Echo back the bearer.* subprotocol so browsers accept the handshake.
+	var upgradeHeader http.Header
+	for _, proto := range r.Header["Sec-Websocket-Protocol"] {
+		if strings.HasPrefix(proto, "bearer.") {
+			upgradeHeader = http.Header{"Sec-Websocket-Protocol": []string{proto}}
+			break
+		}
+	}
+	conn, err := upgrader.Upgrade(w, r, upgradeHeader)
 	if err != nil {
 		log.Printf("WS upgrade failed: %v", err)
 		return
@@ -172,15 +188,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 // handleAgentWS upgrades an agent's connection, registers it by agent ID,
 // and relays inbound update_progress events to dashboard clients.
-// Auth: agent token (from Authorization header or ?token= query param).
+// Auth: agent token (from Authorization header only).
 func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("Authorization")
 	if len(token) > 7 && token[:7] == "Bearer " {
 		token = token[7:]
 	}
-	if token == "" {
-		token = r.URL.Query().Get("token")
-	}
+	// Note: ?token= query param removed — tokens must be in Authorization header.
 
 	// Accept both admin token and valid agent tokens.
 	isAdmin := token == s.cfg.AdminToken

@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/time/rate"
 
 	"arcvault/coordinator/business"
 )
@@ -43,7 +45,7 @@ type RefreshTokenResponse struct {
 type UserClaimsCtxKey struct{}
 
 // GenerateJWT creates a signed JWT token with the given claims.
-// Token expires in 24 hours.
+// Token expires in 4 hours.
 func GenerateJWT(userID int, username, role string, mustChange bool, secret string) (string, error) {
 	claims := &JWTClaims{
 		UserID:     userID,
@@ -52,7 +54,7 @@ func GenerateJWT(userID int, username, role string, mustChange bool, secret stri
 		MustChange: mustChange,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   fmt.Sprintf("%d", userID),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(4 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
@@ -95,6 +97,15 @@ func (s *Server) JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 			claims, err := ValidateJWT(tokenString, s.cfg.JWTSecret)
 			if err == nil {
+				// Check token revocation
+				if claims.ID != "" {
+					if revoked, err := s.db.IsTokenRevoked(claims.ID); err == nil && revoked {
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusUnauthorized)
+						json.NewEncoder(w).Encode(map[string]string{"error": "token has been revoked"})
+						return
+					}
+				}
 				// JWT is valid, store claims in context
 				ctx := context.WithValue(r.Context(), UserClaimsCtxKey{}, claims)
 				next(w, r.WithContext(ctx))
@@ -208,6 +219,81 @@ func GetUserClaims(r *http.Request) *JWTClaims {
 	return claims
 }
 
+// loginAllowed checks per-IP rate limit for login attempts.
+// Returns false (and writes 429) if the IP is rate-limited or locked out.
+// Call this at the top of handleLogin before any bcrypt work.
+func (s *Server) loginAllowed(w http.ResponseWriter, r *http.Request) bool {
+	ip := r.RemoteAddr
+	// Strip port
+	if idx := strings.LastIndex(ip, ":"); idx != -1 {
+		ip = ip[:idx]
+	}
+
+	s.loginLimiterMu.Lock()
+	entry, ok := s.loginLimiters[ip]
+	if !ok {
+		// 5 attempts per minute, burst of 5
+		entry = &loginRateLimiter{
+			limiter: rate.NewLimiter(rate.Every(time.Minute/5), 5),
+		}
+		s.loginLimiters[ip] = entry
+	}
+
+	// Check lockout (10-minute lockout after 10 consecutive failures)
+	if entry.lockedAt != nil {
+		if time.Since(*entry.lockedAt) < 10*time.Minute {
+			s.loginLimiterMu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "too many failed attempts, try again later"})
+			return false
+		}
+		// Lockout expired — reset
+		entry.lockedAt = nil
+		entry.failures = 0
+	}
+	s.loginLimiterMu.Unlock()
+
+	if !entry.limiter.Allow() {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		json.NewEncoder(w).Encode(ErrorResponse{Error: "too many requests"})
+		return false
+	}
+	return true
+}
+
+// recordLoginFailure increments the failure counter for an IP and locks it out at 10.
+func (s *Server) recordLoginFailure(r *http.Request) {
+	ip := r.RemoteAddr
+	if idx := strings.LastIndex(ip, ":"); idx != -1 {
+		ip = ip[:idx]
+	}
+	s.loginLimiterMu.Lock()
+	defer s.loginLimiterMu.Unlock()
+	if entry, ok := s.loginLimiters[ip]; ok {
+		entry.failures++
+		if entry.failures >= 10 {
+			now := time.Now()
+			entry.lockedAt = &now
+		}
+	}
+}
+
+// recordLoginSuccess resets the failure counter for an IP on successful login.
+func (s *Server) recordLoginSuccess(r *http.Request) {
+	ip := r.RemoteAddr
+	if idx := strings.LastIndex(ip, ":"); idx != -1 {
+		ip = ip[:idx]
+	}
+	s.loginLimiterMu.Lock()
+	defer s.loginLimiterMu.Unlock()
+	if entry, ok := s.loginLimiters[ip]; ok {
+		entry.failures = 0
+		entry.lockedAt = nil
+	}
+}
+
 // === Auth Endpoint Handlers ===
 
 // handleLogin handles POST /api/auth/login
@@ -216,6 +302,11 @@ func GetUserClaims(r *http.Request) *JWTClaims {
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Rate limit before any bcrypt work
+	if !s.loginAllowed(w, r) {
 		return
 	}
 
@@ -239,12 +330,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Use service to validate credentials
 	user, err := s.userService.ValidateCredentials(req.Username, req.Password)
 	if err != nil {
+		s.recordLoginFailure(r)
+		log.Printf("Login failed for username %q from %s", req.Username, r.RemoteAddr)
 		// Return generic error to prevent user enumeration
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid username or password"})
 		return
 	}
+	s.recordLoginSuccess(r)
 
 	// Generate JWT token
 	token, err := GenerateJWT(user.ID, user.Username, user.Role, user.MustChangePassword, s.cfg.JWTSecret)
@@ -262,7 +356,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		"username":              user.Username,
 		"role":                  user.Role,
 		"token":                 token,
-		"expires_in":            86400,
+		"expires_in":            14400,
 		"must_change_password":  user.MustChangePassword,
 	})
 }
@@ -273,6 +367,15 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	claims := GetUserClaims(r)
+	if claims != nil && claims.ID != "" {
+		expiry := time.Now().Add(4 * time.Hour) // matches token lifetime
+		if claims.ExpiresAt != nil {
+			expiry = claims.ExpiresAt.Time
+		}
+		_ = s.db.RevokeToken(claims.ID, expiry)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

@@ -196,9 +196,19 @@ func (r *Runner) process(job Job) {
 		return
 	}
 
-	// 3. execute the job
+	// 3. execute the job — wrapped in recover so deferred cleanup (credentials) always runs
 	log.Printf("Runner: executing job %s (src=%q dst=%q)", job.ID, job.SourcePath, job.DestPath)
-	exitCode, output := r.executor(job, Noop)
+	exitCode := 1
+	output := ""
+	func() {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("Runner: panic executing job %s: %v", job.ID, rec)
+				output = fmt.Sprintf("executor panic: %v", rec)
+			}
+		}()
+		exitCode, output = r.executor(job, Noop)
+	}()
 	log.Printf("Runner: job %s finished — exit code %d, output length %d bytes", job.ID, exitCode, len(output))
 	if len(output) > 0 {
 		log.Printf("Runner: job %s output (first 512 bytes):\n%s", job.ID, truncate(output, 512))

@@ -1,0 +1,84 @@
+{
+  "dimension": "Architecture",
+  "findings": [
+    {
+      "id": "ARCH-001",
+      "severity": "Medium",
+      "category": "coupling",
+      "file": "agent/runner/runner.go",
+      "lines": [1, 189],
+      "title": "Tight coupling to HTTP protocol",
+      "description": "All HTTP concerns are embedded directly in runner. Changing protocol or adding retry logic would require modifying this file.",
+      "currentCoupling": [
+        "Line 99: http.DefaultClient.Do()",
+        "Line 152: http.DefaultClient.Do()",
+        "Line 178: http.DefaultClient.Do()",
+        "Lines 92, 144, 170: URL construction"
+      ],
+      "suggestion": "Extract HTTP communication into a separate package or interface (e.g., 'coordinator' package with CoordinatorClient interface).",
+      "benefit": "Easier to swap implementations (e.g., gRPC, local socket) and test in isolation.",
+      "impact": "Medium - affects long-term maintainability and testing."
+    },
+    {
+      "id": "ARCH-002",
+      "severity": "Medium",
+      "category": "layer-violation",
+      "file": "agent/runner/runner.go",
+      "lines": [56, 82, 119, 127, 137],
+      "title": "Logging mixed with business logic",
+      "description": "log package used directly throughout. No abstraction for logging makes testing harder and couples to log implementation.",
+      "currentLogging": [
+        "Line 56: log.Printf (startup)",
+        "Line 67: log.Println (stop)",
+        "Line 82: log.Printf (fetch error)",
+        "Line 119: log.Printf (claim error)",
+        "Line 128: log.Printf (post result error)",
+        "Line 137: log.Printf (status update error)"
+      ],
+      "suggestion": "Accept logger interface in Config: type Logger interface { Errorf, Infof, Debugf ... }",
+      "benefit": "Easier to add structured logging, metrics, or change logging implementation.",
+      "impact": "Low-Medium - more of a best practice than critical issue."
+    },
+    {
+      "id": "ARCH-003",
+      "severity": "Low",
+      "category": "srp-violation",
+      "file": "agent/runner/runner.go",
+      "lines": [91, 142, 165],
+      "title": "Multiple HTTP endpoint concerns in one file",
+      "description": "Runner handles 3 different API endpoints (list jobs, update status, post results). Each has slightly different error handling.",
+      "endpoints": [
+        "GET /api/jobs?agent_id=...",
+        "PATCH /api/jobs/{id}/status",
+        "POST /api/jobs/{id}/results"
+      ],
+      "suggestion": "Consider moving HTTP concerns to separate 'API client' layer or package.",
+      "impact": "Low - current organization is acceptable for single-file service."
+    },
+    {
+      "id": "ARCH-004",
+      "severity": "Low",
+      "category": "coupling",
+      "file": "agent/runner/runner.go",
+      "lines": [85],
+      "title": "No error recovery strategy between retries",
+      "description": "When job processing fails, runner moves to next poll interval. No exponential backoff or circuit breaker for repeated failures.",
+      "currentBehavior": "Failures are logged and ignored, next poll happens after fixed PollInterval.",
+      "riskScenario": "If coordinator is down for extended period, agent continuously polls without any backoff.",
+      "suggestion": "Consider exponential backoff or circuit breaker pattern for repeated API failures.",
+      "impact": "Low - acceptable for current use case, but improves resilience."
+    },
+    {
+      "id": "ARCH-005",
+      "severity": "Low",
+      "category": "coupling",
+      "file": "agent/runner/runner.go",
+      "lines": [132, 135],
+      "title": "Job completion semantics embedded in runner",
+      "description": "The decision to mark job as 'completed' or 'failed' based on exit code is hardcoded. If semantics change, code must be modified.",
+      "currentLogic": "if exitCode != 0 then 'failed' else 'completed'",
+      "suggestion": "Consider moving this logic to Job struct or a separate strategy function.",
+      "impact": "Very low - semantics unlikely to change."
+    }
+  ]
+}

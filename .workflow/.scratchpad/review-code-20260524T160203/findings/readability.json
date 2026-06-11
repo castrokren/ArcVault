@@ -1,0 +1,59 @@
+{
+  "dimension": "Readability",
+  "findings": [
+    {
+      "id": "READ-001",
+      "severity": "Medium",
+      "category": "function-length",
+      "file": "agent/runner/runner.go",
+      "lines": [116, 139],
+      "title": "process() method has multiple responsibilities",
+      "description": "The process() function handles 4 distinct concerns: claiming job, executing, posting result, updating status. This violates Single Responsibility Principle and makes testing difficult.",
+      "currentFlow": "claim → execute → post → mark_final_status",
+      "suggestion": "Extract into separate methods: claim(), execute(), postResult(), markComplete(). Each can be tested independently.",
+      "currentCode": "Lines 117-121: claim, Lines 124: execute, Lines 127-129: post, Lines 131-138: mark_final",
+      "benefit": "Easier to test error scenarios, easier to modify individual steps.",
+      "impact": "Moderate - affects testability and maintainability."
+    },
+    {
+      "id": "READ-002",
+      "severity": "Medium",
+      "category": "naming",
+      "file": "agent/runner/runner.go",
+      "lines": [106, 108],
+      "title": "Anonymous response envelope struct not named",
+      "description": "The response envelope struct (lines 106-108) is defined inline and not reusable. If the same structure is used elsewhere, it's redefined.",
+      "currentCode": "var envelope struct { Data []Job `json:\"data\"` }",
+      "suggestion": "Define at package level: type JobsResponse struct { Data []Job `json:\"data\"` }",
+      "benefit": "Improves reusability and explicit API contract.",
+      "impact": "Minor but improves code clarity."
+    },
+    {
+      "id": "READ-003",
+      "severity": "Low",
+      "category": "comments",
+      "file": "agent/runner/runner.go",
+      "lines": [90, 115, 164],
+      "title": "Comments could be more descriptive",
+      "description": "Comments describe WHAT the code does, not WHY. For example, line 90 'calls GET /api/jobs...' just repeats the code.",
+      "examples": [
+        "Line 90: // fetchPendingJobs calls GET /api/jobs... (repeats code)",
+        "Line 105: // Coordinator returns a paginated envelope (good context!)",
+        "Line 117: // 1. claim the job (repeats code)"
+      ],
+      "improvement": "Add comment explaining the retry logic for claiming: 'Claim job atomically to prevent duplicate processing by other agents'",
+      "impact": "Low - existing comments are mostly adequate."
+    },
+    {
+      "id": "READ-004",
+      "severity": "Low",
+      "category": "duplication",
+      "file": "agent/runner/runner.go",
+      "lines": [143, 166],
+      "title": "Repeated JSON marshaling pattern",
+      "description": "Both updateStatus() and postResult() create inline maps and marshal them to JSON. This pattern is repeated.",
+      "suggestion": "Consider a helper method or use json.RawMessage for cleaner code.",
+      "impact": "Very low - code is still clear."
+    }
+  ]
+}

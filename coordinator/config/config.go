@@ -24,6 +24,8 @@ type Config struct {
 	CertFile                   string              `json:"cert_file,omitempty"`
 	KeyFile                    string              `json:"key_file,omitempty"`
 	ExternalTLS                bool                `json:"external_tls,omitempty"`
+	InstallerDir               string              `json:"installer_dir,omitempty"`
+	AllowedOrigins             []string            `json:"allowed_origins,omitempty"`
 }
 
 type NotificationConfig struct {

@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"arcvault/coordinator/business"
 	"arcvault/coordinator/config"
 	"arcvault/coordinator/db"
@@ -21,6 +23,13 @@ var Version = "dev"
 type tokenCacheEntry struct {
 	agentID   string
 	expiresAt time.Time
+}
+
+// loginRateLimiter tracks failed attempts per IP.
+type loginRateLimiter struct {
+	limiter  *rate.Limiter
+	failures int
+	lockedAt *time.Time
 }
 
 type Server struct {
@@ -39,6 +48,8 @@ type Server struct {
 	groupService   *business.GroupService
 	tokenCacheMu   sync.Mutex
 	tokenCache     map[string]tokenCacheEntry // token → validated entry
+	loginLimiterMu sync.Mutex
+	loginLimiters  map[string]*loginRateLimiter
 }
 
 func New(cfg *config.Config, database *db.DB) *Server {
@@ -66,6 +77,7 @@ func NewWithFS(cfg *config.Config, database *db.DB, staticFS fs.FS) *Server {
 		userService:    business.NewUserService(database),
 		groupService:   business.NewGroupService(database),
 		tokenCache:     make(map[string]tokenCacheEntry),
+		loginLimiters:  make(map[string]*loginRateLimiter),
 	}
 
 	if cfg.Federation != nil {
@@ -94,7 +106,7 @@ func (s *Server) Start() error {
 
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      corsMiddleware(s.router),
+		Handler:      corsMiddleware(s.cfg.AllowedOrigins)(s.router),
 		ReadTimeout:  60 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -109,7 +121,12 @@ func (s *Server) Start() error {
 
 	// HTTPS via self-signed cert
 	if s.cfg.CertFile == "" || s.cfg.KeyFile == "" {
-		log.Fatal("TLS certificate paths not configured. Run 'coordinator init' to set up TLS.")
+		if s.cfg.Environment == "production" {
+			log.Printf("WARNING: Running in production without TLS configured. Set cert_file and key_file in config.json, or run 'coordinator init'.")
+		} else {
+			log.Printf("TLS certificate paths not configured -- falling back to plain HTTP on %s", addr)
+		}
+		return srv.ListenAndServe()
 	}
 
 	log.Printf("ArcVault Coordinator listening on %s (HTTPS)", addr)
@@ -270,6 +287,7 @@ func (s *Server) registerRoutes() {
 	// Admin utility endpoints
 	s.router.HandleFunc("GET /api/admin/token", s.adminRoute(s.handleGetAdminToken))
 	s.router.HandleFunc("GET /api/admin/bootstrap.ps1", s.adminRoute(s.handleBootstrapScript))
+	s.router.HandleFunc("GET /api/admin/installer", s.adminRoute(s.handleDownloadInstaller))
 
 	// Downloads (agent.exe auth: agent token OR admin token)
 	s.router.HandleFunc("GET /downloads/agent.exe", s.agentOrAdminRoute(s.handleDownloadAgent))
@@ -288,17 +306,41 @@ func (s *Server) registerRoutes() {
 	}
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+
+			// If no allowed origins configured, deny all cross-origin requests.
+			// If "*" is explicitly listed (dev only), allow all.
+			allowed := false
+			for _, o := range allowedOrigins {
+				if o == "*" || o == origin {
+					allowed = true
+					break
+				}
+			}
+
+			if origin != "" && allowed {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+			} else if origin != "" && !allowed {
+				// Non-matching origin: don't set ACAO header — browser will block it.
+				if r.Method == http.MethodOptions {
+					w.WriteHeader(http.StatusForbidden)
+					return
+				}
+			}
+
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // authMiddleware accepts:

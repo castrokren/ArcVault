@@ -1,0 +1,52 @@
+{
+  "dimension": "Correctness",
+  "findings": [
+    {
+      "id": "CORR-001",
+      "severity": "High",
+      "category": "error-handling",
+      "file": "agent/runner/runner.go",
+      "lines": [143, 166],
+      "title": "Error from json.Marshal ignored",
+      "description": "Both updateStatus() and postResult() use blank identifier to ignore json.Marshal errors. If marshaling fails, body will be nil/empty, resulting in malformed HTTP requests.",
+      "code": "body, _ := json.Marshal(map[string]string{\"status\": status})",
+      "fix": "Check error from json.Marshal before proceeding. If error occurs, log and return early.",
+      "impact": "Silent failures in status updates or result posting. Coordinator won't receive job state changes.",
+      "testCase": "Test json.Marshal failure scenario"
+    },
+    {
+      "id": "CORR-002",
+      "severity": "High",
+      "category": "error-handling",
+      "file": "agent/runner/runner.go",
+      "lines": [109, 158, 184],
+      "title": "Response body not validated for errors",
+      "description": "Code only checks HTTP status code but doesn't read/validate response body for error details. If server returns error message in body, it's silently discarded.",
+      "fix": "After status code check, read response body and log error details if status indicates failure.",
+      "impact": "Loss of debugging information when API calls fail. Difficult to diagnose coordinator issues.",
+      "relatedIssue": "Would help with CORR-001 debugging"
+    },
+    {
+      "id": "CORR-003",
+      "severity": "Medium",
+      "category": "error-handling",
+      "file": "agent/runner/runner.go",
+      "lines": [158, 184],
+      "title": "Incomplete HTTP status code handling",
+      "description": "fetchPendingJobs() doesn't check resp.StatusCode at all. updateStatus() and postResult() only check for specific success codes (OK, Created). Other 4xx/5xx codes return generic error.",
+      "fix": "Treat all non-2xx responses as errors. Add status code to error message. Consider different handling for 4xx vs 5xx.",
+      "impact": "Cannot distinguish between client errors (4xx) and server errors (5xx) for proper retry logic."
+    },
+    {
+      "id": "CORR-004",
+      "severity": "Medium",
+      "category": "null-check",
+      "file": "agent/runner/runner.go",
+      "lines": [85],
+      "title": "No validation of Job data",
+      "description": "Jobs fetched from coordinator are used without validation. If required fields are missing, code will panic when accessing them in process().",
+      "fix": "Add validation of required Job fields (ID, Name, SourcePath, DestPath) before processing.",
+      "impact": "Potential panic if coordinator returns malformed job data."
+    }
+  ]
+}

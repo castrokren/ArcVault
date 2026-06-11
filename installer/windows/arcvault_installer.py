@@ -43,7 +43,7 @@ _COLOR_ERROR   = "#ff4d6d"
 # ── ArcVault icon — favicon.svg rendered to 64x64 PNG, base64 ─────────────────
 _ICON_B64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAABmJLR0QA/wD/"
-    "AP+gvaeTAAAECElEQVR4nOXbXYimYxgH8N87H+bD52BbrI0lByyRtOVAlJJI"
+    "AP+gvaeTAAAECElEQVR4nOXbXYimYxgH8M87H+bD52BbrI0lByyRtOVAlJJI"
     "CSFxhPJRElFKTlCb5GAjSdrkIznyVeQA68ARyVdrhV1mFwe7a2fM2NmZ2Xcc"
     "XKYd47Hv875zP/Pcr/3X/+x97uf53/d1X9d1X9f9coij0ebve3Es7sO16McE"
     "vsVc2k9rC304++/vgV/xKN5N/aKjcBemheCc+V4ZQT1tiB/EGjGz/S1+mwPG"
@@ -56,9 +56,9 @@ _ICON_B64 = (
     "dALmsA2PpfqghejB1bojqmxItpcWYA47hKe+pILxU+LjKge/Uf0rfDBuwep2"
     "yuLt4DicW9HYKbBHNHdGqxi8RxRTflH/KhdxVqT9fVWJP17srbqF/hefkLhw"
     "uhAjWC8SlrqFFnETTlbR6o+IQ9VEBkKLOCryk0raer1YJ+rydQst4oToZleG"
-    "VXg+A6FFbOIhCVtli3EY7sW+DMQWcaPEJfOFGMSF+DIDoUX8SlhnFRmvXjGz"
+    "VXg+A6FFbOIhCVtli3EY7sW+DMQWcaNEJfOFGMSF+DIDoUX8SlhnFRmvXjGz"
     "L2YgtIg7caaKPD6chPuxNwOxizklWuSViR8WXvX7DMQWcb1IyCrDOnySgdAi"
-    "vinqnJWgR1yUekmerbNtYmsm6RQV4Qjcid8zELuYY7hAhOXKsBJbMxC7mDO4"
+    "finqnJWgR1yUekmerbNtYmsm6RQV4Qjcid8zELuYY7hAhOXKsBJbMxC7mDO4"
     "Wwf3A9r1knMqiqlLxHPiJsu+dh9sd68M4xrcKnxBWfwpTHQndgtLugpHtvn+"
     "InwgbrL82MnD7U5AQ1R9B3QeY+fN9gy8gtM6HIeoPV6Mn0Sho2vQEFnaRp3v"
     "+0lxOSJpk3Q5sUKYbifi9+MRCTK9qoqiZTArfEMneBlPS2D2dU5Ap/hUdHT2"
@@ -77,7 +77,7 @@ class ArcVaultInstaller:
     AGENT_DIR = Path("C:/ArcVault-Agent")
 
     def __init__(self):
-        self.version = "0.4.0"
+        self.version = "0.5.1"
         self.components = set()
         self.coordinator_port = 8080
         self.admin_token = ""
@@ -540,7 +540,7 @@ class ArcVaultInstaller:
                     time.sleep(3)
                     status.config(text="Opening dashboard...")
                     self.root.update()
-                    self.open_browser(f"http://localhost:{self.coordinator_port}")
+                    self.open_browser(f"https://localhost:{self.coordinator_port}")
 
                 progress.stop()
                 messagebox.showinfo(
@@ -592,6 +592,20 @@ class ArcVaultInstaller:
         self.COORD_DIR.mkdir(parents=True, exist_ok=True)
         key, is_existing = self.get_or_create_credential_key()
         self.credential_key = key
+
+        # Preserve existing TLS cert paths if already configured
+        existing_cert_file = ""
+        existing_key_file = ""
+        try:
+            config_path = self.COORD_DIR / "config.json"
+            if config_path.exists():
+                with open(config_path) as f:
+                    existing = json.load(f)
+                existing_cert_file = existing.get("cert_file", "")
+                existing_key_file = existing.get("key_file", "")
+        except Exception:
+            pass
+
         config = {
             "port": self.coordinator_port,
             "admin_token": self.admin_token,
@@ -599,6 +613,11 @@ class ArcVaultInstaller:
             "credential_key": key,
             "environment": "production",
         }
+        if existing_cert_file:
+            config["cert_file"] = existing_cert_file
+        if existing_key_file:
+            config["key_file"] = existing_key_file
+
         with open(self.COORD_DIR / "config.json", "w") as f:
             json.dump(config, f, indent=2)
         if not is_existing:

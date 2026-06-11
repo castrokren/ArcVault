@@ -7,7 +7,7 @@
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="margin-right:4px;vertical-align:-2px"><rect x="4" y="4" width="8" height="8" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M2 10V2h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
           {{ copyTokenLabel }}
         </button>
-        <button class="btn btn-secondary" @click="handleDownloadBootstrap" :disabled="downloadingBootstrap" title="Download PowerShell bootstrap script for agent installation">
+        <button class="btn btn-secondary" @click="handleDownloadInstaller" :disabled="downloadingInstaller" title="Download ArcVault Windows setup installer">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style="margin-right:4px;vertical-align:-2px"><path d="M7 1v8m0 0l-3-3m3 3l3-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><rect x="1" y="11" width="12" height="2" rx="1" stroke="currentColor" stroke-width="1.3"/></svg>
           Download Agent Installer
         </button>
@@ -243,7 +243,7 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { getUsers, createUser, updateUserRole, deleteUser as deleteUserApi, downloadBootstrapScript } from '../api'
+import { getUsers, createUser, updateUserRole, deleteUser as deleteUserApi, downloadBootstrapScript, downloadInstaller } from '../api'
 import { useAuth } from '../composables/useAuth.js'
 
 const auth = useAuth()

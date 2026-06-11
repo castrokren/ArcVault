@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -79,37 +80,81 @@ func (d *DB) Conn() *sql.DB {
 
 // CreateAgentToken generates a new token for the given agent and stores it.
 // Multiple tokens per agent are allowed — each call creates a new one.
-func (d *DB) CreateAgentToken(agentID string) (string, error) {
+// For bootstrap tokens (role starting with "bootstrap"), expires_at is set to 1 hour.
+func (d *DB) CreateAgentToken(roleOrAgentID string) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("failed to generate token: %w", err)
 	}
 	token := hex.EncodeToString(b)
 
-	_, err := d.conn.Exec(
-		`INSERT INTO tokens (token, agent_id, role) VALUES (?, ?, 'agent')`,
-		token, agentID,
-	)
-	if err != nil {
-		return "", fmt.Errorf("failed to store token: %w", err)
+	// Check if this is a bootstrap token
+	var expiresAt *time.Time
+	if strings.HasPrefix(roleOrAgentID, "bootstrap") {
+		exp := time.Now().Add(1 * time.Hour)
+		expiresAt = &exp
+	}
+
+	if expiresAt != nil {
+		_, err := d.conn.Exec(
+			`INSERT INTO tokens (token, agent_id, role, expires_at) VALUES (?, ?, 'agent', ?)`,
+			token, roleOrAgentID, expiresAt,
+		)
+		if err != nil {
+			return "", fmt.Errorf("failed to store token: %w", err)
+		}
+	} else {
+		_, err := d.conn.Exec(
+			`INSERT INTO tokens (token, agent_id, role) VALUES (?, ?, 'agent')`,
+			token, roleOrAgentID,
+		)
+		if err != nil {
+			return "", fmt.Errorf("failed to store token: %w", err)
+		}
 	}
 	return token, nil
 }
 
-// ValidateToken checks if a token exists in the tokens table.
-// Returns the role ("agent") if valid, or an error if not found.
+// ValidateToken checks if a token exists in the tokens table and hasn't expired.
+// Returns the role ("agent") if valid, or an error if not found or expired.
 func (d *DB) ValidateToken(token string) (string, error) {
 	var role string
 	err := d.conn.QueryRow(
-		`SELECT role FROM tokens WHERE token = ?`, token,
+		`SELECT role FROM tokens WHERE token = ? AND (expires_at IS NULL OR expires_at > datetime('now'))`,
+		token,
 	).Scan(&role)
 	if err == sql.ErrNoRows {
-		return "", fmt.Errorf("token not found")
+		return "", fmt.Errorf("token not found or expired")
 	}
 	if err != nil {
 		return "", fmt.Errorf("failed to validate token: %w", err)
 	}
 	return role, nil
+}
+
+// RevokeToken marks a JWT as revoked by its JTI (JWT ID).
+func (d *DB) RevokeToken(jti string, expiresAt time.Time) error {
+	_, err := d.conn.Exec(
+		`INSERT OR IGNORE INTO revoked_tokens (jti, expires_at) VALUES (?, ?)`,
+		jti, expiresAt,
+	)
+	return err
+}
+
+// IsTokenRevoked checks if a JWT token (by JTI) has been revoked.
+func (d *DB) IsTokenRevoked(jti string) (bool, error) {
+	var count int
+	err := d.conn.QueryRow(
+		`SELECT COUNT(*) FROM revoked_tokens WHERE jti = ? AND expires_at > datetime('now')`,
+		jti,
+	).Scan(&count)
+	return count > 0, err
+}
+
+// PruneExpiredTokens removes revoked tokens that have already expired.
+func (d *DB) PruneExpiredTokens() error {
+	_, err := d.conn.Exec(`DELETE FROM revoked_tokens WHERE expires_at <= datetime('now')`)
+	return err
 }
 
 // ListTemplates returns all backup templates ordered by creation time.
@@ -477,6 +522,15 @@ CREATE TABLE IF NOT EXISTS job_runs (
 	     CURRENT_TIMESTAMP
 	   );
 	 END`)
+	// Idempotent: add revoked_tokens table for JWT revocation on logout.
+	d.conn.Exec(`CREATE TABLE IF NOT EXISTS revoked_tokens (
+		jti TEXT PRIMARY KEY,
+		revoked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		expires_at DATETIME NOT NULL
+	)`)
+	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens(expires_at)`)
+	// Idempotent: add expires_at column to tokens for bootstrap token expiry (short-lived).
+	d.conn.Exec(`ALTER TABLE tokens ADD COLUMN expires_at DATETIME`)
 	return nil
 }
 

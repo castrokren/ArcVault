@@ -71,9 +71,11 @@ New-Item -ItemType Directory -Force -Path $embedDist | Out-Null
 Copy-Item -Recurse "$ProjectRoot\dashboard\dist\*" "$embedDist\" -Force
 Write-Host "  Synced dashboard\dist -> coordinator\static\dist" -ForegroundColor Green
 
-# Determine version from git tag (falls back to v0.0.0-dev)
-$Version = (git describe --tags --abbrev=0 2>$null)
-if (-not $Version) { $Version = "v0.0.0-dev" }
+# Version — must match build.ps1 and arcvault_installer.py
+# UPDATE ALL THREE when bumping: build.ps1 $Version, rebuild-and-restart.ps1 $Version, installer py self.version
+$Version = "v0.5.1"
+& "$PSScriptRoot\check-version-sync.ps1" -Expected $Version
+if ($LASTEXITCODE -ne 0) { exit 1 }
 Write-Host "  Building with version: $Version" -ForegroundColor Cyan
 
 # Step 4: Build coordinator.exe
@@ -151,16 +153,16 @@ sc.exe failure arcvault-coordinator reset= 86400 actions= restart/3000/restart/3
 Write-Host "  SCM failure recovery re-enabled." -ForegroundColor Green
 
 try {
-    $health = Invoke-RestMethod -Uri "http://localhost:8080/health" -TimeoutSec 5
+    $health = Invoke-RestMethod -Uri "https://localhost:8080/health" -SkipCertificateCheck -TimeoutSec 5
     Write-Host "  Coordinator health: $($health.status)" -ForegroundColor Green
 } catch {
     Write-Host "  ERROR: Coordinator not responding." -ForegroundColor Red
     exit 1
 }
 
-# Step 8: Validate agent token - regenerate if stale
+# Step 8: Regenerate agent token (always — coordinator reinstall wipes tokens)
 Write-Host ""
-Write-Host "Step 8: Validating agent token..." -ForegroundColor Yellow
+Write-Host "Step 8: Regenerating agent token..." -ForegroundColor Yellow
 
 $agentConfigPath = "C:\ArcVault-Agent\agent-config.yaml"
 $coordConfigPath = "C:\ArcVault\config.json"
@@ -169,44 +171,27 @@ if ((Test-Path $agentConfigPath) -and (Test-Path $coordConfigPath)) {
     $adminToken  = (Get-Content $coordConfigPath | ConvertFrom-Json).admin_token
     $agentConfig = Get-Content $agentConfigPath -Raw
 
-    # Pull agent_id and current auth_token from agent-config.yaml
-    $agentId    = ($agentConfig | Select-String "agent_id:\s*(.+)").Matches[0].Groups[1].Value.Trim()
-    $agentToken = ($agentConfig | Select-String "auth_token:\s*(.+)").Matches[0].Groups[1].Value.Trim()
+    # Pull agent_id from agent-config.yaml
+    $agentId = ($agentConfig | Select-String "agent_id:\s*(.+)").Matches[0].Groups[1].Value.Trim()
 
-    # Check whether the token is still valid against the coordinator
     try {
-        $checkResp = Invoke-WebRequest -Uri "http://localhost:8080/api/jobs?agent_id=$agentId&status=pending" `
-            -Headers @{ Authorization = "Bearer $agentToken" } -TimeoutSec 5 -UseBasicParsing
-        $tokenOk = ($checkResp.StatusCode -eq 200)
+        $resp = Invoke-RestMethod -Uri "https://localhost:8080/api/agent-tokens" `
+            -Method POST -SkipCertificateCheck `
+            -Headers @{ Authorization = "Bearer $adminToken"; "Content-Type" = "application/json" } `
+            -Body (@{ agent_id = $agentId } | ConvertTo-Json) -TimeoutSec 5
+
+        $newToken = $resp.token
+        # Update auth_token in agent-config.yaml in-place.
+        # [^\r\n]+ avoids consuming the \r in \r\n line endings
+        $agentConfig = $agentConfig -replace '(?m)^(\s*auth_token:\s*)[^\r\n]+', ('$1' + $newToken)
+        [System.IO.File]::WriteAllText($agentConfigPath, $agentConfig)
+        Write-Host "  Token regenerated and saved to agent-config.yaml." -ForegroundColor Green
     } catch {
-        $tokenOk = $false
-    }
-
-    if ($tokenOk) {
-        Write-Host "  Agent token is valid." -ForegroundColor Green
-    } else {
-        Write-Host "  Agent token is invalid or stale - regenerating..." -ForegroundColor Yellow
-        try {
-            $resp = Invoke-RestMethod -Uri "http://localhost:8080/api/agent-tokens" `
-                -Method POST `
-                -Headers @{ Authorization = "Bearer $adminToken"; "Content-Type" = "application/json" } `
-                -Body (@{ agent_id = $agentId } | ConvertTo-Json) -TimeoutSec 5
-
-            $newToken = $resp.token
-            # Update auth_token in agent-config.yaml in-place.
-            # Use single-quoted '$1' so PowerShell treats it as a regex backreference,
-            # then concatenate the actual token value.
-            # [^\r\n]+ avoids consuming the \r in \r\n line endings (.*$ would eat it)
-            $agentConfig = $agentConfig -replace '(?m)^(\s*auth_token:\s*)[^\r\n]+', ('$1' + $newToken)
-            [System.IO.File]::WriteAllText($agentConfigPath, $agentConfig)
-            Write-Host "  Token regenerated and saved to agent-config.yaml." -ForegroundColor Green
-        } catch {
-            Write-Host "  WARNING: Could not regenerate agent token: $_" -ForegroundColor Red
-            Write-Host "  Run manually: coordinator create-agent-token [agent-id]" -ForegroundColor Yellow
-        }
+        Write-Host "  WARNING: Could not regenerate agent token: $_" -ForegroundColor Red
+        Write-Host "  Run manually: coordinator create-agent-token [agent-id]" -ForegroundColor Yellow
     }
 } else {
-    Write-Host "  Skipping token check (agent or coordinator config not found)." -ForegroundColor Yellow
+    Write-Host "  Skipping token regeneration (agent or coordinator config not found)." -ForegroundColor Yellow
 }
 
 # Step 9: Start agent + verify it registered
@@ -216,7 +201,7 @@ sc.exe start arcvault-agent
 Start-Sleep -Seconds 4
 
 $token  = (Get-Content $coordConfigPath -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue).admin_token
-$agents = Invoke-RestMethod -Uri "http://localhost:8080/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -ErrorAction SilentlyContinue
+$agents = Invoke-RestMethod -Uri "https://localhost:8080/api/agents" -SkipCertificateCheck -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -ErrorAction SilentlyContinue
 
 if ($agents -and $agents.data.Count -gt 0) {
     $agentCount = $agents.data.Count
@@ -232,4 +217,4 @@ if ($agents -and $agents.data.Count -gt 0) {
 }
 
 Write-Host ""
-Write-Host "=== Done! Open http://localhost:8080 in your browser. ===" -ForegroundColor Cyan
+Write-Host "=== Done! Open https://localhost:8080 in your browser. ===" -ForegroundColor Cyan

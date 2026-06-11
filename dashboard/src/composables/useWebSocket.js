@@ -19,8 +19,8 @@ export function useWebSocket() {
     const token = getToken()
     if (!token) return
 
-    // Pass the token as a query param (gorilla/websocket doesn't support subprotocol auth)
-    ws = new WebSocket(`${getWsUrl()}?token=${encodeURIComponent(token)}`)
+    // Pass the token in Sec-WebSocket-Protocol header (bearer.token format)
+    ws = new WebSocket(getWsUrl(), [`bearer.${token}`])
 
     ws.onopen = () => {
       connected.value = true

@@ -14,6 +14,14 @@ import (
 // handleBootstrapScript generates and serves the PowerShell bootstrap script.
 // Admin-only endpoint. Mints a fresh agent token and embeds it in the script.
 func (s *Server) handleBootstrapScript(w http.ResponseWriter, r *http.Request) {
+	// Optional: caller passes ?hostname=WORKSTATION01 to get a per-machine token.
+	// Falls back to "bootstrap" role tag if not provided.
+	hostnameHint := r.URL.Query().Get("hostname")
+	tokenRole := "bootstrap"
+	if hostnameHint != "" {
+		tokenRole = "bootstrap:" + hostnameHint
+	}
+
 	// Read the coordinator cert PEM
 	certPEM, err := tlscert.ReadCertPEM(s.cfg.CertFile)
 	if err != nil {
@@ -22,7 +30,7 @@ func (s *Server) handleBootstrapScript(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Mint a fresh agent token
-	agentToken, err := s.db.CreateAgentToken("bootstrap")
+	agentToken, err := s.db.CreateAgentToken(tokenRole)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("failed to mint agent token: %v", err), http.StatusInternalServerError)
 		return
