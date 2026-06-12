@@ -218,4 +218,30 @@ coordinator create-agent-token <agent-id>
 # Check for updates
 coordinator check-update
 
-# Install a
+# Install as Windows service (requires admin)
+coordinator install-service
+
+# Remove Windows service
+coordinator uninstall-service
+```
+
+## Build & Deploy
+```powershell
+# Full rebuild + deploy (use this, nothing else)
+.\scriptsebuild-and-restart.ps1
+
+# Build installer .exe
+.\scriptsuild.ps1
+
+# Post-deploy smoke test
+.\scripts\check-sanity.ps1
+```
+
+✅ **Session 25** (June 12, 2026): Recurring Bug Guardrails — COMPLETE
+  - **Problem**: Three bugs kept reappearing across sessions: (1) /downloads/installer serving bootstrap.ps1 instead of .exe, (2) services unable to start, (3) coordinator binary baked with wrong version ("2.0" or "dev")
+  - **Go tests** (new): `coordinator/server/downloads_test.go` — 4 regression tests asserting /downloads/installer serves .exe with correct Content-Type; catches wrong route handler and bad server.Version at `go test` time
+  - **Smoke script** (new): `scripts/check-sanity.ps1` — 5-section post-deploy check: VERSION file, binary version, service status + run-service arg, config validity, live endpoint check for /downloads/installer. Runs automatically at end of rebuild-and-restart.ps1
+  - **Build scripts fixed**: `build.ps1` and `rebuild-and-restart.ps1` now read `` from VERSION file (never hardcoded); ldflags now inject both `main.Version` AND `arcvault/coordinator/server.Version`; post-build binary version check aborts if coordinator.exe reports wrong version
+  - **check-version-sync.ps1 fixed**: added `exit 0` — was silently inheriting stale non-zero $LASTEXITCODE from prior shell commands, causing build.ps1 to exit after version check with no error message
+  - **Legacy build scripts deleted**: `build-installer-nsis.ps1` (hardcoded v0.2.1, no ldflags), `build-installer-simple.ps1` (hardcoded v1.1.0, no ldflags), `build-windows-installer.ps1` (git describe, missing server.Version) — all removed
+  - **Files changed**: `coordinator/server/downloads_test.go`, `scripts/check-sanity.ps1`, `scripts/check-version-sync.ps1`, `scripts/build.ps1`, `scripts/rebuild-and-restart.ps1`; deleted 3 legacy build scripts
