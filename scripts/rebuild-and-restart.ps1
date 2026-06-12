@@ -41,7 +41,7 @@ if ($waitedProc -ge 15) {
 $waited = 0
 while ($waited -lt 10) {
     Start-Sleep -Seconds 1
-    $portInUse = netstat -ano | Select-String ":8080 " | Select-String "LISTENING"
+    $portInUse = netstat -ano | Select-String ":$coordPort " | Select-String "LISTENING"
     if (-not $portInUse) { break }
     $waited++
 }
@@ -195,7 +195,7 @@ if ((Test-Path $agentConfigPath) -and (Test-Path $coordConfigPath)) {
     $agentId = ($agentConfig | Select-String "agent_id:\s*(.+)").Matches[0].Groups[1].Value.Trim()
 
     try {
-        $resp = Invoke-RestMethod -Uri "https://localhost:8080/api/agent-tokens" `
+        $resp = Invoke-RestMethod -Uri "$coordBase/api/agent-tokens" `
             -Method POST `
             -Headers @{ Authorization = "Bearer $adminToken"; "Content-Type" = "application/json" } `
             -Body (@{ agent_id = $agentId } | ConvertTo-Json) -TimeoutSec 5
@@ -221,7 +221,7 @@ sc.exe start arcvault-agent
 Start-Sleep -Seconds 4
 
 $token  = (Get-Content $coordConfigPath -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue).admin_token
-$agents = Invoke-RestMethod -Uri "https://localhost:8080/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -ErrorAction SilentlyContinue
+$agents = Invoke-RestMethod -Uri "$coordBase/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -ErrorAction SilentlyContinue
 
 if ($agents -and $agents.data.Count -gt 0) {
     $agentCount = $agents.data.Count
