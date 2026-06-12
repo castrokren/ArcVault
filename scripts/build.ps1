@@ -101,4 +101,25 @@ Write-Host ""
 pyinstaller arcvault.spec --distpath dist
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: PyInstaller failed" -ForegroundColor Red; exit 1 }
 
-Write-
+Write-Host ""
+Write-Host "PyInstaller compilation done" -ForegroundColor Green
+Write-Host ""
+
+# Verify — name is derived from $Version (no hardcoded strings)
+$versionTrimmed = $Version.TrimStart("v")
+$outExe = "dist\ArcVault-Setup-$versionTrimmed-windows-amd64.exe"
+if (Test-Path $outExe) {
+    $size = [math]::Round((Get-Item $outExe).Length / 1MB, 1)
+    Write-Host "====================================" -ForegroundColor Green
+    Write-Host "SUCCESS!" -ForegroundColor Green
+    Write-Host "====================================" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Installer: $outExe" -ForegroundColor Green
+    Write-Host "Size: $size MB" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Run: .\$outExe" -ForegroundColor Cyan
+    Write-Host ""
+} else {
+    Write-Host "ERROR: Installer not found at $outExe" -ForegroundColor Red
+    exit 1
+}

@@ -224,4 +224,31 @@ Write-Host "Step 9: Starting agent..." -ForegroundColor Yellow
 sc.exe start arcvault-agent
 Start-Sleep -Seconds 4
 
-$token  = (Get-Content $coordConfigPath -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue).ad
+$token  = (Get-Content $coordConfigPath -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue).admin_token
+$agents = Invoke-RestMethod -Uri "$coordBase/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -ErrorAction SilentlyContinue
+
+if ($agents -and $agents.data.Count -gt 0) {
+    $agentCount = $agents.data.Count
+    Write-Host "  SUCCESS: $agentCount agent(s) registered:" -ForegroundColor Green
+    foreach ($a in $agents.data) {
+        $aId = $a.id; $aHost = $a.hostname; $aSt = $a.status
+        Write-Host "    - $aId  $aHost  status: $aSt" -ForegroundColor Green
+    }
+} elseif ($agents) {
+    Write-Host "  No agents found yet - wait 10s and refresh the dashboard." -ForegroundColor Yellow
+} else {
+    Write-Host "  Could not query agents API - check coordinator logs." -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "=== Done! Open $coordBase in your browser. ===" -ForegroundColor Cyan
+
+# ── Final sanity check — catches the three recurring regressions ──────────────
+Write-Host ""
+Write-Host "Running post-deploy sanity checks..." -ForegroundColor Cyan
+& "$PSScriptRoot\check-sanity.ps1"
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "WARNING: Post-deploy sanity checks FAILED. Review the output above." -ForegroundColor Red
+    Write-Host "The deploy completed but something may be broken." -ForegroundColor Red
+}
