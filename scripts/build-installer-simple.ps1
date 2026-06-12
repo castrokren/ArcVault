@@ -1,4 +1,11 @@
 #!/usr/bin/env pwsh
+# !! DEPRECATED — DO NOT USE !!
+# This script has a hardcoded version (v1.1.0), no ldflags, and produces wrong binaries.
+# Use scripts\build.ps1 instead.
+Write-Host "ERROR: This script is deprecated and will produce a wrong-version build." -ForegroundColor Red
+Write-Host "       Use: .\scripts\build.ps1" -ForegroundColor Yellow
+exit 1
+
 <#
 .SYNOPSIS
     Build ArcVault Windows installer (.exe) using Python and PyInstaller
@@ -136,11 +143,4 @@ if (Test-Path $installerPath) {
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Cyan
     Write-Host "  1. Run installer: .\dist\ArcVault-Setup-1.1.0-windows-amd64.exe" -ForegroundColor White
-    Write-Host "  2. Follow the wizard to install" -ForegroundColor White
-    Write-Host "  3. Verify services: Get-Service -Name ArcVault*" -ForegroundColor White
-    Write-Host "  4. Check dashboard: http://localhost:8080" -ForegroundColor White
-    Write-Host ""
-} else {
-    Write-Host "✗ Installer not found!" -ForegroundColor Red
-    exit 1
-}
+    Write-Ho

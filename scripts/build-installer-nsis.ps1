@@ -1,4 +1,11 @@
 #!/usr/bin/env pwsh
+# !! DEPRECATED — DO NOT USE !!
+# This script has a hardcoded version (v0.2.1), no ldflags, and produces wrong binaries.
+# Use scripts\build.ps1 instead.
+Write-Host "ERROR: This script is deprecated and will produce a wrong-version build." -ForegroundColor Red
+Write-Host "       Use: .\scripts\build.ps1" -ForegroundColor Yellow
+exit 1
+
 <#
 .SYNOPSIS
     Build ArcVault Windows installer (.exe) using NSIS
@@ -101,12 +108,4 @@ if (Test-Path $installerPath) {
     Write-Host "[OK] Size: $size MB" -ForegroundColor Green
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor Cyan
-    Write-Host "  1. Test installer on fresh Windows system" -ForegroundColor White
-    Write-Host "  2. Verify service installation" -ForegroundColor White
-    Write-Host "  3. Check dashboard access on port 8080" -ForegroundColor White
-    Write-Host "  4. Commit and tag v0.2.1 release" -ForegroundColor White
-    Write-Host ""
-} else {
-    Write-Host "[FAIL] Installer not found!" -ForegroundColor Red
-    exit 1
-}
+    Write-Host "  1. Test installer on fresh Windows system" -ForegroundColor W

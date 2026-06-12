@@ -62,3 +62,4 @@ if (Test-Path $installerPy) {
 }
 
 Write-Host "  Version sync OK: $canonical" -ForegroundColor Green
+exit 0

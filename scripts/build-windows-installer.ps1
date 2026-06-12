@@ -1,3 +1,11 @@
+# !! DEPRECATED — DO NOT USE !!
+# This script uses `git describe --tags` for the version (unreliable on non-tagged commits)
+# and does NOT inject server.Version into ldflags. Produces wrong-version binaries.
+# Use scripts\build.ps1 instead.
+Write-Host "ERROR: This script is deprecated and will produce a wrong-version build." -ForegroundColor Red
+Write-Host "       Use: .\scripts\build.ps1" -ForegroundColor Yellow
+exit 1
+
 param(
     [switch]$SkipBinaries,
     [switch]$CleanBuild
@@ -127,14 +135,4 @@ pyinstaller arcvault.spec --distpath deployment
 if ($LASTEXITCODE -ne 0) { Write-Host "FAIL PyInstaller failed" -ForegroundColor Red; exit 1 }
 
 Write-Host ""
-Write-Host "==> Step 8: Verifying installer..." -ForegroundColor Cyan
-
-$out = "deployment\ArcVault-Setup-$VersionClean-windows-amd64.exe"
-if (Test-Path $out) {
-    $size = [math]::Round((Get-Item $out).Length / 1MB, 1)
-    Write-Host ""
-    Write-Host "BUILD COMPLETE" -ForegroundColor Green
-    Write-Host "Installer: $out ($size MB)" -ForegroundColor Green
-} else {
-    Write-Host "FAIL Installer not found at $out" -ForegroundColor Red; exit 1
-}
+Write-Host "==> Step 8: V

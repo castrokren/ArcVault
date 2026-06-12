@@ -12,16 +12,28 @@ Remove-Item -Recurse -Force "build", "dist", "arcvault.spec" -ErrorAction Silent
 # Create dist
 New-Item -ItemType Directory -Path "dist" -Force | Out-Null
 
-# Version — must match arcvault_installer.py self.version and the EXE name below
-$Version = "v0.5.1"
+# Version — read from VERSION file (single source of truth).
+# NEVER hardcode a version string here; it will drift.
+$Version = (Get-Content "$PSScriptRoot\..\VERSION" -Raw).Trim()
+if (-not $Version) { Write-Host "ERROR: VERSION file is empty" -ForegroundColor Red; exit 1 }
 & "$PSScriptRoot\check-version-sync.ps1" -Expected $Version
 if ($LASTEXITCODE -ne 0) { exit 1 }
 Write-Host "Building Go binaries at $Version..." -ForegroundColor Cyan
 
-go build -ldflags "-X main.Version=$Version" -o dist\coordinator.exe .\coordinator
+go build -ldflags "-X main.Version=$Version -X arcvault/coordinator/server.Version=$Version" -o dist\coordinator.exe .\coordinator
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: coordinator build failed" -ForegroundColor Red; exit 1 }
 go build -ldflags "-X main.Version=$Version" -o dist\agent.exe .\agent
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: agent build failed" -ForegroundColor Red; exit 1 }
+
+# ── GUARDRAIL: verify binary reports the correct version ─────────────────────
+$binVer = & "dist\coordinator.exe" --version 2>&1
+$binVer = ($binVer -join "").Trim()
+if ($binVer -ne $Version) {
+    Write-Host "ERROR: coordinator.exe reports '$binVer' but expected '$Version'" -ForegroundColor Red
+    Write-Host "       ldflags may not have been applied correctly." -ForegroundColor Yellow
+    exit 1
+}
+Write-Host "  Binary version verified: $binVer" -ForegroundColor Green
 
 Write-Host "Binaries built OK" -ForegroundColor Green
 Write-Host ""
@@ -62,7 +74,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='ArcVault-Setup-0.5.1-windows-amd64',
+    name='ArcVault-Setup-$($Version.TrimStart("v"))-windows-amd64',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -89,24 +101,4 @@ Write-Host ""
 pyinstaller arcvault.spec --distpath dist
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: PyInstaller failed" -ForegroundColor Red; exit 1 }
 
-Write-Host ""
-Write-Host "PyInstaller compilation done" -ForegroundColor Green
-Write-Host ""
-
-# Verify
-$outExe = "dist\ArcVault-Setup-0.5.1-windows-amd64.exe"
-if (Test-Path $outExe) {
-    $size = [math]::Round((Get-Item $outExe).Length / 1MB, 1)
-    Write-Host "====================================" -ForegroundColor Green
-    Write-Host "SUCCESS!" -ForegroundColor Green
-    Write-Host "====================================" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "Installer: $outExe" -ForegroundColor Green
-    Write-Host "Size: $size MB" -ForegroundColor Green
-    Write-Host ""
-    Write-Host "Run: .\$outExe" -ForegroundColor Cyan
-    Write-Host ""
-} else {
-    Write-Host "ERROR: Installer not found at $outExe" -ForegroundColor Red
-    exit 1
-}
+Write-

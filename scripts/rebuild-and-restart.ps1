@@ -73,9 +73,10 @@ New-Item -ItemType Directory -Force -Path $embedDist | Out-Null
 Copy-Item -Recurse "$ProjectRoot\dashboard\dist\*" "$embedDist\" -Force
 Write-Host "  Synced dashboard\dist -> coordinator\static\dist" -ForegroundColor Green
 
-# Version - must match build.ps1 and arcvault_installer.py
-# UPDATE ALL THREE when bumping: build.ps1 $Version, rebuild-and-restart.ps1 $Version, installer py self.version
-$Version = "v0.5.1"
+# Version — read from VERSION file (single source of truth).
+# NEVER hardcode a version string here; edit VERSION to bump.
+$Version = (Get-Content "$PSScriptRoot\..\VERSION" -Raw).Trim()
+if (-not $Version) { Write-Host "ERROR: VERSION file is empty" -ForegroundColor Red; exit 1 }
 & "$PSScriptRoot\check-version-sync.ps1" -Expected $Version
 if ($LASTEXITCODE -ne 0) { exit 1 }
 Write-Host "  Building with version: $Version" -ForegroundColor Cyan
@@ -89,12 +90,23 @@ if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-go build -ldflags "-X main.Version=$Version" -o coordinator.exe .\coordinator
+go build -ldflags "-X main.Version=$Version -X arcvault/coordinator/server.Version=$Version" -o coordinator.exe .\coordinator
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  coordinator.exe build FAILED." -ForegroundColor Red
     exit 1
 }
-Write-Host "  coordinator.exe built successfully." -ForegroundColor Green
+
+# ── GUARDRAIL: verify built binary reports the correct version ────────────────
+# This catches missing ldflags, wrong version string, or wrong binary being copied.
+$binVer = & ".\coordinator.exe" --version 2>&1
+$binVer = ($binVer -join "").Trim()
+if ($binVer -ne $Version) {
+    Write-Host "  ERROR: coordinator.exe reports version '$binVer' but expected '$Version'" -ForegroundColor Red
+    Write-Host "         This means ldflags were not applied, or the wrong binary was built." -ForegroundColor Yellow
+    Write-Host "         Do NOT deploy this binary. Fix the build command and try again." -ForegroundColor Yellow
+    exit 1
+}
+Write-Host "  coordinator.exe built successfully (version: $binVer)" -ForegroundColor Green
 
 # Step 5: Build agent.exe
 Write-Host ""
@@ -212,21 +224,4 @@ Write-Host "Step 9: Starting agent..." -ForegroundColor Yellow
 sc.exe start arcvault-agent
 Start-Sleep -Seconds 4
 
-$token  = (Get-Content $coordConfigPath -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue).admin_token
-$agents = Invoke-RestMethod -Uri "$coordBase/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -ErrorAction SilentlyContinue
-
-if ($agents -and $agents.data.Count -gt 0) {
-    $agentCount = $agents.data.Count
-    Write-Host "  SUCCESS: $agentCount agent(s) registered:" -ForegroundColor Green
-    foreach ($a in $agents.data) {
-        $aId = $a.id; $aHost = $a.hostname; $aSt = $a.status
-        Write-Host "    - $aId  $aHost  status: $aSt" -ForegroundColor Green
-    }
-} elseif ($agents) {
-    Write-Host "  No agents found yet - wait 10s and refresh the dashboard." -ForegroundColor Yellow
-} else {
-    Write-Host "  Could not query agents API - check coordinator logs." -ForegroundColor Yellow
-}
-
-Write-Host ""
-Write-Host "=== Done! Open $coordBase in your browser. ===" -ForegroundColor Cyan
+$token  = (Get-Content $coordConfigPath -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue).ad
