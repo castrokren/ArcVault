@@ -147,36 +147,28 @@ if (Test-Path $coordCfgPath) {
 $coordBase = "${coordScheme}://localhost:${coordPort}"
 Write-Host "  Coordinator URL: $coordBase" -ForegroundColor Cyan
 
-# PS 5.1 compatible TLS bypass for self-signed certs
-if ($coordScheme -eq "https" -and $PSVersionTable.PSVersion.Major -lt 7) {
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-}
-
 sc.exe start arcvault-coordinator
 
 # Re-enable SCM auto-restart now that the new binary is in place
 sc.exe failure arcvault-coordinator reset= 86400 actions= restart/3000/restart/3000/restart/3000 2>$null
 Write-Host "  SCM failure recovery re-enabled." -ForegroundColor Green
 
-# Retry health check - coordinator may need several seconds to initialize
-Write-Host "  Waiting for coordinator to become healthy..."
-$healthy = $false
-$attempts = 0
-while (-not $healthy -and $attempts -lt 20) {
+# Wait for service to reach RUNNING state (avoids TLS cert issues with health check)
+Write-Host "  Waiting for coordinator service to reach RUNNING state..."
+$svcRunning = $false
+for ($i = 1; $i -le 15; $i++) {
     Start-Sleep -Seconds 2
-    $attempts++
-    $resp = $null
-    try { $resp = Invoke-RestMethod -Uri "$coordBase/health" -TimeoutSec 3 } catch {}
-    if ($resp) {
-        Write-Host "  Coordinator healthy: $($resp.status)" -ForegroundColor Green
-        $healthy = $true
-    } elseif ($attempts % 5 -eq 0) {
-        Write-Host "  Still waiting... ($($attempts * 2)s)"
+    $svcQuery = sc.exe query arcvault-coordinator
+    if ($svcQuery -match "STATE.*RUNNING") {
+        Write-Host "  Coordinator service is RUNNING." -ForegroundColor Green
+        $svcRunning = $true
+        break
     }
+    if ($i % 3 -eq 0) { Write-Host "  Still starting... ($($i*2)s)" }
 }
-if (-not $healthy) {
-    Write-Host "  ERROR: Coordinator did not respond after 40s." -ForegroundColor Red
-    Write-Host "  Run directly to see the error: C:\ArcVault\coordinator.exe start" -ForegroundColor Yellow
+if (-not $svcRunning) {
+    Write-Host "  ERROR: Coordinator service did not reach RUNNING state." -ForegroundColor Red
+    Write-Host "  Diagnose: C:\ArcVault\coordinator.exe start" -ForegroundColor Yellow
     exit 1
 }
 
