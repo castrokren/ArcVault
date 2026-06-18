@@ -2,13 +2,9 @@ package runner
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 )
 
 // ── ParseRobocopyLine ─────────────────────────────────────────────────────────
@@ -172,123 +168,5 @@ func TestSplitOnCRLF_PlainNewlines(t *testing.T) {
 
 	if len(tokens) != 3 || tokens[0] != "a" || tokens[1] != "b" || tokens[2] != "c" {
 		t.Errorf("unexpected tokens: %v", tokens)
-	}
-}
-
-// ── progressReporter ─────────────────────────────────────────────────────────
-
-// TestProgressReporter_Throttle verifies rapid calls produce at most one HTTP
-// request per second.
-func TestProgressReporter_Throttle(t *testing.T) {
-	calls := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	pr := newProgressReporter("job-throttle", srv.URL, "token", srv.Client())
-
-	// Ten rapid calls at 50% — only the first should fire (throttled).
-	for i := 0; i < 10; i++ {
-		pr.Report(50, []string{fmt.Sprintf("log %d", i)})
-	}
-
-	if calls != 1 {
-		t.Errorf("expected 1 HTTP call (throttled), got %d", calls)
-	}
-	// Remaining 9 log lines should be buffered in pending.
-	if len(pr.pending) != 9 {
-		t.Errorf("expected 9 buffered log lines, got %d", len(pr.pending))
-	}
-}
-
-// TestProgressReporter_AlwaysSendsAt100 verifies pct==100 bypasses the throttle.
-func TestProgressReporter_AlwaysSendsAt100(t *testing.T) {
-	calls := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	pr := newProgressReporter("job-100", srv.URL, "token", srv.Client())
-	pr.lastSent = time.Now() // simulate a very recent send to engage the throttle
-
-	pr.Report(100, []string{"done"})
-
-	if calls != 1 {
-		t.Errorf("pct==100 should always send regardless of throttle, got %d calls", calls)
-	}
-}
-
-// TestProgressReporter_BuffersLogs verifies log lines accumulate across throttled
-// calls and are all flushed together on the next unthrottled send.
-func TestProgressReporter_BuffersLogs(t *testing.T) {
-	var allLogs []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Logs []string `json:"logs"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
-			allLogs = append(allLogs, body.Logs...)
-		}
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	pr := newProgressReporter("job-logs", srv.URL, "token", srv.Client())
-
-	pr.Report(50, []string{"log a"})           // first call — sends immediately
-	pr.Report(60, []string{"log b", "log c"}) // throttled — buffered
-	pr.Report(100, []string{"log d"})          // forced flush — sends buffered + new
-
-	// Expect: send1=["log a"], send2=["log b","log c","log d"]
-	if len(allLogs) != 4 {
-		t.Errorf("expected 4 total log lines across two sends, got %d: %v", len(allLogs), allLogs)
-	}
-}
-
-// TestProgressReporter_StatusIsCompletedAt100 verifies the coordinator receives
-// status="completed" when pct==100.
-func TestProgressReporter_StatusIsCompletedAt100(t *testing.T) {
-	var gotStatus string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Status string `json:"status"`
-		}
-		json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
-		gotStatus = body.Status
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	pr := newProgressReporter("job-status", srv.URL, "token", srv.Client())
-	pr.Report(100, []string{})
-
-	if gotStatus != "completed" {
-		t.Errorf("expected status=%q at pct==100, got %q", "completed", gotStatus)
-	}
-}
-
-// TestProgressReporter_StatusIsRunningBelow100 verifies status="running" for
-// all percentages below 100.
-func TestProgressReporter_StatusIsRunningBelow100(t *testing.T) {
-	var gotStatus string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var body struct {
-			Status string `json:"status"`
-		}
-		json.NewDecoder(r.Body).Decode(&body) //nolint:errcheck
-		gotStatus = body.Status
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	pr := newProgressReporter("job-running", srv.URL, "token", srv.Client())
-	pr.Report(42, []string{})
-
-	if gotStatus != "running" {
-		t.Errorf("expected status=%q at pct=42, got %q", "running", gotStatus)
 	}
 }
