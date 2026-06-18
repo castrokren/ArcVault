@@ -312,61 +312,88 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 
 // handlePostJobProgress handles POST /api/jobs/{id}/progress (Phase 20)
 // Receives progress updates from agents and stores them in the job record
-func (s *Server) handlePostJobProgress(w http.ResponseWriter, r *http.Request) {
-	id := r.PathValue("id")
+// ProgressUpdate is the request body for POST /api/jobs/{id}/progress
+type ProgressUpdate struct {
+	Percentage int      `json:"percentage"`
+	Logs       []string `json:"logs"`
+	Status     string   `json:"status"`
+}
 
-	// Parse progress data from request body
-	var input ProgressData
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+func (s *Server) handlePostJobProgress(w http.ResponseWriter, r *http.Request) {
+	jobID := r.PathValue("id")
+	if jobID == "" {
+		http.Error(w, "missing job ID", http.StatusBadRequest)
+		return
+	}
+
+	// Verify job exists
+	var jobExists bool
+	err := s.db.Conn().QueryRow(`SELECT EXISTS(SELECT 1 FROM jobs WHERE id = ?)`, jobID).Scan(&jobExists)
+	if err != nil || !jobExists {
+		http.Error(w, "job not found", http.StatusNotFound)
+		return
+	}
+
+	// Parse progress update from request body
+	var update ProgressUpdate
+	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
 
-	// Serialize progress to JSON for storage
-	progressJSON, err := json.Marshal(input)
-	if err != nil {
-		http.Error(w, "failed to serialize progress", http.StatusInternalServerError)
+	// Validate percentage (0-100)
+	if update.Percentage < 0 || update.Percentage > 100 {
+		http.Error(w, "percentage must be between 0 and 100", http.StatusBadRequest)
 		return
 	}
-	progressJSONStr := string(progressJSON)
 
-	// Update job progress in database
-	result, err := s.db.Conn().Exec(`UPDATE jobs SET progress = ? WHERE id = ?`, progressJSONStr, id)
+	// Validate status
+	validStatuses := map[string]bool{"running": true, "completed": true, "cancelled": true, "error": true}
+	if !validStatuses[update.Status] {
+		http.Error(w, "invalid status", http.StatusBadRequest)
+		return
+	}
+
+	// Get the latest job run for this job
+	var runID string
+	err = s.db.Conn().QueryRow(
+		`SELECT id FROM job_runs WHERE job_id = ? ORDER BY started_at DESC LIMIT 1`,
+		jobID,
+	).Scan(&runID)
+	if err != nil {
+		http.Error(w, "no job run found", http.StatusInternalServerError)
+		return
+	}
+
+	// Update job_runs with progress and status
+	_, err = s.db.Conn().Exec(
+		`UPDATE job_runs SET progress = ?, status = ? WHERE id = ?`,
+		update.Percentage, update.Status, runID,
+	)
 	if err != nil {
 		http.Error(w, "failed to update progress", http.StatusInternalServerError)
 		return
 	}
 
-	n, _ := result.RowsAffected()
-	if n == 0 {
-		http.Error(w, "job not found", http.StatusNotFound)
-		return
-	}
-
-	// Fetch and return the updated job
-	var j Job
-	var schedule *string
-	var progressJSONFromDB *string
-	err = s.db.Conn().QueryRow(
-		`SELECT id, agent_id, name, source_path, dest_path, schedule, status, progress, created_at
-		 FROM jobs WHERE id = ?`, id,
-	).Scan(&j.ID, &j.AgentID, &j.Name, &j.SourcePath, &j.DestPath, &schedule, &j.Status, &progressJSONFromDB, &j.CreatedAt)
-
-	if err != nil {
-		http.Error(w, "failed to fetch updated job", http.StatusInternalServerError)
-		return
-	}
-	j.Schedule = schedule
-
-	// Deserialize progress JSON if present
-	if progressJSONFromDB != nil {
-		var p ProgressData
-		if err := json.Unmarshal([]byte(*progressJSONFromDB), &p); err == nil {
-			j.Progress = &p
+	// Insert logs into job_logs table
+	for _, logLine := range update.Logs {
+		_, err := s.db.Conn().Exec(
+			`INSERT INTO job_logs (job_id, line) VALUES (?, ?)`,
+			jobID, logLine,
+		)
+		if err != nil {
+			http.Error(w, "failed to insert logs", http.StatusInternalServerError)
+			return
 		}
 	}
 
+	// Return success response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(j)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":    true,
+		"job_id":     jobID,
+		"percentage": update.Percentage,
+		"status":     update.Status,
+	})
 }
