@@ -1,4 +1,4 @@
-﻿package tlscert
+package tlscert
 
 import (
 	"crypto/ecdsa"
@@ -157,4 +157,3 @@ func Load(certPath string, keyPath string) error {
 	}
 	return nil
 }
-

@@ -42,9 +42,9 @@ func (s *Server) handleCreateAlertRule(w http.ResponseWriter, r *http.Request) {
 
 	// Validate rule_type
 	validTypes := map[string]bool{
-		"on_failure":           true,
-		"duration_exceeded":    true,
-		"missed_schedule":      true,
+		"on_failure":        true,
+		"duration_exceeded": true,
+		"missed_schedule":   true,
 	}
 	if !validTypes[input.RuleType] {
 		http.Error(w, "invalid rule_type", http.StatusBadRequest)
@@ -52,10 +52,10 @@ func (s *Server) handleCreateAlertRule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rule := db.AlertRule{
-		JobID:    input.JobID,
-		RuleType: input.RuleType,
+		JobID:     input.JobID,
+		RuleType:  input.RuleType,
 		Threshold: input.Threshold,
-		Enabled:  input.Enabled,
+		Enabled:   input.Enabled,
 	}
 
 	id, err := s.db.CreateAlertRule(rule)

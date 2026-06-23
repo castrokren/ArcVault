@@ -34,11 +34,11 @@ func (r *CreateUserRequest) Validate() error {
 
 // UserResponse defines the user response (no password hash exposed)
 type UserResponse struct {
-	UserID            int    `json:"user_id"`
-	Username          string `json:"username"`
-	Role              string `json:"role"`
+	UserID             int    `json:"user_id"`
+	Username           string `json:"username"`
+	Role               string `json:"role"`
 	MustChangePassword bool   `json:"must_change_password"`
-	CreatedAt         string `json:"created_at"`
+	CreatedAt          string `json:"created_at"`
 }
 
 // PaginatedUsersResponse wraps paginated users list

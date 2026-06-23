@@ -1,0 +1,57 @@
+{
+  "id": "IMPL-013",
+  "issue_code": "READ-005",
+  "title": "READ-005: Improve variable naming in buildQuery",
+  "priority": "LOW",
+  "severity": "readability",
+  "group": "Group 3 - Performance & UX Enhancements",
+  "description": "The buildQuery function uses abbreviated variable names (q, k, v) that are unclear. Using full names (queryString, key, value) improves code readability without any functional impact.",
+  "affected_files": [
+    "dashboard/src/api.ts"
+  ],
+  "lines": "69-75",
+  "context": {
+    "function": "buildQuery(params)",
+    "current_code": "const q = Object.entries(params)\n  .filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== 0)\n  .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)\n  .join('&')\nreturn q ? `?${q}` : ''",
+    "issue": "Single-letter variable names are unclear and hard to reason about"
+  },
+  "acceptance_criteria": [
+    "Variable 'q' renamed to 'queryString'",
+    "Variable 'k' renamed to 'key'",
+    "Variable 'v' renamed to 'value'",
+    "Underscore '_' renamed to meaningful name (if needed) or left as-is for unused params",
+    "Code functionality unchanged",
+    "Readability improved for maintainers"
+  ],
+  "implementation_notes": {
+    "current_code": "function buildQuery(params: Record<string, any>) {\n  const q = Object.entries(params)\n    .filter(([, v]) => v !== null && v !== undefined && v !== '' && v !== 0)\n    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)\n    .join('&')\n  return q ? `?${q}` : ''\n}",
+    "new_code": "function buildQuery(params: Record<string, any>) {\n  const queryString = Object.entries(params)\n    .filter(([_, value]) => value !== null && value !== undefined && value !== '' && value !== 0)\n    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)\n    .join('&')\n  return queryString ? `?${queryString}` : ''\n}",
+    "underscore_note": "Use '_' for intentionally unused 'key' in filter callback (convention), or use full name if clearer"
+  },
+  "estimation": "5",
+  "estimation_unit": "minutes",
+  "depends_on": [
+    "IMPL-005"
+  ],
+  "is_blocking": [],
+  "testing_strategy": {
+    "code_review": [
+      "Verify variable names are clear and meaningful",
+      "Check no regressions in buildQuery behavior"
+    ],
+    "functional_test": [
+      "Test buildQuery with various param combinations",
+      "Verify query string is correctly formatted",
+      "Verify URL encoding works correctly"
+    ]
+  },
+  "rollback_plan": "git revert <commit-hash> — simple rename, safe to revert",
+  "cli_execution": {
+    "id": "WFS-code-review-fixes-IMPL-013",
+    "tool": "agent",
+    "framework": "typescript"
+  },
+  "notes": "This is a quick naming improvement with minimal effort. It's the smallest task (5 min) and can be batched with other refactoring work. No functional changes; pure readability improvement.",
+  "status": "pending",
+  "created_at": "2026-06-12T10:30:00Z"
+}

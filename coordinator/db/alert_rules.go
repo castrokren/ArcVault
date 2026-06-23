@@ -4,9 +4,9 @@ import "time"
 
 type AlertRule struct {
 	ID        int64     `json:"id"`
-	JobID     string    `json:"job_id"`     // empty = applies to all jobs
-	RuleType  string    `json:"rule_type"`  // on_failure | duration_exceeded | missed_schedule
-	Threshold int       `json:"threshold"`  // seconds; 0 for on_failure
+	JobID     string    `json:"job_id"`    // empty = applies to all jobs
+	RuleType  string    `json:"rule_type"` // on_failure | duration_exceeded | missed_schedule
+	Threshold int       `json:"threshold"` // seconds; 0 for on_failure
 	Enabled   bool      `json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`
 }

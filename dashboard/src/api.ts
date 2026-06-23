@@ -280,7 +280,7 @@ export async function downloadInstaller() {
     throw new Error('No authentication token')
   }
 
-  const res = await fetch(`${BASE_URL}/api/admin/installer`, {
+  const res = await fetch(`${BASE_URL}/downloads/installer`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,

@@ -46,9 +46,9 @@ func TestGenerateAndValidateJWT(t *testing.T) {
 func TestJWTExpiry(t *testing.T) {
 	// Create a token with custom expiry (in the past for testing)
 	claims := &JWTClaims{
-		UserID:    1,
-		Username:  "testuser",
-		Role:      "operator",
+		UserID:     1,
+		Username:   "testuser",
+		Role:       "operator",
 		MustChange: false,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   "1",

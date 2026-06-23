@@ -38,11 +38,11 @@ func main() {
 // runLoadTest executes a load test with the given parameters
 func runLoadTest(agents, jobsPerAgent, jobDuration int, failureRate float64, failureType, outputFile string) {
 	scenario := &LoadScenario{
-		Agents:       agents,
-		JobsPerAgent: jobsPerAgent,
+		Agents:        agents,
+		JobsPerAgent:  jobsPerAgent,
 		JobDurationMs: jobDuration,
-		FailureRate:  failureRate,
-		FailureType:  failureType,
+		FailureRate:   failureRate,
+		FailureType:   failureType,
 	}
 
 	harness := NewHarness(scenario)

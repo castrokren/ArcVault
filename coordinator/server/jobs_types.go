@@ -4,11 +4,11 @@ import "fmt"
 
 // CreateJobRequest defines the request to create a new job
 type CreateJobRequest struct {
-	Name       string `json:"name"`
+	Name       string  `json:"name"`
 	AgentID    *string `json:"agent_id"`
-	GroupID    *int `json:"group_id"`
-	SourcePath string `json:"source_path"`
-	DestPath   string `json:"dest_path"`
+	GroupID    *int    `json:"group_id"`
+	SourcePath string  `json:"source_path"`
+	DestPath   string  `json:"dest_path"`
 	Schedule   *string `json:"schedule"`
 	SyncFlags  *string `json:"sync_flags"`
 }
@@ -59,7 +59,7 @@ type JobResponse struct {
 	JobID      string  `json:"job_id"`
 	Name       string  `json:"name"`
 	AgentID    *string `json:"agent_id"`
-	GroupID    *int `json:"group_id"`
+	GroupID    *int    `json:"group_id"`
 	DispatchID *string `json:"dispatch_id"`
 	SourcePath string  `json:"source_path"`
 	DestPath   string  `json:"dest_path"`
@@ -77,7 +77,7 @@ type PaginatedJobsResponse struct {
 
 // PostJobProgressRequest defines the request to post job progress
 type PostJobProgressRequest struct {
-	Percentage int    `json:"percentage"`
+	Percentage int     `json:"percentage"`
 	Status     *string `json:"status"`
 }
 
@@ -111,8 +111,8 @@ type JobProgressResponse struct {
 
 // PostJobResultsRequest defines the request to post job execution results
 type PostJobResultsRequest struct {
-	RunID    string `json:"run_id"`
-	ExitCode int    `json:"exit_code"`
+	RunID    string  `json:"run_id"`
+	ExitCode int     `json:"exit_code"`
 	Error    *string `json:"error"`
 }
 
@@ -132,21 +132,21 @@ func (r *PostJobResultsRequest) Validate() error {
 
 // PostJobResultsResponse defines the response after posting results
 type PostJobResultsResponse struct {
-	RunID    string `json:"run_id"`
-	JobID    string `json:"job_id"`
-	Status   string `json:"status"`
-	ExitCode int    `json:"exit_code"`
+	RunID    string  `json:"run_id"`
+	JobID    string  `json:"job_id"`
+	Status   string  `json:"status"`
+	ExitCode int     `json:"exit_code"`
 	Error    *string `json:"error"`
 }
 
 // JobRunResponse defines a single job run (execution)
 type JobRunResponse struct {
-	RunID    string `json:"run_id"`
-	JobID    string `json:"job_id"`
-	RunStart string `json:"run_start"`
+	RunID    string  `json:"run_id"`
+	JobID    string  `json:"job_id"`
+	RunStart string  `json:"run_start"`
 	RunEnd   *string `json:"run_end"`
-	Status   string `json:"status"`
-	ExitCode *int `json:"exit_code"`
+	Status   string  `json:"status"`
+	ExitCode *int    `json:"exit_code"`
 	Error    *string `json:"error"`
 }
 
@@ -165,11 +165,11 @@ type JobLogEntry struct {
 
 // JobProgressGetResponse defines the response for getting job progress
 type JobProgressGetResponse struct {
-	JobID       string         `json:"job_id"`
-	Percentage  int            `json:"percentage"`
-	Status      string         `json:"status"`
-	RecentLogs  []JobLogEntry  `json:"recent_logs"`
-	UpdatedAt   string         `json:"updated_at"`
+	JobID      string        `json:"job_id"`
+	Percentage int           `json:"percentage"`
+	Status     string        `json:"status"`
+	RecentLogs []JobLogEntry `json:"recent_logs"`
+	UpdatedAt  string        `json:"updated_at"`
 }
 
 // PaginatedJobLogsResponse wraps paginated job logs

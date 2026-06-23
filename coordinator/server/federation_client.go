@@ -18,9 +18,9 @@ import (
 // streams delta events as local state changes. Reconnects automatically with
 // exponential backoff.
 type FederationClient struct {
-	cfg    *config.FederationConfig
-	db     *db.DB
-	ver    string // binary version string, injected at build time
+	cfg *config.FederationConfig
+	db  *db.DB
+	ver string // binary version string, injected at build time
 
 	conn   *websocket.Conn
 	connMu sync.Mutex

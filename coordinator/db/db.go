@@ -531,6 +531,25 @@ CREATE TABLE IF NOT EXISTS job_runs (
 	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_revoked_tokens_expires ON revoked_tokens(expires_at)`)
 	// Idempotent: add expires_at column to tokens for bootstrap token expiry (short-lived).
 	d.conn.Exec(`ALTER TABLE tokens ADD COLUMN expires_at DATETIME`)
+	// Idempotent: add command_audit_log table for Phase 2A command audit logging.
+	d.conn.Exec(`CREATE TABLE IF NOT EXISTS command_audit_log (
+		id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+		template_id         TEXT,
+		job_id              TEXT,
+		command_string      TEXT NOT NULL,
+		program_name        TEXT NOT NULL,
+		is_whitelisted      INTEGER NOT NULL DEFAULT 0,
+		mode                TEXT NOT NULL,
+		audit_result        TEXT NOT NULL DEFAULT '',
+		executed_at         DATETIME DEFAULT CURRENT_TIMESTAMP,
+		agent_id            TEXT NOT NULL,
+		FOREIGN KEY (job_id) REFERENCES jobs(id),
+		FOREIGN KEY (template_id) REFERENCES backup_templates(id)
+	)`)
+	// Idempotent: add indexes for command_audit_log query performance.
+	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_command_audit_program ON command_audit_log(program_name)`)
+	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_command_audit_executed ON command_audit_log(executed_at)`)
+	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_command_audit_whitelist ON command_audit_log(is_whitelisted)`)
 	return nil
 }
 

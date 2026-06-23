@@ -19,12 +19,14 @@ export function useWebSocket() {
     const token = getToken()
     if (!token) return
 
-    // Pass the token in Sec-WebSocket-Protocol header (bearer.token format)
-    ws = new WebSocket(getWsUrl(), [`bearer.${token}`])
+    const wsUrl = getWsUrl()
+    console.log(`[WS] Connecting to ${wsUrl} from origin ${window.location.origin}`)
+
+    ws = new WebSocket(wsUrl, [`bearer.${token}`])
 
     ws.onopen = () => {
       connected.value = true
-      console.log('WS connected')
+      console.log('[WS] Connected successfully from origin:', window.location.origin)
     }
 
     ws.onmessage = (e) => {
@@ -37,15 +39,22 @@ export function useWebSocket() {
       }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       connected.value = false
+      console.log('[WS] Disconnected. Code:', event.code, 'Reason:', event.reason)
+
+      // Handle origin rejection (code 1006 = abnormal closure)
+      if (event.code === 1006 && event.reason) {
+        console.error('[WS] Connection rejected - may be CORS/origin validation issue')
+      }
+
       console.log('WS disconnected, reconnecting in 5s...')
       reconnectTimer = setTimeout(connect, 5000)
     }
 
     ws.onerror = (err) => {
-      console.error('WS error', err)
-      ws.close()
+      console.error('[WS] Error:', err)
+      // Don't close here - onclose will handle reconnect
     }
   }
 

@@ -5,14 +5,83 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"os/exec"
 	"runtime"
 	"strings"
+	"unicode"
 )
+
+// CommandAuditor is a callback function signature for logging command execution in audit mode.
+// It receives the execution context and logs it to a persistent audit store.
+type CommandAuditor func(ctx CommandAuditContext)
+
+// CommandAuditContext holds audit information for a command execution.
+type CommandAuditContext struct {
+	TemplateID    *string
+	JobID         *string
+	CommandString string
+	ProgramName   string
+	IsWhitelisted bool
+	Mode          string // "audit" or "enforce"
+	AuditResult   string
+	AgentID       string
+}
+
+// parseCommandArgs splits a command string into arguments, respecting quoted strings.
+// This avoids shell interpretation while still allowing multi-word arguments.
+// Handles both single and double quotes, properly stripping them from the result.
+// Format: "program arg1 arg2 'arg with spaces' \"another quoted arg\""
+// Windows paths with backslashes are preserved correctly within quotes.
+func parseCommandArgs(cmdStr string) []string {
+	var args []string
+	var current strings.Builder
+	var inSingle, inDouble bool
+	var i int
+
+	for i < len(cmdStr) {
+		ch := rune(cmdStr[i])
+
+		// Handle single quotes: toggle state, don't add to output
+		if ch == '\'' && !inDouble {
+			inSingle = !inSingle
+			i++
+			continue
+		}
+
+		// Handle double quotes: toggle state, don't add to output
+		if ch == '"' && !inSingle {
+			inDouble = !inDouble
+			i++
+			continue
+		}
+
+		// Handle whitespace as delimiter (when not quoted)
+		if unicode.IsSpace(ch) && !inSingle && !inDouble {
+			if current.Len() > 0 {
+				args = append(args, current.String())
+				current.Reset()
+			}
+			i++
+			continue
+		}
+
+		// Add character to current argument (including backslashes in quoted strings)
+		current.WriteRune(ch)
+		i++
+	}
+
+	// Add final argument if any
+	if current.Len() > 0 {
+		args = append(args, current.String())
+	}
+
+	return args
+}
 
 // RealExecutor runs robocopy on Windows or rsync on Unix/Mac, streaming parsed
 // progress to report as the backup proceeds. If job.Command is non-empty the
-// command is executed directly via the shell with no progress parsing.
+// command is executed via explicit arguments (not via shell) for security.
 //
 // This is the production executor wired into agent/main.go.
 func RealExecutor(job Job, report ProgressFunc) (exitCode int, output string) {
@@ -20,14 +89,16 @@ func RealExecutor(job Job, report ProgressFunc) (exitCode int, output string) {
 		report = Noop
 	}
 
-	// Template-fired job: run the command directly, no progress parsing.
+	// Template-fired job: parse command into arguments and execute without shell.
+	// Commands are structured as "program arg1 arg2 ..." to avoid shell injection.
 	if job.Command != "" {
-		var cmd *exec.Cmd
-		if runtime.GOOS == "windows" {
-			cmd = exec.Command("cmd", "/C", job.Command)
-		} else {
-			cmd = exec.Command("sh", "-c", job.Command)
+		args := parseCommandArgs(job.Command)
+		if len(args) == 0 {
+			return 1, "command is empty after parsing"
 		}
+
+		// Execute the program with parsed arguments, avoiding shell interpretation
+		cmd := exec.Command(args[0], args[1:]...)
 		out, err := cmd.CombinedOutput()
 		output = string(out)
 		exitCode = extractExitCode(err, false)
@@ -108,6 +179,11 @@ func streamRobocopy(cmd *exec.Cmd, report ProgressFunc) (int, string) {
 		}
 	}
 
+	if err := scanner.Err(); err != nil {
+		log.Printf("scanner error: %v", err)
+		return 1, fmt.Sprintf("output stream error: %v", err)
+	}
+
 	code := waitCode(cmd, true /* isRobocopy */)
 	report(100, pending) // flush any trailing log lines + mark done
 
@@ -151,6 +227,11 @@ func streamRsync(cmd *exec.Cmd, report ProgressFunc) (int, string) {
 		} else if t := strings.TrimSpace(line); t != "" {
 			pending = append(pending, t)
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("scanner error: %v", err)
+		return 1, fmt.Sprintf("output stream error: %v", err)
 	}
 
 	code := waitCode(cmd, false)

@@ -1,0 +1,70 @@
+{
+  "id": "IMPL-004",
+  "issue_code": "READ-001",
+  "title": "READ-001: Standardize function definition patterns",
+  "priority": "HIGH",
+  "severity": "readability",
+  "group": "Group 2 - Code Quality & Consistency",
+  "description": "API functions use inconsistent patterns. The login() function uses direct fetch instead of the request() helper, breaking the pattern used by logout() and other API functions. Standardizing all functions to use the request() helper improves consistency and maintainability.",
+  "affected_files": [
+    "dashboard/src/api.ts"
+  ],
+  "lines": "88-109",
+  "context": {
+    "inconsistency": "login() uses direct fetch; logout() and others use request() helper",
+    "current_pattern_login": "const login = async (username, password) => {\n  const res = await fetch(...)\n  return validateResponse(...)\n}",
+    "current_pattern_logout": "const logout = () => request('POST', '/api/auth/logout')",
+    "goal": "All API functions should use request() helper for consistency"
+  },
+  "acceptance_criteria": [
+    "login() function uses request() helper like logout()",
+    "All API functions (getUsers, createUser, deleteUser, etc.) follow same pattern",
+    "Error handling remains consistent across all functions",
+    "Response validation still works correctly",
+    "login() signature and return type unchanged (backwards compatible)",
+    "No behavioral changes; only structural refactoring"
+  ],
+  "implementation_notes": {
+    "change_scope": "Lines 88-94 (login function only)",
+    "current_code": "export const login = async (username: string, password: string): Promise<Types.LoginResponse> => {\n  const res = await fetch(`${BASE_URL}/api/auth/login`, {\n    method: 'POST',\n    headers: getAuthHeaders(),\n    body: JSON.stringify({ username, password })\n  })\n  return validateResponse('/api/auth/login', LoginResponseSchema, res)\n}",
+    "new_code": "export const login = async (username: string, password: string): Promise<Types.LoginResponse> => {\n  const res = await request('POST', '/api/auth/login', { username, password })\n  return validateResponse('/api/auth/login', LoginResponseSchema, res)\n}",
+    "note": "request() helper handles fetch call and auth headers; validateResponse() still applies schema validation"
+  },
+  "estimation": "15",
+  "estimation_unit": "minutes",
+  "depends_on": [
+    "IMPL-002"
+  ],
+  "is_blocking": [
+    "IMPL-006",
+    "IMPL-008"
+  ],
+  "testing_strategy": {
+    "unit_test": [
+      "Test login() with valid credentials returns LoginResponse",
+      "Test login() with invalid credentials returns error",
+      "Verify request() helper is called with correct method and path",
+      "Verify validateResponse() still validates schema"
+    ],
+    "integration_test": [
+      "Test login endpoint still works after refactoring",
+      "Verify error handling (network error, invalid response) still works",
+      "Test response schema validation catches invalid responses"
+    ],
+    "manual_test": [
+      "Login with valid credentials in dashboard",
+      "Verify login succeeds and token is stored",
+      "Check browser DevTools Network tab for POST /api/auth/login request",
+      "Try invalid credentials and verify error message appears"
+    ]
+  },
+  "rollback_plan": "git revert <commit-hash> — isolated change to login() function",
+  "cli_execution": {
+    "id": "WFS-code-review-fixes-IMPL-004",
+    "tool": "agent",
+    "framework": "typescript"
+  },
+  "notes": "This is a structural refactoring improving consistency. No behavioral changes; only moves login() to use same request() helper pattern as other API functions.",
+  "status": "pending",
+  "created_at": "2026-06-12T10:30:00Z"
+}

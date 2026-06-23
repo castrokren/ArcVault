@@ -6,12 +6,12 @@ import (
 )
 
 type User struct {
-	ID                   int       `json:"id"`
-	Username             string    `json:"username"`
-	PasswordHash         string    `json:"-"` // never expose
-	Role                 string    `json:"role"`
-	MustChangePassword   bool      `json:"must_change_password"`
-	CreatedAt            time.Time `json:"created_at"`
+	ID                 int       `json:"id"`
+	Username           string    `json:"username"`
+	PasswordHash       string    `json:"-"` // never expose
+	Role               string    `json:"role"`
+	MustChangePassword bool      `json:"must_change_password"`
+	CreatedAt          time.Time `json:"created_at"`
 }
 
 // CreateUser inserts a new user with the given username, password hash, and role.

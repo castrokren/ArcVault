@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	agentUpdateMu      sync.Mutex
+	agentUpdateMu          sync.Mutex
 	agentUpdatesInProgress = make(map[string]bool)
 )
 

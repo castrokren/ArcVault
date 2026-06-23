@@ -1,0 +1,69 @@
+{
+  "id": "IMPL-003",
+  "issue_code": "CORR-001",
+  "title": "CORR-001: Fix race condition in pagination watcher",
+  "priority": "HIGH",
+  "severity": "correctness",
+  "group": "Group 1 - Security & Correctness",
+  "description": "The watcher on `page` will trigger fetchUsers() without checking if a fetch is already in progress. This can cause multiple concurrent requests if user clicks pagination rapidly, resulting in stale data overwriting newer responses and inconsistent UI state.",
+  "affected_files": [
+    "dashboard/src/views/Users.vue"
+  ],
+  "lines": "362",
+  "context": {
+    "function": "watch hook in Users.vue setup()",
+    "current_code": "watch(page, () => fetchUsers())",
+    "issue": "No concurrency guard; rapid pagination clicks trigger multiple simultaneous requests"
+  },
+  "acceptance_criteria": [
+    "Pagination watcher checks loading.value before calling fetchUsers()",
+    "User can click pagination buttons rapidly without triggering concurrent requests",
+    "Verify with devtools Network tab: only one /api/users request in flight at any time",
+    "Verify UI always shows most recent data, not stale data",
+    "Page indicator and row display match the loaded data",
+    "Loading indicator shows only once per page change"
+  ],
+  "implementation_notes": {
+    "fix_approach": "Add loading check before fetchUsers()",
+    "code_option_1": "watch(page, () => {\n  if (!loading.value) {\n    fetchUsers()\n  }\n})",
+    "code_option_2": "watch(page, async () => {\n  if (!loading.value) {\n    await fetchUsers()\n  }\n})",
+    "loading_state": "Ensure loading.value is set to true at start of fetchUsers() and false at end (in finally block)",
+    "comparison": "Jobs.vue:260-268 uses onFilterChange() -> page reset -> load() pattern with built-in loading guard",
+    "no_external_deps": "Uses existing loading ref, no new dependencies needed"
+  },
+  "estimation": "15",
+  "estimation_unit": "minutes",
+  "depends_on": [],
+  "is_blocking": [
+    "IMPL-007"
+  ],
+  "testing_strategy": {
+    "unit_test": [
+      "Mock fetchUsers() and verify it's called only once per watch trigger",
+      "Mock loading.value state transitions",
+      "Verify watcher respects loading guard"
+    ],
+    "manual_test": [
+      "Open Users page in dashboard",
+      "Click pagination buttons 3-4 times in rapid succession (within 1 second)",
+      "Watch DevTools Network tab: only one /api/users request should be in flight",
+      "Verify page number matches displayed users",
+      "Try with delay: click page 2, immediately click page 3 before request completes",
+      "Verify final result shows page 3 users, not page 2"
+    ],
+    "stress_test": [
+      "Use browser DevTools to slow down network (throttle to slow 3G)",
+      "Rapidly click pagination buttons while request is in-flight",
+      "Verify no duplicate or overlapping requests"
+    ]
+  },
+  "rollback_plan": "git revert <commit-hash> — isolated change, safe to revert",
+  "cli_execution": {
+    "id": "WFS-code-review-fixes-IMPL-003",
+    "tool": "agent",
+    "framework": "typescript"
+  },
+  "notes": "This is a correctness fix preventing data inconsistency. Must be fixed before merge. The loading state must be properly maintained in fetchUsers() for this guard to work correctly.",
+  "status": "pending",
+  "created_at": "2026-06-12T10:30:00Z"
+}

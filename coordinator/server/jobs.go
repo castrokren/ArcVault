@@ -38,14 +38,14 @@ type Job struct {
 // - Both cannot be provided (validation required)
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		AgentID              string                 `json:"agent_id"`
-		GroupID              *int                   `json:"group_id"`
-		Name                 string                 `json:"name"`
-		SourcePath           string                 `json:"source_path"`
-		DestPath             string                 `json:"dest_path"`
-		Schedule             *string                `json:"schedule"`
-		SyncFlags            map[string]interface{} `json:"sync_flags"`
-		CredentialProfileID  string                 `json:"credential_profile_id,omitempty"`
+		AgentID             string                 `json:"agent_id"`
+		GroupID             *int                   `json:"group_id"`
+		Name                string                 `json:"name"`
+		SourcePath          string                 `json:"source_path"`
+		DestPath            string                 `json:"dest_path"`
+		Schedule            *string                `json:"schedule"`
+		SyncFlags           map[string]interface{} `json:"sync_flags"`
+		CredentialProfileID string                 `json:"credential_profile_id,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)

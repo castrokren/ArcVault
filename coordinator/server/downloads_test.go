@@ -10,21 +10,7 @@ import (
 	"testing"
 
 	"arcvault/coordinator/config"
-	"arcvault/coordinator/db"
 )
-
-// newTestServer returns a minimal Server wired for handler tests.
-// No real DB connection — handlers under test must not touch s.db.
-func newTestServer(t *testing.T, cfg *config.Config) *Server {
-	t.Helper()
-	return &Server{
-		cfg:           cfg,
-		db:            &db.DB{},
-		router:        http.NewServeMux(),
-		tokenCache:    make(map[string]tokenCacheEntry),
-		loginLimiters: make(map[string]*loginRateLimiter),
-	}
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REGRESSION: /downloads/installer must serve the .exe, not bootstrap.ps1
@@ -48,10 +34,10 @@ func TestHandleDownloadInstaller_ServesExe(t *testing.T) {
 	}
 	t.Setenv("ARCVAULT_VERSION", "v"+version)
 
-	srv := newTestServer(t, &config.Config{
+	srv := newTestServer(t, WithHandlerOnly(), WithConfig(&config.Config{
 		Port:         8080,
 		InstallerDir: tmpDir,
-	})
+	}))
 
 	w := httptest.NewRecorder()
 	srv.handleDownloadInstaller(w, httptest.NewRequest(http.MethodGet, "/downloads/installer", nil))
@@ -86,10 +72,10 @@ func TestHandleDownloadInstaller_ServesExe(t *testing.T) {
 func TestHandleDownloadInstaller_NoInstallerReturns404(t *testing.T) {
 	t.Setenv("ARCVAULT_VERSION", "v0.5.1")
 
-	srv := newTestServer(t, &config.Config{
+	srv := newTestServer(t, WithHandlerOnly(), WithConfig(&config.Config{
 		Port:         8080,
 		InstallerDir: t.TempDir(), // empty — no exe present
-	})
+	}))
 
 	w := httptest.NewRecorder()
 	srv.handleDownloadInstaller(w, httptest.NewRequest(http.MethodGet, "/downloads/installer", nil))
@@ -109,10 +95,10 @@ func TestHandleDownloadInstaller_NoInstallerReturns404(t *testing.T) {
 // a plain (unauthenticated) GET /downloads/installer does NOT return a bootstrap
 // script body. (With no auth it should return 401/403, not a ps1 payload.)
 func TestRouteTable_InstallerNotBootstrap(t *testing.T) {
-	srv := newTestServer(t, &config.Config{
+	srv := newTestServer(t, WithHandlerOnly(), WithConfig(&config.Config{
 		Port:       8080,
 		AdminToken: "test-token",
-	})
+	}))
 	srv.registerRoutes()
 
 	w := httptest.NewRecorder()

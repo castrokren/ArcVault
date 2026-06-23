@@ -125,19 +125,27 @@ func (h *Hub) removeAgent(agentID string) {
 
 // --- WebSocket upgrade handler ---
 
+// Global upgrader with disabled CheckOrigin by default
+// Will be overridden per-server instance with proper origin validation
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		// WARNING: This should be overridden by Server.initWebSocketUpgrader()
+		// Default deny to fail safe if initialization fails
+		return false
+	},
 }
 
 // handleWS upgrades the connection and registers it with the hub.
-// Auth: accepts Bearer token from Authorization header OR ?token= query param
+// Auth: accepts only JWT tokens from Authorization header or Sec-WebSocket-Protocol
 // (browsers cannot set headers on WebSocket connections).
+// Dashboard must use JWT — admin token not accepted here (use handleAgentWS for admin access).
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	token := r.Header.Get("Authorization")
 	if len(token) > 7 && token[:7] == "Bearer " {
 		token = token[7:]
 	}
-	// Note: ?token= query param removed — tokens must be in Authorization header.
 	// Try Sec-WebSocket-Protocol header as fallback (for browser clients).
 	if token == "" {
 		for _, proto := range r.Header["Sec-Websocket-Protocol"] {
@@ -147,12 +155,10 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	// Accept admin token OR any valid JWT (issued after Phase 15 login).
-	if token != s.cfg.AdminToken {
-		if _, err := ValidateJWT(token, s.cfg.JWTSecret); err != nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
+	// Dashboard connections must use valid JWT token (no admin token).
+	if _, err := ValidateJWT(token, s.cfg.JWTSecret); err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
 	}
 
 	// Echo back the bearer.* subprotocol so browsers accept the handshake.
@@ -163,7 +169,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
-	conn, err := upgrader.Upgrade(w, r, upgradeHeader)
+	conn, err := s.wsUpgrader.Upgrade(w, r, upgradeHeader)
 	if err != nil {
 		log.Printf("WS upgrade failed: %v", err)
 		return
@@ -211,7 +217,7 @@ func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("Agent WS upgrade failed: %v", err)
 		return

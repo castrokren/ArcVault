@@ -8,10 +8,10 @@ import (
 // Test that harness can spawn mock agents and create jobs
 func TestHarnessBasicLoad(t *testing.T) {
 	h := NewHarness(&LoadScenario{
-		Agents:         5,
-		JobsPerAgent:   3,
-		JobDurationMs:  100, // 100ms jobs for fast test
-		FailureRate:    0,   // No failures for basic test
+		Agents:        5,
+		JobsPerAgent:  3,
+		JobDurationMs: 100, // 100ms jobs for fast test
+		FailureRate:   0,   // No failures for basic test
 	})
 
 	// Run the harness

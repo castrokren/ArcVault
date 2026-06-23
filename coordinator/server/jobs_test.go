@@ -7,28 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"arcvault/coordinator/config"
-	"arcvault/coordinator/db"
 )
-
-// --- test helpers ---
-
-func newTestServer(t *testing.T) *Server {
-	t.Helper()
-	database, err := db.Init(":memory:")
-	if err != nil {
-		t.Fatalf("failed to init test db: %v", err)
-	}
-	t.Cleanup(func() { database.Close() })
-
-	cfg := &config.Config{
-		Port:       8080,
-		AdminToken: "test-token",
-	}
-	// pass empty staticDir so tests don't try to serve files from disk
-	return NewWithStatic(cfg, database, "")
-}
 
 func authHeader() string {
 	return "Bearer test-token"

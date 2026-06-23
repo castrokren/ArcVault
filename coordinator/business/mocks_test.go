@@ -91,7 +91,7 @@ func (m *mockAgentQueries) DeleteAgent(agentID string) error {
 	return nil
 }
 
-func (m *mockAgentQueries) DeleteAgentTokens(agentID string) error        { return nil }
+func (m *mockAgentQueries) DeleteAgentTokens(agentID string) error           { return nil }
 func (m *mockAgentQueries) DeleteAgentGroupMemberships(agentID string) error { return nil }
 
 // ----------------------------------------------------------------------------
@@ -105,14 +105,14 @@ type mockJobDB struct {
 	members map[int][]string
 
 	// per-call error overrides
-	createJobErr     error
-	getJobErr        error
-	listJobsErr      error
-	getJobNameErr    error
-	getFirstRunErr   error
-	firstRunID       string // returned by GetFirstJobRun
-	createRunErr     error
-	updateRunErr     error
+	createJobErr   error
+	getJobErr      error
+	listJobsErr    error
+	getJobNameErr  error
+	getFirstRunErr error
+	firstRunID     string // returned by GetFirstJobRun
+	createRunErr   error
+	updateRunErr   error
 }
 
 func newMockJobDB() *mockJobDB {
@@ -252,14 +252,16 @@ func (m *mockJobDB) UpdateJobRun(id string, exitCode int, output, startedAt, fin
 
 // -- UserQueries (stub — JobService doesn't use these) --
 
-func (m *mockJobDB) CreateUser(username, passwordHash, role string, mustChange bool) error { return nil }
-func (m *mockJobDB) GetUserByUsername(username string) (*db.User, error)                   { return nil, nil }
-func (m *mockJobDB) GetUserByID(id int) (*db.User, error)                                  { return nil, nil }
-func (m *mockJobDB) CountUsers() (int, error)                                              { return 0, nil }
-func (m *mockJobDB) UpdatePassword(userID int, newHash string, mustChange bool) error      { return nil }
-func (m *mockJobDB) ListUsers() ([]db.User, error)                                         { return nil, nil }
-func (m *mockJobDB) DeleteUser(userID int) error                                           { return nil }
-func (m *mockJobDB) UpdateUserRole(userID int, role string) error                          { return nil }
+func (m *mockJobDB) CreateUser(username, passwordHash, role string, mustChange bool) error {
+	return nil
+}
+func (m *mockJobDB) GetUserByUsername(username string) (*db.User, error)              { return nil, nil }
+func (m *mockJobDB) GetUserByID(id int) (*db.User, error)                             { return nil, nil }
+func (m *mockJobDB) CountUsers() (int, error)                                         { return 0, nil }
+func (m *mockJobDB) UpdatePassword(userID int, newHash string, mustChange bool) error { return nil }
+func (m *mockJobDB) ListUsers() ([]db.User, error)                                    { return nil, nil }
+func (m *mockJobDB) DeleteUser(userID int) error                                      { return nil }
+func (m *mockJobDB) UpdateUserRole(userID int, role string) error                     { return nil }
 
 // -- ExtendedGroupQueries --
 

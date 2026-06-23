@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	ErrKeyNotSet = errors.New("encryption key not set in environment (ARCVAULT_CREDENTIAL_KEY)")
+	ErrKeyNotSet  = errors.New("encryption key not set in environment (ARCVAULT_CREDENTIAL_KEY)")
 	ErrKeyInvalid = errors.New("encryption key invalid (must be 32 bytes / 64 hex chars)")
 )
 

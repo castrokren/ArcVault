@@ -1,0 +1,85 @@
+{
+  "id": "IMPL-002",
+  "issue_code": "SEC-002",
+  "title": "SEC-002: Consolidate token storage to single key",
+  "priority": "HIGH",
+  "severity": "security",
+  "group": "Group 1 - Security & Correctness",
+  "description": "Token is stored in two localStorage keys (arcvault_jwt and arcvault_token) and retrieved from both. This creates inconsistency, potential for stale tokens if one key isn't cleared, and confusion about which key is authoritative. Must consolidate to single key with backwards compatibility migration.",
+  "affected_files": [
+    "dashboard/src/api.ts",
+    "dashboard/src/composables/useAuth.js"
+  ],
+  "lines": {
+    "api_ts": "25, 37-40, 238-245, 359-363",
+    "useAuth_js": "34-35, 43-44"
+  },
+  "context": {
+    "current_pattern": "Both arcvault_jwt and arcvault_token stored and retrieved",
+    "issue": "Redundant keys, potential stale state, unclear which is authoritative",
+    "dependencies": [
+      "UpdateModal.vue uses getToken()",
+      "AgentUpdateModal.vue uses getToken()",
+      "Credentials.vue uses getToken()",
+      "Users.vue uses getToken()",
+      "Jobs.vue uses getToken()"
+    ]
+  },
+  "acceptance_criteria": [
+    "Create STORAGE_KEYS constant with single TOKEN key",
+    "saveToken() saves to arcvault_token only and removes arcvault_jwt",
+    "getToken() reads from arcvault_token with fallback to arcvault_jwt for backwards compatibility",
+    "handle401() clears only arcvault_token (and user/remember_me)",
+    "All dependent components still authenticate correctly",
+    "Existing users with arcvault_jwt token can still log in (migration happens on login)",
+    "No duplicate keys in localStorage after fix"
+  ],
+  "implementation_notes": {
+    "storage_keys_constant": {
+      "location": "Top of api.ts after imports",
+      "code": "const STORAGE_KEYS = {\n  TOKEN: 'arcvault_token',\n  USER: 'arcvault_user',\n  REMEMBER_ME: 'arcvault_remember_me',\n}"
+    },
+    "save_token_update": "Save only to STORAGE_KEYS.TOKEN and remove arcvault_jwt\nlocalStorage.removeItem('arcvault_jwt')",
+    "get_token_update": "return localStorage.getItem(STORAGE_KEYS.TOKEN) || localStorage.getItem('arcvault_jwt') || ''",
+    "handle_401_update": "Clear STORAGE_KEYS.TOKEN instead of both keys",
+    "useAuth_js_update": "Import STORAGE_KEYS from api.ts and use it consistently",
+    "backwards_compatibility": "First read (getToken) tries new key first, falls back to old key. First write (saveToken) clears old key."
+  },
+  "estimation": "20",
+  "estimation_unit": "minutes",
+  "depends_on": [],
+  "is_blocking": [
+    "IMPL-004",
+    "IMPL-005"
+  ],
+  "testing_strategy": {
+    "unit_test": [
+      "Test saveToken('token123') stores to arcvault_token only",
+      "Test getToken() returns from arcvault_token if present",
+      "Test getToken() falls back to arcvault_jwt if arcvault_token missing",
+      "Test handle401() clears arcvault_token",
+      "Test after saveToken(), arcvault_jwt is removed"
+    ],
+    "integration_test": [
+      "Login and verify token is stored in arcvault_token",
+      "Manually set arcvault_jwt in localStorage, verify getToken() reads it",
+      "Login with arcvault_jwt present, verify it's migrated to arcvault_token",
+      "Logout and verify both keys are cleared"
+    ],
+    "manual_test": [
+      "Check browser DevTools Application tab > localStorage after login",
+      "Verify arcvault_token key exists and arcvault_jwt is absent",
+      "Test with existing localStorage from old version",
+      "Verify all 5 dependent components can authenticate"
+    ]
+  },
+  "rollback_plan": "git revert <commit-hash> — update both files in same commit for safety",
+  "cli_execution": {
+    "id": "WFS-code-review-fixes-IMPL-002",
+    "tool": "agent",
+    "framework": "typescript"
+  },
+  "notes": "Must update both api.ts and useAuth.js in same commit. Use STORAGE_KEYS constant for consistency. Backwards compatibility is critical for existing users.",
+  "status": "pending",
+  "created_at": "2026-06-12T10:30:00Z"
+}

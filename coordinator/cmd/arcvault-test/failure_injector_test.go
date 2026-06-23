@@ -9,11 +9,11 @@ func TestAgentDisconnectRecovery(t *testing.T) {
 	// Scenario: 20 agents running 30-minute jobs with random disconnects every 5 minutes
 	// Expected: Jobs pause and resume, no data loss
 	h := NewHarness(&LoadScenario{
-		Agents:         5,
-		JobsPerAgent:   2,
-		JobDurationMs:  1000, // 1 second = 1 "minute" in test time
-		FailureRate:    0.3,  // 30% of jobs experience disconnect
-		FailureType:    "disconnect",
+		Agents:        5,
+		JobsPerAgent:  2,
+		JobDurationMs: 1000, // 1 second = 1 "minute" in test time
+		FailureRate:   0.3,  // 30% of jobs experience disconnect
+		FailureType:   "disconnect",
 	})
 
 	report, err := h.Run()

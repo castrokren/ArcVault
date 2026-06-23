@@ -8,9 +8,9 @@ import (
 
 // FailureInjector manages injection of failures into mock agents
 type FailureInjector struct {
-	scenario         *LoadScenario
-	failureEvents    []FailureEvent
-	failureEventsMu  sync.RWMutex
+	scenario        *LoadScenario
+	failureEvents   []FailureEvent
+	failureEventsMu sync.RWMutex
 }
 
 // FailureEvent records a failure that was injected

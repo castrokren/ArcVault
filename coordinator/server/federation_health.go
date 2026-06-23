@@ -8,15 +8,15 @@ import (
 
 // CoordinatorHealth represents the health status of a federation peer
 type CoordinatorHealth struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
-	Status          string     `json:"status"`           // online, offline, reconnecting
-	LastSeen        *time.Time `json:"last_seen"`
-	LagEvents       int        `json:"lag_events"`       // Number of unsynced events
-	AgentCount      int        `json:"agent_count"`      // Number of agents homed to this coordinator
-	LastSeq         int64      `json:"last_seq"`         // Last sequence number acknowledged by this coordinator
-	MaxSeq          int64      `json:"max_seq"`          // Current max sequence number
-	Version         *string    `json:"version,omitempty"`
+	ID         string     `json:"id"`
+	Name       string     `json:"name"`
+	Status     string     `json:"status"` // online, offline, reconnecting
+	LastSeen   *time.Time `json:"last_seen"`
+	LagEvents  int        `json:"lag_events"`  // Number of unsynced events
+	AgentCount int        `json:"agent_count"` // Number of agents homed to this coordinator
+	LastSeq    int64      `json:"last_seq"`    // Last sequence number acknowledged by this coordinator
+	MaxSeq     int64      `json:"max_seq"`     // Current max sequence number
+	Version    *string    `json:"version,omitempty"`
 }
 
 // handleFederationHealth handles GET /api/federation/health

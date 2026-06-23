@@ -1,14 +1,14 @@
-﻿package server
+package server
 
 import (
+	"arcvault/coordinator/internal/bootstrap"
+	"arcvault/coordinator/internal/tlscert"
 	"crypto/sha1"
 	"crypto/sha256"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
-	"arcvault/coordinator/internal/bootstrap"
-	"arcvault/coordinator/internal/tlscert"
 )
 
 // handleBootstrapScript generates and serves the PowerShell bootstrap script.
@@ -80,4 +80,3 @@ func (s *Server) handleBootstrapScript(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprint(w, script)
 }
-

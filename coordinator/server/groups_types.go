@@ -24,11 +24,11 @@ func (r *CreateGroupRequest) Validate() error {
 
 // GroupResponse defines the group response with agent count
 type GroupResponse struct {
-	GroupID    int    `json:"group_id"`
-	Name       string `json:"name"`
+	GroupID     int    `json:"group_id"`
+	Name        string `json:"name"`
 	Description string `json:"description"`
-	AgentCount int    `json:"agent_count"`
-	CreatedAt  string `json:"created_at"`
+	AgentCount  int    `json:"agent_count"`
+	CreatedAt   string `json:"created_at"`
 }
 
 // PaginatedGroupsResponse wraps paginated groups list
@@ -58,9 +58,9 @@ func (r *UpdateGroupRequest) Validate() error {
 
 // UpdateGroupResponse defines the response after updating a group
 type UpdateGroupResponse struct {
-	GroupID    int    `json:"group_id"`
-	Name       string `json:"name"`
+	GroupID     int    `json:"group_id"`
+	Name        string `json:"name"`
 	Description string `json:"description"`
-	AgentCount int    `json:"agent_count"`
-	UpdatedAt  string `json:"updated_at"`
+	AgentCount  int    `json:"agent_count"`
+	UpdatedAt   string `json:"updated_at"`
 }

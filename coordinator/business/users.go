@@ -23,11 +23,11 @@ func NewUserService(database db.UserQueries) *UserService {
 // UserDTO is the data transfer object for users (API response).
 // Note: PasswordHash is never included in responses.
 type UserDTO struct {
-	ID                 int       `json:"id"`
-	Username           string    `json:"username"`
-	Role               string    `json:"role"`
-	MustChangePassword bool      `json:"must_change_password"`
-	CreatedAt          string    `json:"created_at"`
+	ID                 int    `json:"id"`
+	Username           string `json:"username"`
+	Role               string `json:"role"`
+	MustChangePassword bool   `json:"must_change_password"`
+	CreatedAt          string `json:"created_at"`
 }
 
 // CreateUserInput validates and holds user creation data.

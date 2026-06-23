@@ -196,11 +196,11 @@ type Job struct {
 type JobRun struct {
 	ID            string
 	JobID         string
-	JobName       string  // resolved via LEFT JOIN jobs
-	SourcePath    string  // resolved via LEFT JOIN jobs
-	DestPath      string  // resolved via LEFT JOIN jobs
+	JobName       string // resolved via LEFT JOIN jobs
+	SourcePath    string // resolved via LEFT JOIN jobs
+	DestPath      string // resolved via LEFT JOIN jobs
 	AgentID       string
-	AgentHostname string  // resolved via LEFT JOIN agents
+	AgentHostname string // resolved via LEFT JOIN agents
 	StartedAt     string
 	FinishedAt    *string
 	Status        string

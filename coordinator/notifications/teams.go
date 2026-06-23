@@ -27,7 +27,7 @@ type teamsAttachment struct {
 
 // teamsPayload is the Teams webhook payload.
 type teamsPayload struct {
-	Type        string           `json:"type"`
+	Type        string            `json:"type"`
 	Attachments []teamsAttachment `json:"attachments"`
 }
 
@@ -49,10 +49,10 @@ func (t *TeamsNotifier) Send(event JobFailureEvent) error {
 
 	body := []interface{}{
 		map[string]interface{}{
-			"type": "TextBlock",
-			"text": "⚠️ ArcVault Job Alert",
+			"type":   "TextBlock",
+			"text":   "⚠️ ArcVault Job Alert",
 			"weight": "bolder",
-			"size": "large",
+			"size":   "large",
 		},
 		map[string]interface{}{
 			"type": "TextBlock",
@@ -71,8 +71,8 @@ func (t *TeamsNotifier) Send(event JobFailureEvent) error {
 			"text": fmt.Sprintf("Duration: %s", duration),
 		},
 		map[string]interface{}{
-			"type": "TextBlock",
-			"text": "Status: Failed",
+			"type":  "TextBlock",
+			"text":  "Status: Failed",
 			"color": "attention",
 		},
 	}

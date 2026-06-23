@@ -1,0 +1,64 @@
+{
+  "id": "IMPL-001",
+  "issue_code": "SEC-001",
+  "title": "SEC-001: Sanitize Content-Disposition header filename",
+  "priority": "HIGH",
+  "severity": "security",
+  "group": "Group 1 - Security & Correctness",
+  "description": "The Content-Disposition header is parsed with a simple regex and used directly as a filename without sanitization. An attacker could craft a filename with path traversal characters (../) or special characters to cause issues. This is a security vulnerability that must be fixed before merge.",
+  "affected_files": [
+    "dashboard/src/api.ts"
+  ],
+  "lines": "300-303",
+  "context": {
+    "function": "downloadInstaller()",
+    "current_code": "const match = disposition.match(/filename=(.+)$/)\nconst filename = match ? match[1] : 'ArcVault-Setup.exe'",
+    "issue": "No validation or sanitization of filename from Content-Disposition header"
+  },
+  "acceptance_criteria": [
+    "Filename regex rejects path separators (/ and \\\\)",
+    "Filename is sanitized to allow only safe characters (alphanumeric, dash, underscore, dot)",
+    "Special characters are replaced with underscore",
+    "Test with path traversal attempts: ../../../evil.exe, ..\\..\\evil.exe",
+    "Test with special chars: evil<>.exe, evil|.exe, evil\".exe",
+    "All tests pass; legitimate filenames still work"
+  ],
+  "implementation_notes": {
+    "regex_update": "Change from /filename=(.+)$/ to /filename=([^\\/\\\\]+)$/ to reject path separators",
+    "sanitization": "Use .replace(/[^a-zA-Z0-9._-]/g, '_') to whitelist safe characters",
+    "example_code": "const match = disposition.match(/filename=([^\\/\\\\]+)$/)\nconst filename = match\n  ? match[1].replace(/[^a-zA-Z0-9._-]/g, '_')\n  : 'ArcVault-Setup.exe'",
+    "dependencies": "No external dependencies needed",
+    "related_function": "downloadBootstrapScript() uses hardcoded 'bootstrap.ps1' — not affected"
+  },
+  "estimation": "10",
+  "estimation_unit": "minutes",
+  "depends_on": [],
+  "is_blocking": [
+    "IMPL-002",
+    "IMPL-003"
+  ],
+  "testing_strategy": {
+    "unit_test": [
+      "Test normal filename: 'ArcVault-Setup.exe'",
+      "Test filename with spaces: 'ArcVault Setup.exe'",
+      "Test path traversal: '../../../evil.exe'",
+      "Test Windows path: '..\\\\..\\\\evil.exe'",
+      "Test special chars: 'evil<>|.exe'",
+      "Test fallback: missing Content-Disposition header"
+    ],
+    "manual_test": [
+      "Download installer and verify filename is correct",
+      "Check browser DevTools Network tab for Content-Disposition header",
+      "Verify file downloads with expected name"
+    ]
+  },
+  "rollback_plan": "git revert <commit-hash> — isolated change, safe to revert",
+  "cli_execution": {
+    "id": "WFS-code-review-fixes-IMPL-001",
+    "tool": "agent",
+    "framework": "typescript"
+  },
+  "notes": "This is a security fix and must be merged before other fixes. Path traversal could allow arbitrary file placement on user system.",
+  "status": "pending",
+  "created_at": "2026-06-12T10:30:00Z"
+}

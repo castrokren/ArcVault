@@ -18,27 +18,27 @@ import (
 
 // JWTClaims holds the claims in a JWT token
 type JWTClaims struct {
-	UserID      int    `json:"user_id"`
-	Username    string `json:"username"`
-	Role        string `json:"role"`
-	MustChange  bool   `json:"must_change"`
+	UserID     int    `json:"user_id"`
+	Username   string `json:"username"`
+	Role       string `json:"role"`
+	MustChange bool   `json:"must_change"`
 	jwt.RegisteredClaims
 }
 
 // APIContract: matches dashboard/src/types/api.ts LoginResponse interface
 // Last synced: 2026-06-03
 type LoginResponse struct {
-	Token                string `json:"token"`
-	Role                 string `json:"role"`
-	MustChangePassword   bool   `json:"must_change_password"`
+	Token              string `json:"token"`
+	Role               string `json:"role"`
+	MustChangePassword bool   `json:"must_change_password"`
 }
 
 // APIContract: refresh endpoint returns same shape as login
 // Last synced: 2026-06-03
 type RefreshTokenResponse struct {
-	Token                string `json:"token"`
-	Role                 string `json:"role"`
-	MustChangePassword   bool   `json:"must_change_password"`
+	Token              string `json:"token"`
+	Role               string `json:"role"`
+	MustChangePassword bool   `json:"must_change_password"`
 }
 
 // UserClaimsCtxKey is the context key for storing user claims
@@ -352,12 +352,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"user_id":               user.ID,
-		"username":              user.Username,
-		"role":                  user.Role,
-		"token":                 token,
-		"expires_in":            14400,
-		"must_change_password":  user.MustChangePassword,
+		"user_id":              user.ID,
+		"username":             user.Username,
+		"role":                 user.Role,
+		"token":                token,
+		"expires_in":           14400,
+		"must_change_password": user.MustChangePassword,
 	})
 }
 
@@ -402,10 +402,10 @@ func (s *Server) handleAuthMe(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":                     claims.UserID,
-		"username":               claims.Username,
-		"role":                   claims.Role,
-		"must_change_password":   claims.MustChange,
+		"id":                   claims.UserID,
+		"username":             claims.Username,
+		"role":                 claims.Role,
+		"must_change_password": claims.MustChange,
 	})
 }
 
@@ -490,9 +490,9 @@ func (s *Server) handleRefreshToken(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(RefreshTokenResponse{
-		Token:                token,
-		Role:                 user.Role,
-		MustChangePassword:   user.MustChangePassword,
+		Token:              token,
+		Role:               user.Role,
+		MustChangePassword: user.MustChangePassword,
 	})
 }
 
@@ -611,11 +611,11 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(UserResponse{
-		UserID:            user.ID,
-		Username:          user.Username,
-		Role:              user.Role,
+		UserID:             user.ID,
+		Username:           user.Username,
+		Role:               user.Role,
 		MustChangePassword: user.MustChangePassword,
-		CreatedAt:         user.CreatedAt,
+		CreatedAt:          user.CreatedAt,
 	})
 }
 

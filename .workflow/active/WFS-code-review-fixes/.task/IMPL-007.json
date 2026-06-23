@@ -1,0 +1,75 @@
+{
+  "id": "IMPL-007",
+  "issue_code": "CORR-002",
+  "title": "CORR-002: Keep modal open on delete error",
+  "priority": "MEDIUM",
+  "severity": "correctness",
+  "group": "Group 2 - Code Quality & Consistency",
+  "description": "When a delete fails, the error is set to error.value but the modal is immediately closed. The user cannot see the error message because it's displayed in a different context. The modal should stay open and display the error inline.",
+  "affected_files": [
+    "dashboard/src/views/Users.vue"
+  ],
+  "lines": "348-358",
+  "context": {
+    "function": "handleDeleteUser() in Users.vue",
+    "current_pattern": "catch -> set error.value -> close modal immediately",
+    "issue": "Modal closes before user can see error message",
+    "comparison": "Jobs.vue keeps modal open on error for better UX"
+  },
+  "acceptance_criteria": [
+    "Delete modal stays open when error occurs",
+    "Error message is visible in the modal",
+    "User can read the error before closing modal",
+    "User can retry delete or close modal on error",
+    "Success flow still closes modal immediately",
+    "Modal has error display section (inline or below buttons)"
+  ],
+  "implementation_notes": {
+    "current_code": "catch (err) {\n  error.value = err.message || 'Failed to delete user'\n  showDeleteConfirmModal.value = false  // ❌ Modal closes\n}",
+    "fix_approach_1": "Create deleteError state on the deletingUser ref:\n{\n  id: user.id,\n  error: err.message\n}",
+    "fix_approach_2": "Add showDeleteError state to track if error is visible",
+    "template_change": "Add error display to modal template:\n<div v-if=\"deletingUser.error\" class=\"error-message\">{{ deletingUser.error }}</div>",
+    "success_flow": "On success: close modal and clear error",
+    "error_flow": "On error: set error on deletingUser, keep modal open"
+  },
+  "estimation": "15",
+  "estimation_unit": "minutes",
+  "depends_on": [
+    "IMPL-003"
+  ],
+  "is_blocking": [
+    "IMPL-010",
+    "IMPL-012"
+  ],
+  "testing_strategy": {
+    "unit_test": [
+      "Mock deleteUser API to return error",
+      "Trigger delete and verify modal stays open",
+      "Verify error message is set on component state"
+    ],
+    "manual_test": [
+      "Open Users page",
+      "Click delete button on a user",
+      "Confirm delete action",
+      "If API returns error (can mock in DevTools), verify:",
+      "  - Modal stays open",
+      "  - Error message is visible",
+      "  - Can close modal without losing error display"
+    ],
+    "ui_test": [
+      "Verify error message displays with appropriate styling",
+      "Check error message is readable (font size, color contrast)",
+      "Verify error message is positioned in modal properly",
+      "Check modal buttons remain functional on error"
+    ]
+  },
+  "rollback_plan": "git revert <commit-hash> — isolated change to error handling in delete",
+  "cli_execution": {
+    "id": "WFS-code-review-fixes-IMPL-007",
+    "tool": "agent",
+    "framework": "typescript"
+  },
+  "notes": "This improves error visibility and UX without breaking existing functionality. Success path unchanged; only error path improved. Modal template may need CSS class for error styling.",
+  "status": "pending",
+  "created_at": "2026-06-12T10:30:00Z"
+}

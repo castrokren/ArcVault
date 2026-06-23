@@ -178,11 +178,11 @@ func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(GroupResponse{
-		GroupID:    group.ID,
-		Name:       group.Name,
+		GroupID:     group.ID,
+		Name:        group.Name,
 		Description: group.Description,
-		AgentCount: group.AgentCount,
-		CreatedAt:  group.CreatedAt,
+		AgentCount:  group.AgentCount,
+		CreatedAt:   group.CreatedAt,
 	})
 }
 

@@ -1,0 +1,72 @@
+{
+  "id": "IMPL-005",
+  "issue_code": "READ-002",
+  "title": "READ-002: Extract magic strings to constants",
+  "priority": "MEDIUM",
+  "severity": "readability",
+  "group": "Group 2 - Code Quality & Consistency",
+  "description": "Token keys 'arcvault_jwt', 'arcvault_token', 'arcvault_user', and 'arcvault_remember_me' are repeated 8+ times throughout api.ts. Extracting these to a STORAGE_KEYS constant improves maintainability and prevents typos.",
+  "affected_files": [
+    "dashboard/src/api.ts"
+  ],
+  "lines": "25-41, 238-245, 359-363",
+  "context": {
+    "current_pattern": "String literals like 'arcvault_jwt' and 'arcvault_token' repeated throughout code",
+    "occurrences": "8+ places in api.ts and useAuth.js",
+    "goal": "Extract to STORAGE_KEYS constant for single source of truth"
+  },
+  "acceptance_criteria": [
+    "STORAGE_KEYS constant defined at top of api.ts with TOKEN, USER, REMEMBER_ME keys",
+    "All localStorage.getItem/setItem/removeItem calls use STORAGE_KEYS instead of string literals",
+    "No string literals remain in code (all replaced with STORAGE_KEYS references)",
+    "No typos introduced; all replaced strings match exactly",
+    "Functionality unchanged; only refactoring"
+  ],
+  "implementation_notes": {
+    "constant_definition": "Place at top of api.ts after imports\nconst STORAGE_KEYS = {\n  TOKEN: 'arcvault_token',\n  USER: 'arcvault_user',\n  REMEMBER_ME: 'arcvault_remember_me',\n}",
+    "replacements": [
+      "Line 24: localStorage.getItem('arcvault_jwt') -> localStorage.getItem(STORAGE_KEYS.TOKEN) [fallback pattern]",
+      "Line 37-40: localStorage.removeItem() calls -> use STORAGE_KEYS",
+      "Line 238-245: saveToken() -> localStorage.setItem(STORAGE_KEYS.TOKEN, token)",
+      "Line 359-363: handle401() -> localStorage.removeItem(STORAGE_KEYS.TOKEN/USER/REMEMBER_ME)"
+    ],
+    "optional_useAuth_js": "useAuth.js can import STORAGE_KEYS from api.ts if needed, or define its own copy",
+    "no_breaking_changes": "This is purely internal refactoring; localStorage keys themselves don't change"
+  },
+  "estimation": "10",
+  "estimation_unit": "minutes",
+  "depends_on": [
+    "IMPL-002"
+  ],
+  "is_blocking": [
+    "IMPL-006",
+    "IMPL-013"
+  ],
+  "testing_strategy": {
+    "code_review": [
+      "Verify all localStorage calls use STORAGE_KEYS constant",
+      "Check no string literals remain (grep for 'arcvault_')",
+      "Verify constant definition is correct"
+    ],
+    "functionality_test": [
+      "Token save/retrieve still works",
+      "User data save/retrieve still works",
+      "Remember me functionality works",
+      "Logout clears correct keys"
+    ],
+    "regression_test": [
+      "Login/logout cycles work",
+      "Token persistence across page reloads works",
+      "All auth-dependent features still function"
+    ]
+  },
+  "rollback_plan": "git revert <commit-hash> — isolated refactoring, safe to revert",
+  "cli_execution": {
+    "id": "WFS-code-review-fixes-IMPL-005",
+    "tool": "agent",
+    "framework": "typescript"
+  },
+  "notes": "This refactoring enables IMPL-006 (JSDoc) and IMPL-013 (variable naming) to build on cleaner code. No functional changes; pure code organization improvement.",
+  "status": "pending",
+  "created_at": "2026-06-12T10:30:00Z"
+}

@@ -70,15 +70,23 @@ func InitCommand() error {
 	}
 	fmt.Printf(" done\n")
 
-	token, err := generateToken(32)
+	// Generate tokens for reference (NOT saved to file)
+	adminToken, err := generateToken(32)
 	if err != nil {
 		return fmt.Errorf("failed to generate admin token: %v", err)
 	}
 
+	jwtSecret, err := generateToken(32)
+	if err != nil {
+		return fmt.Errorf("failed to generate JWT secret: %v", err)
+	}
+
+	// Save config WITHOUT tokens
 	cfg := &config.Config{
 		Port:         port,
 		DatabasePath: dbPath,
-		AdminToken:   token,
+		AdminToken:   "", // Empty — must come from env var
+		JWTSecret:    "", // Empty — must come from env var
 		Environment:  "development",
 		Host:         host,
 		CertFile:     certPath,
@@ -90,11 +98,22 @@ func InitCommand() error {
 	}
 
 	configPath, _ := config.GetConfigPath()
-	fmt.Printf("\nConfiguration saved to: %s\n", configPath)
-	fmt.Printf("Database will be initialized at: %s\n", dbPath)
-	fmt.Printf("TLS certificate: %s\n", certPath)
-	fmt.Printf("Admin token (save this): %s\n\n", token)
-	fmt.Println("Next step: Run 'coordinator start'")
+	fmt.Printf("\n✓ Configuration saved to: %s\n", configPath)
+	fmt.Printf("✓ Database will be initialized at: %s\n", dbPath)
+	fmt.Printf("✓ TLS certificate: %s\n\n", certPath)
+
+	// Display setup instructions
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("IMPORTANT: Environment Variables Required")
+	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+	fmt.Println("\nBefore running 'coordinator start', set these environment variables:")
+	fmt.Printf("\n  export ARCVAULT_ADMIN_TOKEN=%s\n", adminToken)
+	fmt.Printf("  export ARCVAULT_JWT_SECRET=%s\n\n", jwtSecret)
+	fmt.Println("⚠️  DO NOT share these tokens or commit to git")
+	fmt.Println("⚠️  DO NOT restart without exporting these variables")
+	fmt.Println("⚠️  For production, use a secret management system (Vault, AWS Secrets Manager, etc.)")
+	fmt.Println("\nNext step: Run 'coordinator start'")
+
 	return nil
 }
 

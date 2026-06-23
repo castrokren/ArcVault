@@ -68,6 +68,6 @@ func (h *coordinatorHandler) Execute(args []string, r <-chan svc.ChangeRequest, 
 // RunService hands control to the Windows Service Control Manager.
 // Call this from the "run-service" subcommand — not from "start".
 func RunService(cfg *config.Config, staticFS fs.FS) error {
-os.Setenv("ARCVAULT_SERVICE", "1")
-return svc.Run(CoordinatorServiceName, &coordinatorHandler{cfg: cfg, staticFS: staticFS})
+	os.Setenv("ARCVAULT_SERVICE", "1")
+	return svc.Run(CoordinatorServiceName, &coordinatorHandler{cfg: cfg, staticFS: staticFS})
 }

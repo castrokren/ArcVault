@@ -1,0 +1,117 @@
+{
+  "id": "IMPL-006",
+  "issue_code": "READ-003",
+  "title": "READ-003: Add JSDoc to public API functions",
+  "priority": "MEDIUM",
+  "severity": "readability",
+  "group": "Group 2 - Code Quality & Consistency",
+  "description": "Public API functions lack JSDoc documentation. Developers using this module won't know what parameters mean, what the function returns, what exceptions can be thrown, or what the API contract is. Adding comprehensive JSDoc improves IDE support and code discoverability.",
+  "affected_files": [
+    "dashboard/src/api.ts"
+  ],
+  "lines": "88-204",
+  "context": {
+    "functions_without_docs": [
+      "getUsers",
+      "createUser",
+      "updateUserRole",
+      "deleteUser",
+      "getAgents",
+      "getJobs",
+      "getGroups",
+      "downloadInstaller"
+    ],
+    "goal": "Add JSDoc @param, @returns, @throws documentation to all public functions"
+  },
+  "acceptance_criteria": [
+    "All 8 public API functions have complete JSDoc blocks",
+    "Each JSDoc includes @param tags for all parameters",
+    "Each JSDoc includes @returns tag describing return type",
+    "@param descriptions are clear and specific (e.g., 'Page number (1-indexed)')",
+    "Documentation follows TypeScript/TSDoc conventions",
+    "IDE autocomplete shows documentation when hovering over function calls",
+    "No typos or grammatical errors in documentation"
+  ],
+  "implementation_notes": {
+    "jsdoc_template": "/**\n * Brief description of what function does\n * @param {type} paramName - Description of parameter\n * @returns {Promise<Type>} Description of return value\n */",
+    "functions_to_document": [
+      {
+        "name": "getUsers",
+        "params": ["page (default 1)", "limit (default 25)"],
+        "returns": "Promise<{data: User[], total: number}>"
+      },
+      {
+        "name": "createUser",
+        "params": ["username: string", "password: string", "role: string"],
+        "returns": "Promise<{id: string, username: string, role: string}>"
+      },
+      {
+        "name": "updateUserRole",
+        "params": ["userId: string", "role: string"],
+        "returns": "Promise<{success: boolean}>"
+      },
+      {
+        "name": "deleteUser",
+        "params": ["userId: string"],
+        "returns": "Promise<{success: boolean}>"
+      },
+      {
+        "name": "getAgents",
+        "params": ["page (default 1)", "limit (default 25)", "search (optional)", "status (optional)"],
+        "returns": "Promise<{data: Agent[], total: number}>"
+      },
+      {
+        "name": "getJobs",
+        "params": ["page (default 1)", "limit (default 25)", "search (optional)", "status (optional)"],
+        "returns": "Promise<{data: Job[], total: number}>"
+      },
+      {
+        "name": "getGroups",
+        "params": ["page (default 1)", "limit (default 25)"],
+        "returns": "Promise<{data: Group[], total: number}>"
+      },
+      {
+        "name": "downloadInstaller",
+        "params": ["none"],
+        "returns": "Promise<Blob>"
+      }
+    ],
+    "example_jsdoc": "/**\n * Fetch paginated list of users\n * @param {number} page - Page number (1-indexed)\n * @param {number} limit - Records per page\n * @returns {Promise<{data: User[], total: number}>} Paginated user list\n */"
+  },
+  "estimation": "20",
+  "estimation_unit": "minutes",
+  "depends_on": [
+    "IMPL-004",
+    "IMPL-005"
+  ],
+  "is_blocking": [
+    "IMPL-009"
+  ],
+  "testing_strategy": {
+    "code_review": [
+      "Verify all 8 functions have JSDoc blocks",
+      "Check each JSDoc has @param tags for all parameters",
+      "Check each JSDoc has @returns tag",
+      "Verify no typos or grammatical errors"
+    ],
+    "ide_test": [
+      "Open VSCode and hover over getUsers() to see JSDoc tooltip",
+      "Verify autocomplete suggestions show parameter documentation",
+      "Check type hints show correct types (string, number, Promise, etc.)"
+    ],
+    "formatting_test": [
+      "Verify JSDoc follows consistent style",
+      "Check alignment and indentation are correct",
+      "Verify TypeScript/TSDoc syntax is valid"
+    ]
+  },
+  "rollback_plan": "git revert <commit-hash> — documentation-only change, safe to revert",
+  "cli_execution": {
+    "id": "WFS-code-review-fixes-IMPL-006",
+    "tool": "agent",
+    "framework": "typescript"
+  },
+  "notes": "This is documentation work that improves developer experience without changing functionality. JSDoc should follow TSDoc standard for TypeScript projects. Consider IDE setup for best results (VSCode with TypeScript extension).",
+  "status": "pending",
+  "created_at": "2026-06-12T10:30:00Z"
+}

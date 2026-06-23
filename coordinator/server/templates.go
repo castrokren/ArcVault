@@ -82,10 +82,10 @@ func (s *Server) handleListTemplates(w http.ResponseWriter, r *http.Request) {
 // handleCreateTemplate handles POST /api/templates
 func (s *Server) handleCreateTemplate(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		ID      string `json:"id"`
-		Name    string `json:"name"`
-		AgentID string `json:"agent_id"`
-		Command string `json:"command"`
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		AgentID  string `json:"agent_id"`
+		Command  string `json:"command"`
 		Schedule string `json:"schedule"`
 		Enabled  *bool  `json:"enabled"`
 	}
@@ -134,12 +134,12 @@ func (s *Server) handleCreateTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	t := db.Template{
-		ID:      input.ID,
-		Name:    input.Name,
-		AgentID: input.AgentID,
-		Command: input.Command,
+		ID:       input.ID,
+		Name:     input.Name,
+		AgentID:  input.AgentID,
+		Command:  input.Command,
 		Schedule: input.Schedule,
-		Enabled: enabled,
+		Enabled:  enabled,
 	}
 
 	if err := s.db.CreateTemplate(t); err != nil {
@@ -201,9 +201,9 @@ func (s *Server) handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var input struct {
-		Name    *string `json:"name"`
-		AgentID *string `json:"agent_id"`
-		Command *string `json:"command"`
+		Name     *string `json:"name"`
+		AgentID  *string `json:"agent_id"`
+		Command  *string `json:"command"`
 		Schedule *string `json:"schedule"`
 		Enabled  *bool   `json:"enabled"`
 	}

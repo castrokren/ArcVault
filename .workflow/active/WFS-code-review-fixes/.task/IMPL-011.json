@@ -1,0 +1,69 @@
+{
+  "id": "IMPL-011",
+  "issue_code": "SEC-003",
+  "title": "SEC-003: Add CSRF protection headers",
+  "priority": "MEDIUM",
+  "severity": "security",
+  "group": "Group 3 - Performance & UX Enhancements",
+  "description": "API requests are made with auth headers but no CSRF token. If the backend requires or supports CSRF protection, the X-CSRF-Token header should be included. This task adds conditional CSRF token support based on backend verification.",
+  "affected_files": [
+    "dashboard/src/api.ts"
+  ],
+  "lines": "44-66",
+  "context": {
+    "function": "getAuthHeaders() and request() helper",
+    "current_pattern": "Only includes Content-Type and Authorization headers",
+    "issue": "Missing CSRF protection headers if backend requires them",
+    "dependency": "Requires backend verification before implementation"
+  },
+  "acceptance_criteria": [
+    "Verify with backend team if CSRF tokens are required or supported",
+    "If yes: Add X-CSRF-Token header to request headers",
+    "If no: Document decision and skip implementation",
+    "CSRF token should be read from meta tag: document.querySelector('meta[name=\"csrf-token\"]')",
+    "Header is conditionally added only if CSRF token exists in DOM",
+    "All state-changing requests (POST, PUT, DELETE) include CSRF header",
+    "Requests without CSRF token in DOM still work (graceful fallback)"
+  ],
+  "implementation_notes": {
+    "csrf_token_source": "Read from <meta name=\"csrf-token\" content=\"...\"> tag in HTML",
+    "implementation_conditional": "Add CSRF header only if token exists:\nconst csrfToken = document.querySelector('meta[name=\"csrf-token\"]')?.getAttribute('content')\nif (csrfToken) headers['X-CSRF-Token'] = csrfToken",
+    "updated_getAuthHeaders": "function getAuthHeaders() {\n  const token = getToken()\n  const csrfToken = document.querySelector('meta[name=\"csrf-token\"]')?.getAttribute('content')\n  \n  const headers = {\n    'Content-Type': 'application/json',\n  }\n  if (token) headers['Authorization'] = `Bearer ${token}`\n  if (csrfToken) headers['X-CSRF-Token'] = csrfToken\n  \n  return headers\n}",
+    "verification_step": "Ask backend team: Do you require or support CSRF token validation?",
+    "if_not_required": "Document decision and mark as RESOLVED (skip implementation)"
+  },
+  "estimation": "10",
+  "estimation_unit": "minutes",
+  "depends_on": [
+    "IMPL-004"
+  ],
+  "is_blocking": [],
+  "testing_strategy": {
+    "backend_verification": [
+      "Contact backend team to confirm CSRF token requirement",
+      "Check if backend uses X-CSRF-Token header or different header name",
+      "Verify CSRF tokens are provided in meta tag or another source"
+    ],
+    "unit_test": [
+      "Mock meta tag with CSRF token",
+      "Verify getAuthHeaders() includes X-CSRF-Token header",
+      "Test with missing meta tag; verify header is not added",
+      "Verify Authorization header still works with/without CSRF token"
+    ],
+    "integration_test": [
+      "Make POST/PUT/DELETE request with CSRF token",
+      "Verify backend accepts request with X-CSRF-Token header",
+      "Test without CSRF token (if backend allows)",
+      "Test with invalid CSRF token (should fail)"
+    ]
+  },
+  "rollback_plan": "git revert <commit-hash> — conditional header addition, safe to revert if not needed",
+  "cli_execution": {
+    "id": "WFS-code-review-fixes-IMPL-011",
+    "tool": "agent",
+    "framework": "typescript"
+  },
+  "notes": "This task is CONDITIONAL on backend verification. It's marked HIGH in review but marked MEDIUM priority here because implementation depends on backend team confirmation. If backend doesn't require CSRF tokens, this can be skipped. If required, it's a security-critical fix.",
+  "status": "pending",
+  "created_at": "2026-06-12T10:30:00Z"
+}

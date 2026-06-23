@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"golang.org/x/time/rate"
 
 	"arcvault/coordinator/business"
@@ -50,6 +51,7 @@ type Server struct {
 	tokenCache     map[string]tokenCacheEntry // token → validated entry
 	loginLimiterMu sync.Mutex
 	loginLimiters  map[string]*loginRateLimiter
+	wsUpgrader     *websocket.Upgrader // WebSocket upgrader with origin validation
 }
 
 func New(cfg *config.Config, database *db.DB) *Server {
@@ -64,21 +66,24 @@ func NewWithFS(cfg *config.Config, database *db.DB, staticFS fs.FS) *Server {
 	}
 
 	s := &Server{
-		cfg:            cfg,
-		db:             database,
-		router:         http.NewServeMux(),
-		hub:            newHub(),
-		fedHub:         NewFederationHub(database),
-		staticFS:       staticFS,
-		Notifier:       notifications.NewDispatcher(cfg.Notifications),
-		coordinatorID:  coordinatorID,
-		agentService:   business.NewAgentService(database),
-		jobService:     business.NewJobService(database),
-		userService:    business.NewUserService(database),
-		groupService:   business.NewGroupService(database),
-		tokenCache:     make(map[string]tokenCacheEntry),
-		loginLimiters:  make(map[string]*loginRateLimiter),
+		cfg:           cfg,
+		db:            database,
+		router:        http.NewServeMux(),
+		hub:           newHub(),
+		fedHub:        NewFederationHub(database),
+		staticFS:      staticFS,
+		Notifier:      notifications.NewDispatcher(cfg.Notifications),
+		coordinatorID: coordinatorID,
+		agentService:  business.NewAgentService(database),
+		jobService:    business.NewJobService(database),
+		userService:   business.NewUserService(database),
+		groupService:  business.NewGroupService(database),
+		tokenCache:    make(map[string]tokenCacheEntry),
+		loginLimiters: make(map[string]*loginRateLimiter),
 	}
+
+	// Initialize WebSocket upgrader with origin validation
+	s.initWebSocketUpgrader()
 
 	if cfg.Federation != nil {
 		s.fedClient = NewFederationClient(cfg.Federation, database, Version)
@@ -92,7 +97,78 @@ func NewWithStatic(cfg *config.Config, database *db.DB, staticDir string) *Serve
 	return NewWithFS(cfg, database, nil)
 }
 
+// initWebSocketUpgrader creates an upgrader with origin validation
+// based on AllowedOrigins config. Respects kill-switch env var for emergency rollback.
+func (s *Server) initWebSocketUpgrader() {
+	s.wsUpgrader = &websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		CheckOrigin: func(r *http.Request) bool {
+			origin := r.Header.Get("Origin")
+
+			// If no Origin header, allow (non-CORS request, likely same-origin)
+			if origin == "" {
+				return true
+			}
+
+			// Kill-switch: if validation disabled, allow any origin (for emergency rollback)
+			if !s.cfg.WebSocketOriginValidationEnabled {
+				log.Printf("[WebSocket] Origin validation disabled (kill-switch). Accepting origin: %q", origin)
+				return true
+			}
+
+			// Check against whitelist
+			for _, allowedOrigin := range s.cfg.AllowedOrigins {
+				if origin == allowedOrigin {
+					log.Printf("[WebSocket] Accepted origin: %q", origin)
+					return true
+				}
+			}
+
+			log.Printf("[WebSocket] Rejected origin: %q (not in whitelist, validation enabled)", origin)
+			return false
+		},
+	}
+}
+
+// Test-only helper methods for accessing internal fields
+// These are used for unit testing the WebSocket origin validation
+
+// InitWebSocketUpgraderInternal initializes the WebSocket upgrader (test helper)
+func (s *Server) InitWebSocketUpgraderInternal() {
+	s.initWebSocketUpgrader()
+}
+
+// SetConfigInternal sets the config (test helper)
+func (s *Server) SetConfigInternal(cfg *config.Config) {
+	s.cfg = cfg
+}
+
+// GetWebSocketUpgraderInternal returns the WebSocket upgrader (test helper)
+func (s *Server) GetWebSocketUpgraderInternal() *websocket.Upgrader {
+	return s.wsUpgrader
+}
+
+// corsOriginAllowed checks if a CORS origin is in the whitelist
+func (s *Server) corsOriginAllowed(origin string) bool {
+	if origin == "" {
+		return true // Non-CORS request
+	}
+	for _, allowed := range s.cfg.AllowedOrigins {
+		if origin == allowed {
+			return true
+		}
+	}
+	log.Printf("[CORS] Rejected origin: %q (not in whitelist)", origin)
+	return false
+}
+
 func (s *Server) Start() error {
+	// Production safety check: WebSocket origin validation must be enabled
+	if s.cfg.Environment == "production" && !s.cfg.WebSocketOriginValidationEnabled {
+		return fmt.Errorf("CRITICAL: production mode requires WebSocket origin validation enabled. Set ARCVAULT_WEBSOCKET_ORIGIN_VALIDATION_ENABLED=true or fix AllowedOrigins configuration")
+	}
+
 	addr := fmt.Sprintf(":%d", s.cfg.Port)
 
 	s.StartOfflineDetector(60*time.Second, 90*time.Second)
@@ -302,6 +378,11 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("GET /api/alert-history", s.viewerRoute(s.handleListAlertHistory))
 	s.router.HandleFunc("POST /api/alert-history/{id}/retry", s.adminRoute(s.handleRetryAlert))
 
+	// Audit endpoints (Phase 2A: Command audit logging)
+	s.router.HandleFunc("GET /api/audit/commands", s.viewerRoute(s.handleListAuditCommands))
+	s.router.HandleFunc("GET /api/audit/non-whitelisted-programs", s.viewerRoute(s.handleGetNonWhitelistedPrograms))
+	s.router.HandleFunc("GET /api/audit/stats", s.viewerRoute(s.handleGetAuditStats))
+
 	if s.staticFS != nil {
 		log.Printf("Serving embedded dashboard")
 		s.router.Handle("GET /", http.FileServer(http.FS(s.staticFS)))
@@ -313,11 +394,10 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
 
-			// If no allowed origins configured, deny all cross-origin requests.
-			// If "*" is explicitly listed (dev only), allow all.
+			// Wildcard "*" is never allowed — CORS spec requires explicit origins
 			allowed := false
 			for _, o := range allowedOrigins {
-				if o == "*" || o == origin {
+				if o == origin {
 					allowed = true
 					break
 				}

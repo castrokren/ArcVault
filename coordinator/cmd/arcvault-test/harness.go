@@ -19,21 +19,21 @@ type LoadScenario struct {
 
 // TestReport contains the results of a load test
 type TestReport struct {
-	AgentsSpawned            int       `json:"agents_spawned"`
-	JobsCreated              int       `json:"jobs_created"`
-	JobsCompleted            int       `json:"jobs_completed"`
-	JobsFailed               int       `json:"jobs_failed"`
-	DurationSeconds          float64   `json:"duration_seconds"`
-	ThroughputJobsPerSecond  float64   `json:"throughput_jobs_per_second"`
-	LatencyP50Ms             float64   `json:"latency_p50_ms"`
-	LatencyP95Ms             float64   `json:"latency_p95_ms"`
-	LatencyP99Ms             float64   `json:"latency_p99_ms"`
-	PeakMemoryMb             float64   `json:"peak_memory_mb"`
-	JobDurationMs            int       `json:"job_duration_ms"`
-	FailuresInjected         int       `json:"failures_injected"`
-	FailuresRecovered        int       `json:"failures_recovered"`
-	AvgConnectionCount       float64   `json:"avg_connection_count"`
-	MaxConnectionCount       int       `json:"max_connection_count"`
+	AgentsSpawned           int     `json:"agents_spawned"`
+	JobsCreated             int     `json:"jobs_created"`
+	JobsCompleted           int     `json:"jobs_completed"`
+	JobsFailed              int     `json:"jobs_failed"`
+	DurationSeconds         float64 `json:"duration_seconds"`
+	ThroughputJobsPerSecond float64 `json:"throughput_jobs_per_second"`
+	LatencyP50Ms            float64 `json:"latency_p50_ms"`
+	LatencyP95Ms            float64 `json:"latency_p95_ms"`
+	LatencyP99Ms            float64 `json:"latency_p99_ms"`
+	PeakMemoryMb            float64 `json:"peak_memory_mb"`
+	JobDurationMs           int     `json:"job_duration_ms"`
+	FailuresInjected        int     `json:"failures_injected"`
+	FailuresRecovered       int     `json:"failures_recovered"`
+	AvgConnectionCount      float64 `json:"avg_connection_count"`
+	MaxConnectionCount      int     `json:"max_connection_count"`
 }
 
 // JobMetric tracks timing for a single job
@@ -59,10 +59,10 @@ type Harness struct {
 // NewHarness creates a new harness with the given scenario
 func NewHarness(scenario *LoadScenario) *Harness {
 	return &Harness{
-		scenario:  scenario,
-		agents:    make([]*MockAgent, 0, scenario.Agents),
-		metrics:   make([]JobMetric, 0, scenario.Agents*scenario.JobsPerAgent),
-		injector:  NewFailureInjector(scenario),
+		scenario: scenario,
+		agents:   make([]*MockAgent, 0, scenario.Agents),
+		metrics:  make([]JobMetric, 0, scenario.Agents*scenario.JobsPerAgent),
+		injector: NewFailureInjector(scenario),
 	}
 }
 

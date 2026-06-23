@@ -1,0 +1,75 @@
+{
+  "id": "IMPL-009",
+  "issue_code": "PERF-001",
+  "title": "PERF-001: Add response validation to paginated endpoints",
+  "priority": "MEDIUM",
+  "severity": "performance",
+  "group": "Group 3 - Performance & UX Enhancements",
+  "description": "getAgents and getJobs endpoints make requests but don't validate the response structure using Zod schemas like other endpoints. If the API contract changes, errors won't be caught early. Adding response validation ensures type safety and early error detection.",
+  "affected_files": [
+    "dashboard/src/api.ts"
+  ],
+  "lines": "149-158",
+  "context": {
+    "unvalidated_endpoints": [
+      "getAgents (line 149-151)",
+      "getJobs (line 155-157)"
+    ],
+    "validated_endpoints": [
+      "getGroups (line 125-128) uses validateResponse()",
+      "login (line 88-94) uses validateResponse()"
+    ],
+    "issue": "Inconsistent validation pattern; some endpoints validated, others not"
+  },
+  "acceptance_criteria": [
+    "getAgents uses validateResponse() with AgentListSchema",
+    "getJobs uses validateResponse() with JobListSchema",
+    "Both functions validate response structure before returning",
+    "Validation matches pattern used in getGroups and login",
+    "Type hints are correct for validated responses",
+    "API contract changes are caught at runtime",
+    "Schemas AgentListSchema and JobListSchema are imported correctly"
+  ],
+  "implementation_notes": {
+    "current_code_agents": "export const getAgents = async ({ page = 1, limit = 25, search = '', status = '' } = {}) => {\n  const res = await request('GET', `/api/agents${buildQuery({ page, limit, search, status })}`)\n  return res  // ❌ No validation\n}",
+    "new_code_agents": "export const getAgents = async ({ page = 1, limit = 25, search = '', status = '' } = {}) => {\n  const res = await request('GET', `/api/agents${buildQuery({ page, limit, search, status })}`)\n  return validateResponse('/api/agents', AgentListSchema, res)\n}",
+    "schemas_location": "Schemas should exist in dashboard/src/schemas/agents.ts and dashboard/src/schemas/jobs.ts",
+    "import_check": "Verify AgentListSchema and JobListSchema are imported at top of api.ts",
+    "validation_function": "validateResponse(path, schema, response) validates response matches schema"
+  },
+  "estimation": "15",
+  "estimation_unit": "minutes",
+  "depends_on": [
+    "IMPL-006"
+  ],
+  "is_blocking": [],
+  "testing_strategy": {
+    "unit_test": [
+      "Mock API response with valid schema",
+      "Verify validateResponse is called with correct arguments",
+      "Mock API response with invalid schema",
+      "Verify error is thrown on schema validation failure"
+    ],
+    "integration_test": [
+      "Call getAgents() with valid API response",
+      "Verify correct data structure is returned",
+      "Call with invalid response and verify error is thrown",
+      "Check error message is helpful for debugging"
+    ],
+    "manual_test": [
+      "Load Agents page and verify agents list displays",
+      "Check browser DevTools Network tab for /api/agents request",
+      "Verify response is validated (use breakpoint in validateResponse)",
+      "Try with network throttling to ensure validation doesn't timeout"
+    ]
+  },
+  "rollback_plan": "git revert <commit-hash> — adds validation, safe to revert if schemas don't exist",
+  "cli_execution": {
+    "id": "WFS-code-review-fixes-IMPL-009",
+    "tool": "agent",
+    "framework": "typescript"
+  },
+  "notes": "This ensures getAgents and getJobs follow the same validation pattern as getGroups and login. If schemas don't exist, they should be created or imported from appropriate locations. Validation is critical for catching API contract violations early.",
+  "status": "pending",
+  "created_at": "2026-06-12T10:30:00Z"
+}

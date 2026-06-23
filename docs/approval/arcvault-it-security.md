@@ -15,17 +15,17 @@ ArcVault is a fully self-hosted backup orchestrator. It has no cloud dependency 
 
 ## 2. Transport Security
 
-All connections to and from ArcVault use TLS. There is no plaintext fallback.
-
 | Connection | Protocol | Notes |
 |---|---|---|
 | Browser → Coordinator | HTTPS (TLS) | Port :443; cert path set in config.json |
 | Agent → Coordinator | WSS (TLS over WebSocket) | Same port and certificate |
 | Coordinator → Spoke (federation) | WSS (TLS) | Certificate must be valid on the spoke host |
 
-**Certificate configuration.** The TLS certificate and private key paths are specified in `config.json`. The operator is responsible for provisioning a valid certificate (self-signed, internal CA, or public CA). ArcVault does not auto-generate certificates.
+**Certificate configuration.** TLS is enabled when `cert_file` and `key_file` are set in `config.json`. The operator is responsible for provisioning a valid certificate (self-signed, internal CA, or public CA). ArcVault does not auto-generate certificates.
 
-**No plaintext fallback.** The coordinator does not serve HTTP. If TLS configuration is missing or invalid, the process will not start.
+**Plaintext fallback.** If `cert_file` and `key_file` are not configured, the coordinator falls back to plain HTTP and logs a warning. In production deployments, certificates must be configured. Alternatively, `external_tls: true` in `config.json` instructs the coordinator to serve plain HTTP and delegate TLS termination to a reverse proxy or load balancer.
+
+**CORS.** The coordinator enforces CORS. The `allowed_origins` list in `config.json` must include all hostnames from which the dashboard is accessed. Requests from unlisted origins are blocked at the server.
 
 ---
 
@@ -33,20 +33,27 @@ All connections to and from ArcVault use TLS. There is no plaintext fallback.
 
 ### User authentication (JWT)
 
-- On successful login (`POST /api/login`), the coordinator issues a signed JWT.
+- On successful login (`POST /api/auth/login`), the coordinator issues a signed JWT.
 - Algorithm: **HS256**. Signing secret is stored in `config.json` (see Section 5).
 - The JWT must be presented as a `Bearer` token in the `Authorization` header on every API request.
-- Token expiry is configurable. The coordinator validates expiry server-side on every request.
-- There is no refresh token mechanism; re-authentication is required after expiry.
+- Token expiry is **4 hours** (hard-coded in v1.0.0; not configurable via config.json). The coordinator validates expiry server-side on every request.
+- A token refresh endpoint exists: `POST /api/auth/refresh` issues a new JWT without re-entering credentials, provided the current token has not yet expired or been revoked.
+- On logout (`POST /api/auth/logout`), the JWT is added to a `revoked_tokens` table and is immediately invalidated, even if it has not yet expired.
 
 ### Agent authentication (per-agent tokens)
 
 - Each agent is issued a unique 64-character hex token at registration.
-- The token is transmitted once (during registration) and stored hashed in the `tokens` table using a one-way hash. The plaintext token is never stored.
-- On every WebSocket connection attempt, the agent presents its token; the coordinator verifies it against the stored hash.
+- The token is stored **in plaintext** in the `tokens` table. There is no server-side hashing of agent tokens in v1.0.0.
+- On every WebSocket connection attempt, the agent presents its token; the coordinator compares it directly against the stored value.
 - Tokens are scoped to a single agent ID. A token from Agent A cannot authenticate Agent B.
 - Tokens can be revoked via the dashboard at any time without restarting the coordinator.
 - There are no shared secrets between agents.
+
+**Note on token storage.** Because agent tokens are stored in plaintext, access to the SQLite database file is equivalent to access to all agent tokens. OS-level access controls and disk encryption are therefore important compensating controls (see Sections 6 and 12).
+
+### Static admin token
+
+`config.json` contains an `admin_token` field — a static bearer token used for CLI operations and initial setup. It bypasses JWT validation and has full admin access. This token must be treated as a high-privilege credential, protected like the JWT signing secret, and rotated if exposure is suspected.
 
 ---
 
@@ -69,7 +76,8 @@ Three roles are defined. Role assignment is managed by an admin. The role is emb
 | Credential | Storage method | Location |
 |---|---|---|
 | User passwords | bcrypt hash (`golang.org/x/crypto/bcrypt`) | `users` table in SQLite |
-| Agent tokens | One-way hash | `tokens` table in SQLite |
+| Agent tokens | Plaintext | `tokens` table in SQLite |
+| Admin token (static) | Plaintext in config file | `config.json` on coordinator host |
 | JWT signing secret | Plaintext in config file | `config.json` on coordinator host |
 | SMTP credentials | Plaintext in config file | `config.json` on coordinator host |
 | Slack/Teams webhook URLs | Plaintext in config file | `config.json` on coordinator host |
@@ -124,13 +132,13 @@ Each `job_runs` record includes: job ID, agent ID, start time, end time, exit co
 | Threat | Likelihood | Mitigation in ArcVault | Residual risk |
 |---|---|---|---|
 | Unauthenticated API access | Low | JWT required on all routes except `/api/login` and `/health`; TLS prevents credential interception | `/health` exposes coordinator liveness (low sensitivity) |
-| JWT theft / replay | Low–Medium | Short configurable expiry; HTTPS-only; no token storage in localStorage recommended (implementation detail) | No token revocation for user JWTs; expiry is the only invalidation mechanism |
-| Agent token theft | Low | Tokens stored hashed; scoped per agent; revocable immediately via dashboard | Compromised token usable until revoked; operator must act promptly |
+| JWT theft / replay | Low–Medium | 4-hour expiry; logout revocation via `revoked_tokens` table; HTTPS-only | Refresh token can be used to extend session; revocation only applies after logout |
+| Agent token theft | Medium | Scoped per agent; revocable immediately via dashboard | Tokens stored in plaintext in SQLite; DB file access = token access; mitigate with disk encryption and restricted file permissions |
 | MITM on agent connection | Low | All agent connections are WSS (TLS); no plaintext fallback | Risk increases if self-signed certs are used without pinning |
 | SQLite file exfiltration | Medium | File access requires OS-level access to coordinator host; not exposed via any API | No at-rest encryption built in; mitigated by OS disk encryption |
 | Notification endpoint abuse | Low | Webhook payloads are HMAC-signed; consumer can verify authenticity | Slack/Teams URLs are unprotected bearer credentials if leaked |
 | Self-update supply chain | Medium | Update delivered over authenticated WSS channel; one-version rollback available | No cryptographic signature verification on update packages in v1.0.0 (see Section 11) |
-| Brute-force login | Medium | No built-in rate limiting or account lockout in v1.0.0 | Mitigate at network layer (WAF, firewall, fail2ban on coordinator host) |
+| Brute-force login | Low–Medium | Built-in per-IP login rate limiter and lockout in v1.0.0 | Rate limiter is in-process; does not persist across coordinator restarts |
 
 ---
 
@@ -169,7 +177,7 @@ The following operational steps are recommended before production deployment:
 3. **Use a certificate from an internal CA or public CA** rather than a self-signed certificate where possible. If a self-signed certificate is used, distribute the CA to browsers and agent hosts so TLS validation is enforced.
 4. **Firewall the coordinator port** (:443) to known source ranges — admin workstations and agent subnets only. Do not expose the coordinator to the public internet unless explicitly required.
 5. **Rotate agent tokens periodically** and immediately on suspected compromise. Token rotation is a dashboard operation; no coordinator restart required.
-6. **Implement login rate limiting** at the network layer (WAF, reverse proxy, or firewall rule) until built-in rate limiting is available in a future release.
+6. **Login rate limiting is built in.** The coordinator includes per-IP rate limiting on the login endpoint. No additional network-layer configuration is required, though defence-in-depth (WAF or reverse proxy rate limiting) is still advisable.
 7. **Treat Slack and Teams webhook URLs as secrets.** Store them in a secrets manager or password vault and rotate them if exposure is suspected.
 8. **Forward coordinator host system logs to your SIEM** if tamper-evident audit logging or centralised log retention beyond 30 days is required.
 

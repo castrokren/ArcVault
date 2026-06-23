@@ -421,9 +421,9 @@ func TestFedAPI_Create_MissingFields(t *testing.T) {
 	s := newTestServer(t)
 
 	cases := []string{
-		`{"url":"http://x","token":"t"}`,       // missing name
-		`{"name":"X","token":"t"}`,              // missing url
-		`{"name":"X","url":"http://x"}`,         // missing token
+		`{"url":"http://x","token":"t"}`, // missing name
+		`{"name":"X","token":"t"}`,       // missing url
+		`{"name":"X","url":"http://x"}`,  // missing token
 	}
 
 	for _, body := range cases {

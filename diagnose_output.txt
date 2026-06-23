@@ -1,0 +1,74 @@
+﻿=== SERVICE STATE ===
+
+SERVICE_NAME: arcvault-coordinator 
+        TYPE               : 10  WIN32_OWN_PROCESS  
+        STATE              : 4  RUNNING 
+                                (STOPPABLE, NOT_PAUSABLE, ACCEPTS_SHUTDOWN)
+        WIN32_EXIT_CODE    : 0  (0x0)
+        SERVICE_EXIT_CODE  : 0  (0x0)
+        CHECKPOINT         : 0x0
+        WAIT_HINT          : 0x0
+
+=== PORT 443 BINDING ===
+  TCP    0.0.0.0:443            0.0.0.0:0              LISTENING       10996
+  TCP    192.168.68.56:49411    172.183.7.194:443      ESTABLISHED     6336
+  TCP    192.168.68.56:49973    160.79.104.10:443      ESTABLISHED     12888
+  TCP    192.168.68.56:49977    160.79.104.10:443      TIME_WAIT       0
+  TCP    192.168.68.56:49980    216.239.32.223:443     ESTABLISHED     7772
+  TCP    192.168.68.56:49981    160.79.104.10:443      TIME_WAIT       0
+  TCP    192.168.68.56:49982    160.79.104.10:443      TIME_WAIT       0
+  TCP    192.168.68.56:49984    160.79.104.10:443      TIME_WAIT       0
+  TCP    192.168.68.56:49987    160.79.104.10:443      TIME_WAIT       0
+  TCP    192.168.68.56:49989    160.79.104.10:443      TIME_WAIT       0
+  TCP    192.168.68.56:49991    160.79.104.10:443      ESTABLISHED     13728
+  TCP    192.168.68.56:50407    160.79.104.10:443      ESTABLISHED     7864
+  TCP    192.168.68.56:50998    160.79.104.10:443      ESTABLISHED     13728
+  TCP    192.168.68.56:51569    104.26.14.36:443       ESTABLISHED     7864
+  TCP    192.168.68.56:55241    23.209.187.34:443      CLOSE_WAIT      10484
+  TCP    192.168.68.56:58689    52.110.2.131:443       ESTABLISHED     9464
+  TCP    192.168.68.56:58690    52.110.2.160:443       ESTABLISHED     9464
+  TCP    192.168.68.56:59687    160.79.104.10:443      ESTABLISHED     20264
+  TCP    192.168.68.56:59688    160.79.104.10:443      ESTABLISHED     20264
+  TCP    192.168.68.56:59689    160.79.104.10:443      ESTABLISHED     20264
+  TCP    192.168.68.56:59690    160.79.104.10:443      ESTABLISHED     20264
+  TCP    192.168.68.56:59691    160.79.104.10:443      ESTABLISHED     20264
+  TCP    192.168.68.56:59693    34.149.66.137:443      ESTABLISHED     20264
+  TCP    192.168.68.56:59694    52.168.117.170:443     TIME_WAIT       0
+  TCP    192.168.68.56:59986    160.79.104.10:443      ESTABLISHED     12888
+  TCP    192.168.68.56:61885    34.149.66.154:443      ESTABLISHED     12888
+  TCP    192.168.68.56:65109    216.239.38.223:443     CLOSE_WAIT      7772
+  TCP    192.168.68.56:65110    216.239.38.223:443     ESTABLISHED     7772
+  TCP    192.168.68.56:65116    216.239.32.223:443     CLOSE_WAIT      7772
+  TCP    192.168.68.56:65117    216.239.32.223:443     CLOSE_WAIT      7772
+  TCP    [::]:443               [::]:0                 LISTENING       10996
+  UDP    0.0.0.0:61915          192.168.68.60:443                      4
+  UDP    0.0.0.0:64528          160.79.104.10:443                      12888
+  UDP    [::]:61915             [::ffff:192.168.68.60]:443                  4
+
+=== COORDINATOR EXE ===
+EXISTS: 06/12/2026 07:02:22
+SIZE:   33794560 bytes
+
+=== CONFIG.JSON ===
+{
+  "port": 443,
+  "database_path": "C:\\ArcVault\\arcvault.db",
+  "admin_token": "0aa45eccadf9e5f762458b838e7700b1bb43e95bfca4f80d5a43d0c1d07372a3",
+  "jwt_secret": "7fd3e5d5e98025bdaf7c73a5c447c448a028fb6e4c593394e410e1255f5abd3e",
+  "credential_key": "ec53c0dd0844aae1f216f357ccd79c3e2c7417281fc04b44662026ce88988b14",
+  "environment": "production",
+  "cert_file": "C:\\ArcVault\\cert.pem",
+  "key_file": "C:\\ArcVault\\key.pem"
+}
+
+=== CERT FILES ===
+cert.pem: True
+key.pem:  True
+
+=== HEALTH CHECK ===
+https://localhost/health FAILED: The underlying connection was closed: An unexpected error occurred on a send.
+https://localhost:443/health FAILED: The underlying connection was closed: An unexpected error occurred on a send.
+
+=== EVENT LOG (last 5 arcvault entries) ===
+
+=== DONE ===

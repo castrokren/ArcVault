@@ -1,0 +1,297 @@
+================================================================================
+                    ARCVAULT 2.0 SECURITY REMEDIATION PROPOSAL
+                         EXECUTIVE SUMMARY FOR REVIEW
+================================================================================
+
+ASSESSMENT DATE: 2026-06-18
+ASSESSOR: Kwame Asante, Cybersecurity Engineer
+STATUS: PROPOSAL PHASE - AWAITING APPROVAL
+
+================================================================================
+OVERVIEW
+================================================================================
+
+Eight P0 vulnerabilities identified spanning authentication, command execution,
+credential handling, and operational security. No single vuln causes total
+compromise, but chaining 2-3 enables:
+  • Unauthenticated access to coordinator broadcasts
+  • Credential extraction
+  • Command injection on agents
+  • Race conditions in credential initialization
+
+Total remediation effort: 3-4 weeks (2 engineers + QA)
+Deployment risk: LOW (phased rollout with backward compatibility)
+Testing complexity: MEDIUM (concurrent execution, race conditions)
+
+================================================================================
+P0 VULNERABILITIES AT A GLANCE
+================================================================================
+
+[CRITICAL] P0-001: CORS Wildcard Accepts All Origins
+  CWE-346  |  CVSS 7.5  |  Low Risk to Fix
+  Root Cause: AllowedOrigins:"*" permits requests from any origin
+  Fix: Explicit whitelist validation at startup + env var configuration
+  Effort: 2 days | Dependencies: None
+
+[CRITICAL] P0-002: WebSocket Origin Validation Disabled
+  CWE-345  |  CVSS 8.6  |  Low Risk to Fix
+  Root Cause: CheckOrigin: func() { return true } accepts any origin
+  Fix: Add origin validation using same AllowedOrigins list
+  Effort: 2 days | Dependencies: P0-001
+
+[CRITICAL] P0-003: Command Injection in RealExecutor
+  CWE-78   |  CVSS 8.8  |  Medium Risk to Fix
+  Root Cause: No whitelist/validation of command programs and arguments
+  Fix: Whitelist allowed programs (rsync, robocopy), validate arguments
+  Effort: 4 days | Dependencies: None
+  Note: Requires template audit before enforcement
+
+[CRITICAL] P0-004: Admin Token Persisted to Config File
+  CWE-798  |  CVSS 9.1  |  Low Risk to Fix
+  Root Cause: AdminToken stored plaintext in config.json
+  Fix: Load from environment variables (ARCVAULT_ADMIN_TOKEN)
+  Effort: 3 days | Dependencies: None
+
+[HIGH] P0-005: DB Row Scan Errors Silently Ignored
+  CWE-252  |  CVSS 6.5  |  Low Risk to Fix
+  Root Cause: Scan errors skipped with continue; no audit trail
+  Fix: Log errors, return error to caller, set response headers
+  Effort: 1 day | Dependencies: None
+
+[HIGH] P0-006: Race Condition in SSH Credential Setup
+  CWE-362  |  CVSS 6.3  |  Medium Risk to Fix
+  Root Cause: Global SSH_KEY_PATH env var shared by concurrent jobs
+  Fix: Per-job temp directories or ssh-agent isolation
+  Effort: 3 days | Dependencies: None
+  Note: Requires thorough concurrent job testing
+
+[HIGH] P0-007: Scheduler DB Queries Risk N+1 and Blocking
+  CWE-1025 |  CVSS 6.5  |  Low Risk to Fix
+  Root Cause: checkMissedSchedules() queries all jobs then each individually (N+1)
+  Fix: Single batch query with JOINs, add database indexes
+  Effort: 2 days | Dependencies: None
+
+[MEDIUM] P0-008: Agent Polling Uses Fixed Interval Without Jitter
+  CWE-674  |  CVSS 5.3  |  Very Low Risk to Fix
+  Root Cause: All agents poll at same 30-second boundary (thundering herd)
+  Fix: Add jitter (±20% variance) + randomized initial delay
+  Effort: 1 day | Dependencies: None
+
+================================================================================
+IMPLEMENTATION ROADMAP
+================================================================================
+
+PHASE 1: Authentication & Authorization (Week 1) — CRITICAL
+  Priority: Fix foundation auth/authz issues first
+  Vulns: P0-001, P0-002, P0-004
+  Effort: 1 week
+  Deployment: Simultaneous (all independent)
+  Risk: Low
+
+PHASE 2: Command Execution Hardening (Week 2) — CRITICAL
+  Priority: Prevent RCE on agents
+  Vulns: P0-003
+  Effort: 1 week
+  Deployment: Audit mode first, enforcement after template review
+  Risk: Medium (may break existing custom templates)
+
+PHASE 3: Operational Hardening (Week 3) — HIGH
+  Priority: Stability, correctness, scalability
+  Vulns: P0-005, P0-006, P0-007, P0-008
+  Effort: 1 week
+  Deployment: Phased (low-risk items first)
+  Risk: Low
+
+PHASE 4: Integration Testing & Documentation (Week 4)
+  Load testing with 500+ agents
+  Security testing (MITM, credential leakage, race conditions)
+  Rollback plan validation
+
+TOTAL: 3-4 weeks
+
+================================================================================
+DEPLOYMENT STRATEGY
+================================================================================
+
+PHASE 1 ROLLOUT:
+  1. Deploy P0-001 (CORS validation) + P0-004 (env var config) simultaneously
+     • Update config.json format to strip sensitive fields
+     • Update deployment docs to require env vars
+     • Keep backward compatibility: env vars override config file
+  2. Deploy P0-002 (WebSocket origin check) after P0-001 verified
+     • Verify AllowedOrigins is not wildcard before enabling check
+
+PHASE 2 ROLLOUT:
+  1. Deploy command validation in "audit mode" (log violations, don't block)
+  2. Run database audit: SELECT id, command FROM jobs WHERE command IS NOT NULL
+     • Flag any using unauthorized programs (bash, curl, nc, etc.)
+     • Report violations to admin
+  3. After manual approval, enable enforcement
+
+PHASE 3 ROLLOUT:
+  1. Phase 3a (low-risk): Deploy P0-005, P0-007, P0-008 immediately
+     • DB logging, scheduler optimization, polling jitter
+     • No API changes, agent-side improvements
+  2. Phase 3b (concurrent testing): Deploy P0-006 after thorough testing
+     • Concurrent job execution verification
+     • SSH credential isolation validation
+
+ROLLBACK: Each phase has independent rollback steps (no cascading failures)
+
+================================================================================
+KEY FINDINGS
+================================================================================
+
+Threat Model: Distributed backup system with agent network + untrusted paths
+  Assets: Coordinator state, SSH/SMB credentials, admin tokens, backup schedules
+  Actors: Network attacker, malicious agent, filesystem access, app attacker
+
+Attack Chains:
+  1. Unauthenticated state disclosure:
+     P0-001 (CORS wildcard) + P0-002 (WebSocket bypass) → attacker reads all job metadata
+
+  2. Privilege escalation:
+     P0-001 (CORS) + P0-004 (hardcoded admin token) → attacker API access
+
+  3. Agent compromise:
+     P0-003 (command injection) + admin access → RCE on all agents
+
+  4. Credential leakage:
+     P0-006 (race condition) → SSH keys mixed between jobs
+     P0-004 (plaintext config) → tokens exposed in backups
+
+================================================================================
+TESTING CHECKLIST
+================================================================================
+
+UNIT TESTS:
+  ✓ CORS middleware (valid/invalid origins)
+  ✓ WebSocket origin check (allowed/rejected)
+  ✓ Command validation (whitelist/blacklist)
+  ✓ Config loading (env var override)
+  ✓ DB error handling
+  ✓ SSH credential isolation
+  ✓ Scheduler query efficiency
+  ✓ Polling jitter distribution
+
+INTEGRATION TESTS:
+  ✓ Multi-agent concurrent polling (no synchronization)
+  ✓ Concurrent jobs with different credentials (no mixing)
+  ✓ Scheduler with 1000+ jobs
+  ✓ WebSocket connection from different origins
+  ✓ CORS preflight requests
+  ✓ Template execution validation
+
+SECURITY TESTS:
+  ✓ MITM WebSocket from attacker.com (should reject)
+  ✓ Credential cleanup (no orphaned temp files)
+  ✓ Race condition stress test (100 concurrent jobs)
+  ✓ Command injection attempts (bash, curl, etc.)
+
+LOAD TESTS:
+  ✓ 500+ agents polling (verify jitter smooths peak)
+  ✓ Scheduler performance with 1000+ jobs (< 1 second)
+  ✓ Concurrent API requests during scheduler spike
+
+================================================================================
+DEPENDENCIES & PREREQUISITES
+================================================================================
+
+Code Changes Required:
+  ✓ coordinator/server/server.go (CORS middleware)
+  ✓ coordinator/server/hub.go (WebSocket CheckOrigin)
+  ✓ coordinator/config/config.go (env var loading)
+  ✓ agent/runner/executor.go (command validation)
+  ✓ agent/runner/credentials.go (SSH race fix)
+  ✓ coordinator/server/scheduler.go (query optimization)
+  ✓ agent/runner/runner.go (polling jitter)
+  ✓ coordinator/db/jobs.go (error logging)
+
+Database Changes:
+  • Add indexes: (schedule), (job_id, enabled), (job_id, finished_at), etc.
+
+Deployment Changes:
+  • Update startup procedure to require env var configuration
+  • Update documentation with security best practices
+  • Create admin checklist for template validation (before P0-003 enforcement)
+
+Testing Infrastructure:
+  • Multi-agent test harness
+  • Concurrent job runner for race condition testing
+  • Load testing tools (Apache JMeter or custom)
+
+================================================================================
+RISK ASSESSMENT
+================================================================================
+
+DEPLOYMENT RISKS:
+
+Low Risk:
+  P0-001 (CORS): Config-only change
+  P0-002 (WebSocket): Flow-control change, can be disabled
+  P0-004 (env var): Backward compatible with config override
+  P0-005 (DB logging): Additive logging, no behavioral change
+  P0-007 (scheduler queries): Optimization only, same business logic
+  P0-008 (polling jitter): Agent-side, transparent to coordinator
+
+Medium Risk:
+  P0-003 (command whitelist): May break custom templates, requires audit
+  P0-006 (SSH race fix): Requires thorough concurrent testing
+
+MITIGATION:
+  • Phase-based rollout (allow feedback between phases)
+  • Audit modes before enforcement (P0-003)
+  • Backward compatibility where possible (P0-004)
+  • Clear rollback procedures for each phase
+  • Staging environment full integration test
+
+================================================================================
+SIGN-OFF REQUIRED FROM
+================================================================================
+
+❑ Elena Vasquez (Senior Code Reviewer)
+    - Technical feasibility assessment
+    - Test strategy and coverage verification
+    - Architecture impact review
+
+❑ Kren Castro (Project Owner)
+    - Timeline and sprint planning
+    - Feature release coordination
+    - Risk acceptance
+
+❑ Operations Lead (if exists)
+    - Deployment procedures
+    - Rollback validation
+    - Monitoring strategy
+
+================================================================================
+NEXT STEPS UPON APPROVAL
+================================================================================
+
+1. Schedule kickoff meeting with development team (30 min)
+2. Assign Phase 1 tasks to engineering team
+3. Create GitHub issues for each vulnerability (link to proposal)
+4. Set up staging environment for integration testing
+5. Begin Phase 1 implementation (Week 1)
+
+Expected Delivery:
+  • Phase 1: End of Week 1
+  • Phase 2: End of Week 2
+  • Phase 3: End of Week 3
+  • Phase 4 (testing): End of Week 4
+  • Ready for release: Start of Week 5
+
+================================================================================
+CONTACT & QUESTIONS
+================================================================================
+
+For technical questions on specific vulnerabilities:
+  Kwame Asante, Cybersecurity Engineer
+  Assessment Date: 2026-06-18
+
+Document Location:
+  C:\Projects\ArcVault2.0\SECURITY_PROPOSAL.md (full technical details)
+  C:\Projects\ArcVault2.0\SECURITY_SUMMARY.txt (this summary)
+
+Status: AWAITING APPROVAL TO PROCEED WITH PHASE 1
+================================================================================

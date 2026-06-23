@@ -243,7 +243,7 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { getUsers, createUser, updateUserRole, deleteUser as deleteUserApi, downloadBootstrapScript, downloadInstaller } from '../api'
+import { getUsers, createUser, updateUserRole, deleteUser as deleteUserApi, downloadInstaller } from '../api'
 import { useAuth } from '../composables/useAuth.js'
 
 const auth = useAuth()
@@ -365,7 +365,7 @@ watch(page, () => fetchUsers())
 const copyingToken = ref(false)
 const copyTokenLabel = ref('Copy Admin Token')
 
-const downloadingBootstrap = ref(false)
+const downloadingInstaller = ref(false)
 
 async function copyAdminToken() {
   copyingToken.value = true
@@ -386,20 +386,16 @@ async function copyAdminToken() {
   }
 }
 
-async function handleDownloadBootstrap() {
-  downloadingBootstrap.value = true
+async function handleDownloadInstaller() {
+  downloadingInstaller.value = true
   try {
-    await downloadBootstrapScript()
+    await downloadInstaller()
   } catch (err) {
-    alert(`Failed to download bootstrap script: ${err.message}`)
+    alert(`Failed to download installer: ${err.message}`)
   } finally {
-    downloadingBootstrap.value = false
+    downloadingInstaller.value = false
   }
 }
-</script>
-
-<script>
-import { watch } from 'vue'
 </script>
 
 <style scoped>
