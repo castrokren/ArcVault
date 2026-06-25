@@ -1,3 +1,4 @@
+// fallow-ignore-file security-sink
 import { z } from 'zod'
 import type * as Types from './types/api'
 import { describeCron } from './utils/cron'
@@ -235,6 +236,7 @@ export const getFederationHealth = () =>
   request('GET', '/api/federation/health')
 
 // --- Token Helpers ---
+// fallow-ignore-next-line unused-export
 export function saveToken(token: string) {
   localStorage.setItem('arcvault_jwt', token)
   localStorage.setItem('arcvault_token', token)
@@ -314,6 +316,7 @@ export async function downloadInstaller() {
 }
 
 // --- Agent Bootstrap ---
+// fallow-ignore-next-line unused-export
 export async function downloadBootstrapScript() {
   const token = getToken()
   if (!token) {

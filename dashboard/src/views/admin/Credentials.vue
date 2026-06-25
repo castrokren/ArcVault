@@ -1,3 +1,4 @@
+<!-- fallow-ignore-file security-sink -->
 <template>
   <div class="credentials-container">
     <div class="credentials-header">

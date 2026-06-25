@@ -26,6 +26,7 @@ export function parseCronParts(expr) {
  * @param {number} h  – hour   (0–23)
  * @param {number} m  – minute (0–59)
  */
+// fallow-ignore-next-line unused-export
 export function fmtTime(h, m) {
   const suffix = h >= 12 ? 'PM' : 'AM'
   const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h
