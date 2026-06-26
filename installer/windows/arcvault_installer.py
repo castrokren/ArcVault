@@ -19,26 +19,26 @@ from tkinter import ttk, messagebox
 import threading
 
 
-# ── Design tokens — mirrors coordinator dashboard (style.css) ──────────────────
-_BG_BASE      = "#07090e"
-_BG_SURFACE   = "#0c0f18"
-_BG_CARD      = "#11141f"
-_BG_ELEVATED  = "#171b29"
-_BG_INPUT     = "#0a0c14"
+# ── Design tokens — mirrors coordinator dashboard (theme-royal-purple.css) ────
+_BG_BASE      = "#0b0716"
+_BG_SURFACE   = "#100a1f"
+_BG_CARD      = "#18112e"
+_BG_ELEVATED  = "#1f1638"
+_BG_INPUT     = "#0f0920"
 
-_BORDER_SUBTLE  = "#191d2c"
-_BORDER_DEFAULT = "#222638"
-_BORDER_STRONG  = "#2e3450"
+_BORDER_SUBTLE  = "#1c1430"
+_BORDER_DEFAULT = "#261c40"
+_BORDER_STRONG  = "#34274f"
 
-_TEXT_PRIMARY   = "#dde4f2"
-_TEXT_SECONDARY = "#7b87a2"
-_TEXT_MUTED     = "#404b62"
+_TEXT_PRIMARY   = "#ece8f7"
+_TEXT_SECONDARY = "#9b8fb8"
+_TEXT_MUTED     = "#7a6f9c"
 
-_ACCENT       = "#00d4aa"
-_ACCENT_HOVER = "#00b894"
+_ACCENT       = "#8b5cf6"
+_ACCENT_HOVER = "#7c3aed"
 
-_COLOR_WARNING = "#f59e0b"
-_COLOR_ERROR   = "#ff4d6d"
+_COLOR_WARNING = "#fbbf24"
+_COLOR_ERROR   = "#ff5c7a"
 
 # ── ArcVault icon — favicon.svg rendered to 64x64 PNG, base64 ─────────────────
 _ICON_B64 = (
