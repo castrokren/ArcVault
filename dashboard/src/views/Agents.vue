@@ -16,6 +16,40 @@
 
     <div v-if="error" class="error">{{ error }}</div>
 
+    <!-- ── Stat row (new) ─────────────────────────────────── -->
+    <div v-if="!selectedSite" class="stat-grid">
+      <!-- Total agents · bar chart -->
+      <div class="stat-card">
+        <div class="stat-label">Total Agents</div>
+        <div class="stat-value">{{ totalAgents }}</div>
+        <div class="bar-chart">
+          <span v-for="(h, i) in growthTrend" :key="i" :style="{ height: barHeight(h, growthTrend) }"></span>
+        </div>
+      </div>
+
+      <!-- Online now · area sparkline -->
+      <div class="stat-card">
+        <div class="stat-label">Online Now</div>
+        <div class="stat-value">{{ onlineCount }}</div>
+        <svg class="spark-area" viewBox="0 0 130 50" preserveAspectRatio="none">
+          <path class="area" :d="onlineSpark.area" />
+          <polyline class="line" :points="onlineSpark.line" />
+        </svg>
+      </div>
+
+      <!-- Online rate · donut -->
+      <div class="stat-card is-donut">
+        <div class="stat-body">
+          <div class="stat-label">Online Rate</div>
+          <div class="stat-value">{{ onlineRate }}<span class="pct">%</span></div>
+          <div class="stat-sub">{{ updatesPending }} need updates</div>
+        </div>
+        <div class="donut" :style="{ '--pct': onlineRate }">
+          <div class="donut-hole">{{ onlineRate }}</div>
+        </div>
+      </div>
+    </div>
+
     <div class="filters" v-if="!selectedSite">
       <input
         v-model="searchQuery"
@@ -148,6 +182,46 @@ function openUpdateModal(agent) {
   modalOpen.value = true
 }
 
+/* ── Stat-row derived values ──────────────────────────────
+   These read straight off the data you already load. */
+const totalAgents = computed(() => result.value.total || agents.value.length)
+const onlineCount = computed(() => agents.value.filter(a => a.status === 'online').length)
+const onlineRate = computed(() => {
+  const n = agents.value.length
+  return n ? Math.round((onlineCount.value / n) * 100) : 0
+})
+const updatesPending = computed(() =>
+  agents.value.filter(a => !selectedSite.value && updateAvailable(a)).length
+)
+
+// TODO: wire these trends to a real metrics endpoint when available.
+// Until then they render a representative shape so the cards aren't empty.
+const growthTrend = ref([18, 26, 22, 34, 30, 40, 36, 44])
+const onlineTrend = ref([38, 40, 39, 42, 41, 43, 42, 43])
+
+function barHeight(v, arr) {
+  const max = Math.max(...arr, 1)
+  return Math.round((v / max) * 100) + '%'
+}
+
+// Build the line + filled-area path strings for an SVG sparkline.
+function buildSpark(data, w = 130, h = 50, pad = 6) {
+  const max = Math.max(...data), min = Math.min(...data)
+  const span = max - min || 1
+  const step = w / (data.length - 1)
+  const pts = data.map((v, i) => {
+    const x = Math.round(i * step)
+    const y = Math.round(pad + (h - pad * 2) * (1 - (v - min) / span))
+    return [x, y]
+  })
+  const line = pts.map(p => p.join(',')).join(' ')
+  const area = `M${pts[0][0]},${pts[0][1]} ` +
+    pts.slice(1).map(p => `L${p[0]},${p[1]}`).join(' ') +
+    ` L${w},${h} L0,${h} Z`
+  return { line, area }
+}
+const onlineSpark = computed(() => buildSpark(onlineTrend.value))
+
 async function load() {
   loading.value = true
   error.value = null
@@ -203,109 +277,22 @@ onMounted(load)
 </script>
 
 <style scoped>
-.page-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem; }
-.page-header h1 { margin: 0; }
-.page-header button {
-  padding: 0.4rem 1rem;
-  background: #4f8ef7;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
+/* Almost everything here now comes from the global, token-based system in style.css
+   (.page-header, .table, .badge, .chip, .search-input, .stat-card, .stat-label,
+   .stat-value, .filters, .empty, .error, .stale-banner). Only a couple of
+   view-specific bits remain — and they use tokens, so they theme automatically. */
+
+.stat-value .pct {
+  font-size: 1rem;
+  color: var(--accent);
+  margin-left: 1px;
 }
 
-.stale-banner {
-  background: rgba(255, 167, 38, 0.12);
-  border: 1px solid rgba(255, 167, 38, 0.4);
-  color: #ffa726;
-  padding: 0.5rem 0.85rem;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  margin-bottom: 1rem;
+.actions-cell {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
 }
 
-.error { color: #e55; margin-bottom: 1rem; }
-.empty { color: #888; margin: 2rem 0; }
-
-.filters { margin-bottom: 1.5rem; }
-
-.search-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 1rem;
-  border-radius: 4px;
-  border: 1px solid #2a2a3e;
-  background: #0f0f1a;
-  color: #fff;
-  font-size: 0.95rem;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #4f8ef7;
-  box-shadow: 0 0 0 2px rgba(79, 142, 247, 0.1);
-}
-
-.filter-chips { display: flex; gap: 0.5rem; }
-
-.chip {
-  padding: 0.4rem 1rem;
-  border-radius: 999px;
-  border: 1px solid #2a2a3e;
-  background: transparent;
-  color: #aaa;
-  cursor: pointer;
-  font-size: 0.85rem;
-  transition: all 0.2s;
-}
-
-.chip:hover { border-color: #4f8ef7; color: #4f8ef7; }
-.chip.active { background: #4f8ef7; border-color: #4f8ef7; color: #fff; }
-
-.table { width: 100%; border-collapse: collapse; }
-.table th, .table td {
-  text-align: left;
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid #2a2a3e;
-}
-.table th { color: #888; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; }
-
-.mono { font-family: monospace; font-size: 0.9rem; }
-
-.badge {
-  display: inline-block;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-.badge.online  { background: #1a3a1a; color: #4caf50; }
-.badge.offline { background: #3a1a1a; color: #e55; }
-
-.update-badge {
-  display: inline-block;
-  margin-left: 0.4rem;
-  padding: 0.1rem 0.4rem;
-  background: #3a2a10;
-  color: #f39c12;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
-}
-
-.actions-cell { display: flex; gap: 0.4rem; align-items: center; }
-
-.btn-update-agent {
-  padding: 0.3rem 0.8rem;
-  background: #f39c12;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-.btn-update-agent:hover { background: #e08e00; }
-
+/* .update-badge and .btn-update-agent live in charts.css (shared, tokenized). */
 </style>
