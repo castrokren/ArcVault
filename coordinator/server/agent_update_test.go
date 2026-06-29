@@ -106,8 +106,10 @@ func TestSendToAgent(t *testing.T) {
 
 	// Connect as agent.
 	agentURL := "ws" + strings.TrimPrefix(ts.URL, "http") +
-		"/ws/agent?agent_id=agent-04&token=" + s.cfg.AdminToken
-	agentConn, _, err := websocket.DefaultDialer.Dial(agentURL, nil)
+		"/ws/agent?agent_id=agent-04"
+	agentConn, _, err := websocket.DefaultDialer.Dial(agentURL, http.Header{
+		"Authorization": []string{"Bearer " + s.cfg.AdminToken},
+	})
 	if err != nil {
 		t.Fatalf("agent WS dial failed: %v", err)
 	}
