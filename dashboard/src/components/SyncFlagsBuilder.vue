@@ -68,7 +68,7 @@
               id="mirror"
               v-model="flags.mirror"
               type="checkbox"
-              @input="updateFlags"
+              @change="updateFlags"
             />
             <span>Mirror mode</span>
           </label>

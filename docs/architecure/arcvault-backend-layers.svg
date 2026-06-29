@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="680" height="430" viewBox="0 0 680 430">
+<style>
+  text{font-family:'Segoe UI',Helvetica,Arial,sans-serif}
+  .th{font-size:14px;font-weight:500}
+  .ts{font-size:12px;font-weight:400;fill:#5F5E5A}
+  .arr{stroke:#5F5E5A;stroke-width:1.5;fill:none}
+</style>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="#5F5E5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+<rect width="680" height="430" fill="#ffffff"/>
+
+<rect x="110" y="30" width="460" height="52" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text class="th" x="340" y="52" text-anchor="middle" fill="#2C2C2A">Vue 3 dashboard</text>
+<text class="ts" x="340" y="70" text-anchor="middle">api.ts &#8212; TypeScript types + Zod validation</text>
+<text class="ts" x="352" y="100">HTTPS &#183; JWT</text>
+<line x1="340" y1="84" x2="340" y2="108" class="arr" marker-end="url(#arrow)"/>
+
+<rect x="110" y="112" width="460" height="52" rx="8" fill="#E1F5EE" stroke="#0F6E56" stroke-width="0.5"/>
+<text class="th" x="340" y="134" text-anchor="middle" fill="#04342C">HTTP handlers (server)</text>
+<text class="ts" x="340" y="152" text-anchor="middle">routing + RBAC middleware</text>
+<line x1="340" y1="166" x2="340" y2="190" class="arr" marker-end="url(#arrow)"/>
+
+<rect x="110" y="194" width="460" height="52" rx="8" fill="#EEEDFE" stroke="#534AB7" stroke-width="0.5"/>
+<text class="th" x="340" y="216" text-anchor="middle" fill="#26215C">Service layer</text>
+<text class="ts" x="340" y="234" text-anchor="middle">AgentService &#183; JobService &#183; typed DTOs</text>
+<line x1="340" y1="248" x2="340" y2="272" class="arr" marker-end="url(#arrow)"/>
+
+<rect x="110" y="276" width="460" height="52" rx="8" fill="#FAECE7" stroke="#993C1D" stroke-width="0.5"/>
+<text class="th" x="340" y="298" text-anchor="middle" fill="#4A1B0C">DB query interfaces</text>
+<text class="ts" x="340" y="316" text-anchor="middle">AgentQueries &#183; JobQueries</text>
+<line x1="340" y1="330" x2="340" y2="354" class="arr" marker-end="url(#arrow)"/>
+
+<rect x="110" y="358" width="460" height="52" rx="8" fill="#F1EFE8" stroke="#5F5E5A" stroke-width="0.5"/>
+<text class="th" x="340" y="380" text-anchor="middle" fill="#2C2C2A">SQLite (modernc.org/sqlite)</text>
+<text class="ts" x="340" y="398" text-anchor="middle">pure Go &#183; WAL &#183; no CGO</text>
+</svg>

@@ -221,7 +221,7 @@ const groups = ref([])
 const credentials = ref([])
 const filteredCredentials = ref([])
 
-const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', credential_profile_id: '', sync_flags: { mirror: false, max_age: null, min_age: null, max_size: null, exclude_files: [], exclude_dirs: [] } })
+const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', credential_profile_id: '', sync_flags: {} })
 
 // Logs modal state
 const showLogsModal = ref(false)
@@ -340,9 +340,23 @@ async function createJob() {
     if (!payload.schedule) delete payload.schedule
     if (form.value.dispatchMode === 'agent') delete payload.group_id
     if (form.value.dispatchMode === 'group') delete payload.agent_id
+    // Strip null/empty/false values from sync_flags
+    if (payload.sync_flags) {
+      const cleaned = {}
+      for (const [key, value] of Object.entries(payload.sync_flags)) {
+        const keep = value !== null && value !== false && value !== '' &&
+          !(Array.isArray(value) && value.length === 0)
+        if (keep) cleaned[key] = value
+      }
+      if (Object.keys(cleaned).length === 0) {
+        delete payload.sync_flags
+      } else {
+        payload.sync_flags = cleaned
+      }
+    }
 
     await apiCreateJob(payload)
-    form.value = { dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', sync_flags: { mirror: false, max_age: null, min_age: null, max_size: null, exclude_files: [], exclude_dirs: [] } }
+    form.value = { dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', sync_flags: {} }
     showForm.value = false
     page.value = 1
     await load()

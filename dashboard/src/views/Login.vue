@@ -1,238 +1,202 @@
 <template>
   <div class="login-page">
+    <!-- Background: OrbitField canvas (fixed, z-index:0) -->
+    <OrbitField ref="orbitField" motion="bold" />
 
-    <!-- Orbit scene background -->
-    <div class="orbit-scene" aria-hidden="true">
-      <svg viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg">
-        <g class="orbit-rings">
-          <circle cx="400" cy="400" r="180" />
-          <circle cx="400" cy="400" r="260" />
-          <circle cx="400" cy="400" r="340" />
-        </g>
-        <g class="orbit-cw">
-          <path class="arc arc-accent" d="M 660 400 A 260 260 0 0 1 400 660" />
-          <circle class="dot dot-accent" cx="660" cy="400" r="4" />
-        </g>
-        <g class="orbit-ccw">
-          <path class="arc arc-accent2" d="M 400 220 A 180 180 0 0 0 220 400" />
-          <circle class="dot dot-accent2" cx="400" cy="220" r="3.5" />
-        </g>
-      </svg>
-    </div>
-
+    <!-- Centered glass card layer (z-index:1) -->
     <div class="login-shell">
-
-      <!-- Brand mark -->
-      <div class="brand">
-        <div class="brand-icon">
-          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M12 3L20 7.5V12C20 16.42 16.47 20.5 12 21.5C7.53 20.5 4 16.42 4 12V7.5L12 3Z"
-              stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-            <path d="M8.5 12L11.5 15L15.5 9.5"
-              stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
+      <!-- Brand — stagger entrance 1 -->
+      <motion.div
+        :initial="{ opacity: 0, y: 20 }"
+        :animate="{ opacity: 1, y: 0 }"
+        :transition="{ type: 'spring', stiffness: 120, damping: 14 }"
+      >
+        <div class="brand">
+          <div class="brand-icon">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path
+                d="M12 3L20 7.5V12C20 16.42 16.47 20.5 12 21.5C7.53 20.5 4 16.42 4 12V7.5L12 3Z"
+                stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"
+              />
+              <path
+                d="M8.5 12L11.5 15L15.5 9.5"
+                stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"
+              />
+            </svg>
+          </div>
+          <span class="brand-name">ArcVault</span>
         </div>
-        <span class="brand-name">ArcVault</span>
-      </div>
+      </motion.div>
 
-      <!-- Card -->
-      <div class="login-card">
+      <!-- Card with error shake wrapper -->
+      <motion.div
+        :animate="cardAnim"
+        :transition="{ type: 'spring', stiffness: 500, damping: 8 }"
+      >
+        <div class="login-card">
+          <h1 class="card-title">Sign in</h1>
+          <p class="card-sub">Backup orchestrator console</p>
 
-        <!-- Change password flow -->
-        <template v-if="showChangePassword">
-          <div class="card-header">
-            <h1 class="card-title">Set new password</h1>
-            <p class="card-sub">You must set a new password before continuing.</p>
-          </div>
+          <div v-if="errorMsg" class="error">{{ errorMsg }}</div>
 
-          <div class="notice">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.2"/><path d="M7 6v3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="7" cy="4.5" r="0.6" fill="currentColor"/></svg>
-            Your account requires a password change.
-          </div>
-
-          <form @submit.prevent="handleChangePassword" class="login-form">
-            <div class="field">
-              <label for="new-password">New password</label>
-              <div class="input-wrap">
-                <svg class="input-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="3" y="6" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M5 6V4.5a2 2 0 0 1 4 0V6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-                <input
-                  id="new-password"
-                  v-model="newPassword"
-                  type="password"
-                  placeholder="At least 8 characters"
-                  :disabled="cpLoading"
-                  autocomplete="new-password"
-                />
-              </div>
-            </div>
-            <div class="field">
-              <label for="confirm-password">Confirm password</label>
-              <div class="input-wrap">
-                <svg class="input-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="3" y="6" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M5 6V4.5a2 2 0 0 1 4 0V6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
-                <input
-                  id="confirm-password"
-                  v-model="confirmPassword"
-                  type="password"
-                  placeholder="Repeat new password"
-                  :disabled="cpLoading"
-                  autocomplete="new-password"
-                />
-              </div>
-            </div>
-            <div v-if="cpError" class="form-error">
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.2"/><path d="M6.5 4v3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="6.5" cy="9" r="0.6" fill="currentColor"/></svg>
-              {{ cpError }}
-            </div>
-            <button
-              type="submit"
-              class="submit-btn"
-              :disabled="cpLoading || !newPassword || !confirmPassword"
+          <form @submit.prevent="handleSubmit" class="login-form">
+            <!-- Username field — stagger entrance 2 -->
+            <motion.div
+              :initial="{ opacity: 0, y: 16 }"
+              :animate="{ opacity: 1, y: 0 }"
+              :transition="{ type: 'spring', stiffness: 100, damping: 20, delay: 0.08 }"
+              class="field"
             >
-              <span v-if="cpLoading" class="spinner"></span>
-              <svg v-else width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5L5.5 10.5L11.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              {{ cpLoading ? 'Saving…' : 'Set password' }}
-            </button>
-          </form>
-        </template>
-
-        <!-- Normal login -->
-        <template v-else>
-          <div class="card-header">
-            <h1 class="card-title">Sign in</h1>
-            <p class="card-sub">Backup orchestrator console</p>
-          </div>
-
-          <form @submit.prevent="handleLogin" class="login-form">
-            <div class="field">
               <label for="username">Username</label>
               <div class="input-wrap">
-                <svg class="input-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M2 12c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                <svg
+                  class="input-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"
+                  aria-hidden="true"
+                >
+                  <circle cx="7" cy="5" r="2.5" stroke="currentColor" stroke-width="1.2" />
+                  <path d="M2 12c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                </svg>
                 <input
                   id="username"
                   v-model="username"
                   type="text"
-                  placeholder="your username"
                   autocomplete="username"
-                  :disabled="loading"
+                  required
+                  placeholder="Username"
                 />
               </div>
-            </div>
-            <div class="field">
+            </motion.div>
+
+            <!-- Password field — stagger entrance 3 -->
+            <motion.div
+              :initial="{ opacity: 0, y: 16 }"
+              :animate="{ opacity: 1, y: 0 }"
+              :transition="{ type: 'spring', stiffness: 100, damping: 20, delay: 0.14 }"
+              class="field"
+            >
               <label for="password">Password</label>
               <div class="input-wrap">
-                <svg class="input-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"><rect x="3" y="6" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M5 6V4.5a2 2 0 0 1 4 0V6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="7" cy="9" r="0.75" fill="currentColor"/></svg>
+                <svg
+                  class="input-icon" width="14" height="14" viewBox="0 0 14 14" fill="none"
+                  aria-hidden="true"
+                >
+                  <rect x="3" y="6" width="8" height="6" rx="1" stroke="currentColor" stroke-width="1.2" />
+                  <path d="M5 6V4.5a2 2 0 0 1 4 0V6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" />
+                  <circle cx="7" cy="9" r="0.75" fill="currentColor" />
+                </svg>
                 <input
                   id="password"
                   v-model="password"
                   type="password"
-                  placeholder="••••••••"
                   autocomplete="current-password"
-                  :disabled="loading"
+                  required
+                  placeholder="Password"
                 />
               </div>
-            </div>
-            <div v-if="error" class="form-error">
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="currentColor" stroke-width="1.2"/><path d="M6.5 4v3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="6.5" cy="9" r="0.6" fill="currentColor"/></svg>
-              {{ error }}
-            </div>
-            <button
-              type="submit"
-              class="submit-btn"
-              :disabled="loading || !username || !password"
-            >
-              <span v-if="loading" class="spinner"></span>
-              <svg v-else width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 3l5 4-5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-              {{ loading ? 'Signing in…' : 'Sign in' }}
-            </button>
-          </form>
-        </template>
-      </div>
+            </motion.div>
 
-      <p class="login-footer">ArcVault — Distributed backup orchestration</p>
+            <!-- Remember me — stagger entrance 4 -->
+            <motion.div
+              :initial="{ opacity: 0, y: 16 }"
+              :animate="{ opacity: 1, y: 0 }"
+              :transition="{ type: 'spring', stiffness: 100, damping: 20, delay: 0.20 }"
+            >
+              <label class="remember-me">
+                <input type="checkbox" v-model="remember" />
+                <span class="check-label">Remember me</span>
+              </label>
+            </motion.div>
+
+            <!-- Submit button — stagger entrance 5 + gestures -->
+            <motion.div
+              :initial="{ opacity: 0, y: 16 }"
+              :animate="{ opacity: 1, y: 0 }"
+              :transition="{ type: 'spring', stiffness: 100, damping: 20, delay: 0.26 }"
+            >
+              <motion.button
+                type="submit"
+                class="btn btn-primary submit-btn"
+                :disabled="isSubmitting"
+                :whileHover="{ scale: 1.02 }"
+                :whilePress="{ scale: 0.97 }"
+                :transition="{ type: 'spring', stiffness: 400, damping: 10 }"
+              >
+                {{ isSubmitting ? 'Connecting\u2026' : 'Sign in' }}
+              </motion.button>
+            </motion.div>
+          </form>
+        </div>
+      </motion.div>
+
+      <p class="login-footer">ArcVault \u2014 Distributed backup orchestration</p>
     </div>
   </div>
+
+  <ChangePasswordModal
+    :isOpen="showChangePw"
+    @close="showChangePw = false"
+    @success="showChangePw = false; router.push('/')"
+  />
 </template>
 
 <script setup>
-import { ref, inject } from 'vue'
+import { ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
+import { motion } from 'motion-v'
 import { useAuth } from '../composables/useAuth.js'
+import OrbitField from '../components/orbit/OrbitField.vue'
+import ChangePasswordModal from '../components/ChangePasswordModal.vue'
 
 const router = useRouter()
 const auth = useAuth()
-const connectWs = inject('connectWs', () => {})
 
 const username = ref('')
 const password = ref('')
-const loading = ref(false)
-const error = ref('')
+const remember = ref(true)
+const isSubmitting = ref(false)
+const errorMsg = ref(null)
+const showChangePw = ref(false)
 
-// Change-password state
-const showChangePassword = ref(false)
-const newPassword = ref('')
-const confirmPassword = ref('')
-const cpLoading = ref(false)
-const cpError = ref('')
+const orbitField = ref(null)
 
-// If already authenticated, redirect
-if (auth.isAuthenticated.value) {
-  router.push('/agents')
-}
+const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-async function handleLogin() {
-  if (!username.value || !password.value) {
-    error.value = 'Please enter username and password'
-    return
+// ponytail: shake anim on error — keyframes replay if errorMsg transitions null→string
+const cardAnim = computed(() => ({
+  x: errorMsg.value ? [0, -8, 8, -6, 6, 0] : 0,
+}))
+
+async function handleSubmit() {
+  if (isSubmitting.value) return                    // double-submit guard
+  isSubmitting.value = true
+  errorMsg.value = ''
+
+  const result = await auth.login(
+    username.value,
+    password.value,
+    remember.value,
+  )
+
+  if (!result.success) {
+    errorMsg.value = result.error
+    isSubmitting.value = false
+    return                                          // shake fires automatically via cardAnim
   }
 
-  loading.value = true
-  error.value = ''
+  if (result.mustChangePassword) {
+    showChangePw.value = true
+    isSubmitting.value = false
+    return                                          // skip warp, open modal
+  }
 
-  const result = await auth.login(username.value, password.value, true)
-
-  if (result.success) {
-    connectWs()
-    if (result.mustChangePassword) {
-      showChangePassword.value = true
-      loading.value = false
-    } else {
-      router.push('/agents')
-    }
+  // Success path — warp (or fade) then redirect
+  if (prefersReducedMotion) {
+    await new Promise(r => setTimeout(r, 200))      // quick fade ~200ms, no warp
   } else {
-    error.value = result.error || 'Login failed. Please try again.'
-    loading.value = false
+    await orbitField.value?.warp()                  // await ~1.25s warp dive
   }
-}
-
-async function handleChangePassword() {
-  cpError.value = ''
-
-  if (newPassword.value.length < 8) {
-    cpError.value = 'Password must be at least 8 characters.'
-    return
-  }
-  if (newPassword.value !== confirmPassword.value) {
-    cpError.value = 'Passwords do not match.'
-    return
-  }
-
-  cpLoading.value = true
-  const result = await auth.changePassword('changeme', newPassword.value)
-  cpLoading.value = false
-
-  if (result.success) {
-    const reLogin = await auth.login(username.value, newPassword.value, true)
-    if (reLogin.success) {
-      connectWs()
-      router.push('/agents')
-    } else {
-      cpError.value = 'Password changed — please log in again.'
-      showChangePassword.value = false
-      auth.clearAuth()
-    }
-  } else {
-    cpError.value = result.error || 'Failed to change password.'
-  }
+  router.push('/')
+  isSubmitting.value = false
 }
 </script>
 
@@ -249,75 +213,16 @@ async function handleChangePassword() {
   padding: 2rem;
 }
 
-/* ── Orbit scene (concentric rings + counter-rotating arcs) ── */
-.orbit-scene {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-}
-
-.orbit-scene svg {
-  width: min(150vmin, 920px);
-  height: min(150vmin, 920px);
-  flex-shrink: 0;
-}
-
-.orbit-rings circle {
-  fill: none;
-  stroke: var(--border-subtle);
-  stroke-width: 1;
-}
-
-.orbit-cw,
-.orbit-ccw {
-  transform-origin: 400px 400px;
-}
-
-.orbit-cw  { animation: orbit-spin 75s linear infinite; }
-.orbit-ccw { animation: orbit-spin 90s linear infinite reverse; }
-
-@keyframes orbit-spin {
-  to { transform: rotate(360deg); }
-}
-
-.arc {
-  fill: none;
-  stroke-width: 1.5;
-  stroke-linecap: round;
-}
-
-.arc-accent  { stroke: var(--accent);   opacity: 0.45; }
-.arc-accent2 { stroke: var(--accent-2); opacity: 0.45; }
-
-.dot-accent  { fill: var(--accent); }
-.dot-accent2 { fill: var(--accent-2); }
-
-@media (prefers-reduced-motion: reduce) {
-  .orbit-cw,
-  .orbit-ccw {
-    animation: none;
-  }
-}
-
-/* ── Content ─────────────────────────────────────────────── */
+/* ── Content layer ──────────────────────────────────────── */
 .login-shell {
   position: relative;
-  z-index: 10;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1.5rem;
   width: 100%;
   max-width: 380px;
-  animation: shell-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-@keyframes shell-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ── Brand ───────────────────────────────────────────────── */
@@ -352,18 +257,17 @@ async function handleChangePassword() {
   color: var(--text-primary);
 }
 
-/* ── Card ────────────────────────────────────────────────── */
+/* ── Glass card ──────────────────────────────────────────── */
 .login-card {
   width: 100%;
-  background: var(--bg-card);
+  /* ponytail: translucent bg for glass effect over OrbitField canvas */
+  background: color-mix(in srgb, var(--bg-card) 78%, transparent);
+  backdrop-filter: blur(24px) saturate(1.25);
+  -webkit-backdrop-filter: blur(24px) saturate(1.25);
   border: 1px solid var(--border-default);
-  border-radius: 12px;
+  border-radius: var(--radius-card);
   padding: 1.75rem;
-  box-shadow: var(--shadow-lg);
-}
-
-.card-header {
-  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-lg), var(--edge-highlight), 0 0 40px var(--accent-dim);
 }
 
 .card-title {
@@ -379,29 +283,15 @@ async function handleChangePassword() {
   font-family: var(--font-body);
   font-size: 0.85rem;
   color: var(--text-secondary);
-  margin: 0;
-}
-
-/* ── Notice ──────────────────────────────────────────────── */
-.notice {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: var(--accent-dim);
-  border: 1px solid var(--accent-border);
-  color: var(--accent);
-  font-family: var(--font-body);
-  font-size: 0.82rem;
-  padding: 0.6rem 0.85rem;
-  border-radius: 6px;
-  margin-bottom: 1.25rem;
+  margin: 0 0 0.5rem;
 }
 
 /* ── Form ────────────────────────────────────────────────── */
 .login-form {
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
+  gap: 1rem;
+  margin-top: 1rem;
 }
 
 .field {
@@ -433,7 +323,7 @@ async function handleChangePassword() {
 .input-wrap input {
   width: 100%;
   padding: 0.6rem 0.85rem 0.6rem 2.2rem;
-  border-radius: 6px;
+  border-radius: var(--radius-ctrl);
   border: 1px solid var(--border-default);
   background: var(--bg-input);
   color: var(--text-primary);
@@ -447,10 +337,15 @@ async function handleChangePassword() {
   color: var(--text-muted);
 }
 
-.input-wrap input:focus {
+.input-wrap input:focus-visible {
   outline: none;
   border-color: var(--accent);
   box-shadow: var(--glow-accent);
+}
+
+.input-wrap input:focus:not(:focus-visible) {
+  outline: none;
+  border-color: var(--border-strong);
 }
 
 .input-wrap input:disabled {
@@ -458,69 +353,50 @@ async function handleChangePassword() {
   cursor: not-allowed;
 }
 
-/* ── Error ───────────────────────────────────────────────── */
-.form-error {
+/* ── Remember me ─────────────────────────────────────────── */
+.remember-me {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.6rem 0.85rem;
-  background: var(--bg-error);
-  border: 1px solid rgba(255, 92, 122, 0.3);
-  border-radius: 6px;
-  color: var(--color-error);
+  gap: 0.5rem;
+  cursor: pointer;
   font-family: var(--font-body);
-  font-size: 0.82rem;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.remember-me input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.check-label {
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
 }
 
 /* ── Submit button ───────────────────────────────────────── */
 .submit-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
   width: 100%;
   padding: 0.65rem 1rem;
   margin-top: 0.25rem;
-  background: var(--accent);
-  color: var(--text-inverse);
-  border: none;
-  border-radius: 8px;
   font-family: var(--font-display);
   font-size: 0.9rem;
   font-weight: 700;
   letter-spacing: 0.02em;
   cursor: pointer;
-  transition: filter 0.15s, transform 0.1s;
 }
 
-.submit-btn:hover:not(:disabled) {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
-}
-
-.submit-btn:active:not(:disabled) {
-  transform: translateY(0);
+.submit-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .submit-btn:disabled {
-  opacity: 0.4;
   cursor: not-allowed;
-  transform: none;
-}
-
-/* ── Spinner ─────────────────────────────────────────────── */
-.spinner {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid rgba(0,0,0,0.2);
-  border-top-color: currentColor;
-  animation: spin 0.6s linear infinite;
-  flex-shrink: 0;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
 }
 
 /* ── Footer ──────────────────────────────────────────────── */
@@ -530,14 +406,5 @@ async function handleChangePassword() {
   color: var(--text-muted);
   text-align: center;
   margin: 0;
-}
-
-/* ── Light theme adjustments ─────────────────────────────── */
-[data-theme="light"] .orbit-rings circle {
-  stroke: var(--border-default);
-}
-[data-theme="light"] .arc-accent,
-[data-theme="light"] .arc-accent2 {
-  opacity: 0.35;
 }
 </style>

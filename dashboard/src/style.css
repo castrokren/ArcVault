@@ -32,9 +32,9 @@
   --text-inverse:   #07070d;
 
   /* Accent / actions */
-  --accent:         #00e5b8;
-  --accent-dim:     rgba(0, 229, 184, 0.12);
-  --accent-border:  rgba(0, 229, 184, 0.35);
+  --accent:         #8b5cf6;
+  --accent-dim:     rgba(139, 92, 246, 0.12);
+  --accent-border:  rgba(139, 92, 246, 0.35);
   --accent-2:       #8b86ff;
   --accent-2-dim:   rgba(139, 134, 255, 0.12);
   --accent-2-border: rgba(139, 134, 255, 0.35);
@@ -61,7 +61,7 @@
   --glow-accent: 0 0 0 1px var(--accent-border), 0 0 24px var(--accent-dim);
 
   /* Ambient background tints */
-  --ambient-1: rgba(0, 229, 184, 0.04);
+  --ambient-1: rgba(139, 92, 246, 0.04);
   --ambient-2: rgba(139, 134, 255, 0.04);
 
   /* Radii */
@@ -91,9 +91,9 @@
   --text-muted:     #8a92ac;
   --text-inverse:   #ffffff;
 
-  --accent:         #00a887;
-  --accent-dim:     rgba(0, 168, 135, 0.10);
-  --accent-border:  rgba(0, 168, 135, 0.35);
+  --accent:         #7a4ce0;
+  --accent-dim:     rgba(122, 76, 224, 0.10);
+  --accent-border:  rgba(122, 76, 224, 0.35);
   --accent-2:       #5d56d6;
   --accent-2-dim:   rgba(93, 86, 214, 0.10);
   --accent-2-border: rgba(93, 86, 214, 0.35);
@@ -116,7 +116,7 @@
   --edge-highlight: inset 0 1px 0 rgba(255,255,255,0.9);
   --glow-accent: 0 0 0 1px var(--accent-border), 0 0 16px var(--accent-dim);
 
-  --ambient-1: rgba(0, 168, 135, 0.05);
+  --ambient-1: rgba(122, 76, 224, 0.05);
   --ambient-2: rgba(93, 86, 214, 0.05);
 
   --nav-bg:     rgba(255, 255, 255, 0.85);
@@ -143,7 +143,7 @@ body {
   color: var(--text-primary);
 }
 
-/* Ambient radial tints (teal top-left, violet bottom-right) */
+/* Ambient radial tints (purple top-left, violet bottom-right) */
 body::before,
 body::after {
   content: '';
