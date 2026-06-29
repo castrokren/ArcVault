@@ -118,6 +118,10 @@ func InitCommand() error {
 }
 
 func StartCommand(cfg *config.Config, staticFS fs.FS) error {
+	return StartCommandWithContext(cfg, staticFS, nil)
+}
+
+func StartCommandWithContext(cfg *config.Config, staticFS fs.FS, stopCh <-chan struct{}) error {
 	log.Printf("Starting ArcVault Coordinator on port %d", cfg.Port)
 
 	database, err := db.Init(cfg.DatabasePath)
@@ -154,7 +158,23 @@ func StartCommand(cfg *config.Config, staticFS fs.FS) error {
 
 	go startVersionChecker(currentVersion)
 
-	return srv.Start()
+	if stopCh == nil {
+		return srv.Start()
+	}
+
+	// Start server in background, listen for stop signal
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.Start()
+	}()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-stopCh:
+		log.Println("Shutdown signal received, stopping server...")
+		return nil
+	}
 }
 
 // startVersionChecker polls GitHub for new releases every 24 hours.

@@ -1,4 +1,3 @@
-<!-- fallow-ignore-file security-sink -->
 <template>
   <div class="credentials-container">
     <div class="credentials-header">
@@ -397,168 +396,166 @@ export default {
 </script>
 
 <style scoped>
+/* Credentials.vue was written for a light theme with hard-coded colors.
+   This block replaces every flat value with Royal Purple tokens so it
+   works in both dark (D) and light (E) automatically. Layout unchanged. */
+
 .credentials-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 1.5rem;
 }
 
 .credentials-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 30px;
+  margin-bottom: 2rem;
 }
-
 .credentials-header h1 {
   margin: 0;
-  font-size: 28px;
-  color: #333;
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
 }
 
 .credentials-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 20px;
+  gap: 1.25rem;
 }
 
 .credential-card {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 20px;
-  background: white;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  transition: box-shadow 0.2s;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-card);
+  padding: 1.25rem;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm), var(--edge-highlight);
+  transition: box-shadow 0.18s, border-color 0.18s;
 }
-
 .credential-card:hover {
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-strong);
 }
 
 .credential-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 15px;
+  margin-bottom: 1rem;
 }
 
 .credential-info h3 {
-  margin: 0 0 10px 0;
-  font-size: 18px;
-  color: #333;
+  margin: 0 0 0.6rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .credential-type {
   display: inline-block;
-  padding: 4px 12px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 5px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
 }
+.credential-type.smb      { background: var(--bg-info);    color: var(--color-info); }
+.credential-type.ssh      { background: var(--accent-2-dim);  color: var(--accent-2); }
+.credential-type.aws      { background: var(--bg-warning);  color: var(--color-warning); }
+.credential-type.database { background: var(--bg-success);  color: var(--color-success); }
 
-.credential-type.smb {
-  background: #e3f2fd;
-  color: #1976d2;
-}
-
-.credential-type.ssh {
-  background: #f3e5f5;
-  color: #7b1fa2;
-}
-
-.credential-type.aws {
-  background: #fff3e0;
-  color: #e65100;
-}
-
-.credential-type.database {
-  background: #e8f5e9;
-  color: #2e7d32;
-}
-
-.credential-meta small {
-  color: #666;
-}
+.credential-meta small { color: var(--text-muted); font-size: 0.8rem; }
 
 .empty-state {
   grid-column: 1 / -1;
   text-align: center;
-  padding: 40px;
-  color: #999;
+  padding: 2.5rem;
+  color: var(--text-muted);
+  font-family: var(--font-body);
 }
 
 .loading {
   text-align: center;
-  padding: 40px;
-  color: #999;
+  padding: 2.5rem;
+  color: var(--text-muted);
+  font-family: var(--font-body);
 }
 
 .error-message {
-  background: #ffebee;
-  border: 1px solid #ef5350;
-  color: #c62828;
-  padding: 15px;
-  border-radius: 4px;
-  margin-bottom: 20px;
-}
-
-.modal-large {
-  max-width: 600px;
+  background: var(--bg-error);
+  border: 1px solid rgba(255, 92, 122, 0.35);
+  color: var(--color-error);
+  padding: 0.9rem 1rem;
+  border-radius: 6px;
+  margin-bottom: 1.25rem;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
 }
 
 .credential-fields {
-  border-top: 1px solid #eee;
-  padding-top: 20px;
-  margin-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 1.25rem;
+  margin-top: 1.25rem;
 }
 
 .radio-group {
   display: flex;
-  gap: 20px;
+  gap: 1.25rem;
 }
-
 .radio-group label {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
   cursor: pointer;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.88rem;
 }
 
 .form-actions {
   display: flex;
-  gap: 10px;
+  gap: 0.65rem;
   justify-content: flex-end;
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid #eee;
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .toast {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
-  padding: 15px 20px;
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  bottom: 1.25rem;
+  right: 1.25rem;
+  padding: 0.9rem 1.25rem;
+  border-radius: var(--radius-ctrl);
+  box-shadow: var(--shadow-lg);
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 1rem;
   max-width: 400px;
+  font-family: var(--font-body);
+  font-size: 0.88rem;
+  z-index: 9000;
 }
-
 .toast-error {
-  background: #ffebee;
-  color: #c62828;
-  border: 1px solid #ef5350;
+  background: var(--bg-error);
+  color: var(--color-error);
+  border: 1px solid rgba(255, 92, 122, 0.3);
 }
-
 .toast-close {
   background: none;
   border: none;
   color: inherit;
-  font-size: 20px;
+  font-size: 1.2rem;
   cursor: pointer;
   padding: 0;
+  opacity: 0.7;
 }
+.toast-close:hover { opacity: 1; }
+
+.modal-large { max-width: 600px; }
 </style>

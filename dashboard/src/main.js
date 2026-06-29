@@ -13,5 +13,7 @@ import '@fontsource/jetbrains-mono/400.css'
 import '@fontsource/jetbrains-mono/500.css'
 
 import './style.css'
+import './charts.css'
+import './login-animation.css'
 
 createApp(App).use(router).mount('#app')
