@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log"
 	"os"
+	"time"
 
 	"arcvault/coordinator/cmd"
 	"arcvault/coordinator/config"
@@ -24,11 +25,13 @@ type coordinatorHandler struct {
 func (h *coordinatorHandler) Execute(args []string, r <-chan svc.ChangeRequest, status chan<- svc.Status) (bool, uint32) {
 	status <- svc.Status{State: svc.StartPending}
 
+	// Create stop channel for graceful shutdown
+	stopCh := make(chan struct{})
+
 	// Launch the HTTP server in a goroutine so we return to SCM immediately.
-	// http.ListenAndServe blocks; we surface its exit via a channel.
 	serverErr := make(chan error, 1)
 	go func() {
-		serverErr <- cmd.StartCommand(h.cfg, h.staticFS)
+		serverErr <- cmd.StartCommandWithContext(h.cfg, h.staticFS, stopCh)
 	}()
 
 	// Tell SCM the service is up and what control signals we accept.
@@ -40,7 +43,7 @@ func (h *coordinatorHandler) Execute(args []string, r <-chan svc.ChangeRequest, 
 	for {
 		select {
 		case err := <-serverErr:
-			// The HTTP server exited on its own (unexpected).
+			// The HTTP server exited (expected on shutdown).
 			if err != nil {
 				log.Printf("coordinator server error: %v", err)
 			}
@@ -53,11 +56,21 @@ func (h *coordinatorHandler) Execute(args []string, r <-chan svc.ChangeRequest, 
 				// SCM is asking for our current status — echo it back.
 				status <- c.CurrentStatus
 			case svc.Stop, svc.Shutdown:
-				log.Println("ArcVault coordinator: stop signal received, shutting down")
+				log.Println("ArcVault coordinator: stop signal received, shutting down gracefully")
 				status <- svc.Status{State: svc.StopPending}
-				// http.ListenAndServe has no cancel path without refactoring server.go.
-				// os.Exit is acceptable here; the OS cleans up file handles and SQLite.
-				os.Exit(0)
+				// Signal server to stop and wait with timeout
+				close(stopCh)
+				select {
+				case err := <-serverErr:
+					if err != nil {
+						log.Printf("coordinator shutdown error: %v", err)
+					}
+					return false, 0
+				case <-time.After(10 * time.Second):
+					// Timeout — force exit
+					log.Println("shutdown timeout, forcing exit")
+					return false, 0
+				}
 			default:
 				log.Printf("ArcVault coordinator: unexpected SCM control request %d", c.Cmd)
 			}
