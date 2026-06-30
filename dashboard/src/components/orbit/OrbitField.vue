@@ -431,7 +431,11 @@ function renderStaticFrame() {
 
 function frame(ts: number) {
   if (!running || !ctx || hidden) {
-    if (running && !hidden) rafId = requestAnimationFrame(frame)
+    if (running && !hidden) {
+      rafId = requestAnimationFrame(frame)
+    } else {
+      rafId = null
+    }
     return
   }
 
@@ -657,10 +661,11 @@ function onDeviceOrientation(e: DeviceOrientationEvent) {
 
 function onVisibilityChange() {
   hidden = document.hidden
-  if (!hidden && running && !rafId) {
-    // Resumed from hidden — restart rAF
+  if (!hidden && running) {
     lastTs = 0
-    rafId = requestAnimationFrame(frame)
+    if (rafId === null) {
+      rafId = requestAnimationFrame(frame)
+    }
   }
 }
 
@@ -677,6 +682,13 @@ function onResize() {
 // ═══════════════════════════════════════════════════════════
 
 onMounted(() => {
+  // Reset module-level state from any previous mount
+  currentTier = 'high'
+  frameTimes = []
+  lastTs = 0
+  running = false
+  rafId = null
+
   const canvas = canvasEl.value
   if (!canvas) return
 
@@ -726,6 +738,10 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(rafId)
     rafId = null
   }
+  // Reset perf state so next mount starts fresh
+  currentTier = 'high'
+  frameTimes = []
+  lastTs = 0
   if (ro) {
     ro.disconnect()
     ro = null

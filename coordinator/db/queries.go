@@ -164,6 +164,16 @@ type AllQueries interface {
 	UserQueries
 	ExtendedGroupQueries
 	CredentialProfileQueries
+	AuditQueries
+}
+
+// AuditQueries defines user action audit log operations.
+type AuditQueries interface {
+	// InsertUserAuditLog inserts a new user action audit log entry.
+	InsertUserAuditLog(ctx UserAuditLogContext) error
+
+	// ListUserAuditLogs retrieves user audit logs with filtering and pagination.
+	ListUserAuditLogs(filter UserAuditLogFilter) ([]UserAuditLogEntry, int, error)
 }
 
 // Agent represents an agent in the database.

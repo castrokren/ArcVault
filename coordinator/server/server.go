@@ -47,6 +47,7 @@ type Server struct {
 	jobService     *business.JobService
 	userService    *business.UserService
 	groupService   *business.GroupService
+	auditService   *business.AuditService
 	tokenCacheMu   sync.Mutex
 	tokenCache     map[string]tokenCacheEntry // token → validated entry
 	loginLimiterMu sync.Mutex
@@ -78,6 +79,7 @@ func NewWithFS(cfg *config.Config, database *db.DB, staticFS fs.FS) *Server {
 		jobService:    business.NewJobService(database),
 		userService:   business.NewUserService(database),
 		groupService:  business.NewGroupService(database),
+		auditService:  business.NewAuditService(database),
 		tokenCache:    make(map[string]tokenCacheEntry),
 		loginLimiters: make(map[string]*loginRateLimiter),
 	}
@@ -182,7 +184,7 @@ func (s *Server) Start() error {
 
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      corsMiddleware(s.cfg.AllowedOrigins)(s.router),
+		Handler:      s.requestAuditMiddleware(corsMiddleware(s.cfg.AllowedOrigins)(s.router)),
 		ReadTimeout:  60 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -382,6 +384,7 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("GET /api/audit/commands", s.viewerRoute(s.handleListAuditCommands))
 	s.router.HandleFunc("GET /api/audit/non-whitelisted-programs", s.viewerRoute(s.handleGetNonWhitelistedPrograms))
 	s.router.HandleFunc("GET /api/audit/stats", s.viewerRoute(s.handleGetAuditStats))
+	s.router.HandleFunc("GET /api/audit/user-actions", s.viewerRoute(s.handleListUserAuditLogs))
 
 	if s.staticFS != nil {
 		log.Printf("Serving embedded dashboard")

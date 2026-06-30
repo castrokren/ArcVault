@@ -1,20 +1,20 @@
 # Memory Index
 
-**Updated:** June 6, 2026 | **Current Version:** v0.4.0
+**Updated:** June 29, 2026 | **Current Version:** v0.5.0
 
 ## Current Status
 
-✅ **v0.4.0 — Installed & Running**
-  - Coordinator: v0.4.0 (installed at C:\ArcVault\coordinator.exe)
-  - Agent: v0.4.0 (installed at C:\ArcVault-Agent\agent.exe)
-  - Credential profiles working ✅ | Agent online ✅ | Jobs execute and complete ✅ | Installer UI redesigned ✅
-  - Rollback UI removed — revert is CLI-only (`coordinator rollback` / `coordinator rollback-agent <id>`)
+✅ **v0.5.0 — Installed & Running**
+  - Coordinator: v0.5.0 | Agent: v0.5.0
+  - TLS/HTTPS ✅ | Credential profiles ✅ | RBAC ✅ | Federation HA ✅
+  - Obsidian Pro design system ✅ | Cancel backups ✅ | Login animations ✅
+  - **NEW: User Action Audit Logging** — request audit middleware + structured action logging in all mutation handlers
 
 🎯 **Next Actions:**
-  - Federation/rollback/alert handler refactor (deferred)
-  - GitHub Actions still broken
-  - Agent token must be regenerated after every coordinator reinstall
-  - Update `$Version` in `scripts/build.ps1` to `v0.4.0` before next installer build
+  - Frontend AuditLog.vue page with searchable table, filters, date range picker
+  - Audit log retention/pruning (cron-based TTL)
+  - Fix pre-existing test failures in `internal/bootstrap` and `internal/tlscert`
+  - Update planning/CONTEXT.md (outdated — last modified May 29)
 
 ## Memory Files
 
@@ -27,6 +27,7 @@
 - [JWT Token Refresh Fix (Session 7)](#jwt-token-refresh-fix) — Update endpoints returning 401
 - [Windows Self-Update Fix (Session 8)](#windows-self-update-fix) — Full update flow fix for Windows service mode
 - [Asset Resolution Fix (Session 9)](#asset-resolution-fix) — resolveAsset fallback for plain coordinator.exe
+- [Session 28: User Action Audit Logging](#user-action-audit-logging) — Full user action audit trail: auto-logging middleware + structured handler logging across 35+ mutation handlers; DB table, AuditService, API endpoint, 16 tests
 
 ## Quick Reference
 
@@ -291,6 +292,62 @@ users.value = data.data || []
 3. Apply pagination at the backend (not the frontend)
 
 Partial consistency at just one layer (frontend OR backend) creates a fragile system where "fixes" for one endpoint break another.
+
+---
+
+## User Action Audit Logging (Session 28, June 29, 2026)
+
+### What was built
+
+A complete user action audit trail system with two layers:
+
+**1. Request Audit Middleware** (`server/request_audit.go`)
+- Wraps every API request (skips `/health`, `/ws/*`)
+- Captures: method, path, user identity, status code, latency
+- Best-effort insert — never blocks the request
+- Action type: `"request"`
+
+**2. Structured Action Logging** (35+ mutation handlers)
+- Each handler logs semantic actions: `"user.create"`, `"job.cancel"`, `"auth.login"`
+- Captures: resource type, resource ID, success/failure, error details
+- IP extracted via `ClientIP()` helper (X-Forwarded-For → X-Real-IP → RemoteAddr)
+
+### Architecture
+
+| Layer | Package | Key File |
+|-------|---------|----------|
+| Migration | `db/db.go` | `CREATE TABLE user_audit_log (...)` |
+| DB Queries | `db/audit.go` | `InsertUserAuditLog()`, `ListUserAuditLogs()` |
+| Interface | `db/queries.go` | `AuditQueries` |
+| Business | `business/audit.go` | `AuditService.LogAction()`, `ListAuditLogs()`, `ClientIP()` |
+| Middleware | `server/request_audit.go` | `requestAuditMiddleware` |
+| API | `server/user_audit.go` | `GET /api/audit/user-actions` |
+
+### Actions Tracked
+
+- **Auth**: login, logout, change_password
+- **Users**: create, delete, update_role
+- **Jobs**: create, delete, cancel
+- **Agents**: register, delete, update, rollback
+- **Credentials**: create, delete
+- **Templates**: create, update, delete, run
+- **Groups**: create, update, delete, add_agent, remove_agent
+- **Federation**: create, update, delete, sync
+- **Coordinator**: update, rollback
+- **Alert Rules**: create, update, delete, retry
+- **Auto (middleware)**: every API request
+
+### Key Design Decisions
+
+- **Middleware + explicit calls**: Middleware provides comprehensive raw trail; explicit calls add semantic richness
+- **Single table**: Both middleware and handler calls write to the same `user_audit_log` table
+- **Best-effort**: Audit writes never block or fail the request (errors silently dropped)
+- **No frontend yet**: Backend-only to start; AuditLog.vue deferred to follow-up
+
+### Files Changed/Created (22 files)
+
+New: `db/audit.go`, `db/audit_test.go`, `business/audit.go`, `business/audit_test.go`, `server/request_audit.go`, `server/user_audit.go`
+Modified: `db/db.go`, `db/queries.go`, `server/server.go`, `business/mocks_test.go`, and 9 handler files
 
 ---
 

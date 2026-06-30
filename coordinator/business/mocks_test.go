@@ -298,6 +298,11 @@ func (m *mockJobDB) SnapshotJobRunCredentials(runID, credentialProfileID, creden
 	return nil
 }
 
+func (m *mockJobDB) InsertUserAuditLog(ctx db.UserAuditLogContext) error { return nil }
+func (m *mockJobDB) ListUserAuditLogs(filter db.UserAuditLogFilter) ([]db.UserAuditLogEntry, int, error) {
+	return nil, 0, nil
+}
+
 // ----------------------------------------------------------------------------
 // mockUserQueries implements db.UserQueries for UserService tests
 // ----------------------------------------------------------------------------

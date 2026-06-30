@@ -164,6 +164,8 @@ export const createJob = (job: Partial<Types.Job>) => request('POST', '/api/jobs
 
 export const deleteJob = (id: string) => request('DELETE', `/api/jobs/${id}`)
 
+export const cancelJob = (id: string) => request('POST', `/api/jobs/${id}/cancel`)
+
 const updateJobStatus = (id: string, status: string) =>
   request('PATCH', `/api/jobs/${id}/status`, { status })
 

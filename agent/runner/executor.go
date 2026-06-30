@@ -3,6 +3,7 @@ package runner
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -84,7 +85,7 @@ func parseCommandArgs(cmdStr string) []string {
 // command is executed via explicit arguments (not via shell) for security.
 //
 // This is the production executor wired into agent/main.go.
-func RealExecutor(job Job, report ProgressFunc) (exitCode int, output string) {
+func RealExecutor(ctx context.Context, job Job, report ProgressFunc) (exitCode int, output string) {
 	if report == nil {
 		report = Noop
 	}
@@ -98,7 +99,7 @@ func RealExecutor(job Job, report ProgressFunc) (exitCode int, output string) {
 		}
 
 		// Execute the program with parsed arguments, avoiding shell interpretation
-		cmd := exec.Command(args[0], args[1:]...)
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 		out, err := cmd.CombinedOutput()
 		output = string(out)
 		exitCode = extractExitCode(err, false)
@@ -107,9 +108,9 @@ func RealExecutor(job Job, report ProgressFunc) (exitCode int, output string) {
 	}
 
 	if runtime.GOOS == "windows" {
-		return runRobocopy(job, report)
+		return runRobocopy(ctx, job, report)
 	}
-	return runRsync(job, report)
+	return runRsync(ctx, job, report)
 }
 
 // runRobocopy builds and streams a robocopy command.
@@ -118,12 +119,12 @@ func RealExecutor(job Job, report ProgressFunc) (exitCode int, output string) {
 //   - /NP is intentionally OMITTED so per-file transfer percentages appear in stdout.
 //   - /NFL /NDL suppress the verbose file/dir listing — keeps output focused on % lines.
 //   - /E recurse into subdirectories, /R:0 no retries, /W:0 no wait between retries.
-func runRobocopy(job Job, report ProgressFunc) (int, string) {
+func runRobocopy(ctx context.Context, job Job, report ProgressFunc) (int, string) {
 	args := []string{job.SourcePath, job.DestPath, "/E", "/R:0", "/W:0", "/NFL", "/NDL"}
 	if job.SyncFlags != nil {
 		args = append(args, job.SyncFlags.ToRobocopyArgs()...)
 	}
-	cmd := exec.Command("robocopy", args...)
+	cmd := exec.CommandContext(ctx, "robocopy", args...)
 	return streamRobocopy(cmd, report)
 }
 
@@ -131,13 +132,13 @@ func runRobocopy(job Job, report ProgressFunc) (int, string) {
 //
 // --info=progress2 replaces -v and emits a single overall percentage line,
 // making it straightforward to parse without per-file noise.
-func runRsync(job Job, report ProgressFunc) (int, string) {
+func runRsync(ctx context.Context, job Job, report ProgressFunc) (int, string) {
 	src := strings.TrimRight(job.SourcePath, "/") + "/"
 	args := []string{"-a", "--info=progress2", src, job.DestPath}
 	if job.SyncFlags != nil {
 		args = append(args, job.SyncFlags.ToRsyncArgs()...)
 	}
-	cmd := exec.Command("rsync", args...)
+	cmd := exec.CommandContext(ctx, "rsync", args...)
 	return streamRsync(cmd, report)
 }
 

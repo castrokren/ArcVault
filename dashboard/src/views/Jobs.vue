@@ -136,6 +136,14 @@
           <td>{{ formatDate(job.created_at) }}</td>
           <td v-if="!selectedSite">
             <button class="action-btn" @click="viewLogs(job.id)">Logs</button>
+            <button
+              v-if="(job.status === 'pending' || job.status === 'running') && auth.hasRole('operator')"
+              class="cancel-btn"
+              :disabled="cancellingJobId === job.id"
+              @click="cancelJob(job)"
+            >
+              {{ cancellingJobId === job.id ? 'Canceling...' : 'Cancel' }}
+            </button>
             <button class="danger-sm" @click="removeJob(job.id)">Delete</button>
           </td>
         </tr>
@@ -185,7 +193,8 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, inject } from 'vue'
-import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups, getJobRuns, getToken } from '../api'
+import { getJobs, createJob as apiCreateJob, deleteJob, cancelJob as apiCancelJob, getFederationJobs, getAgents, getGroups, getJobRuns, getToken } from '../api'
+import { useAuth } from '../composables/useAuth'
 import { formatDate, fmtStaleTime } from '../utils/format.js'
 import Pagination from '../components/Pagination.vue'
 import ScheduleBuilder from '../components/ScheduleBuilder.vue'
@@ -195,6 +204,9 @@ import { useFederationLag } from '../composables/useFederationLag.js'
 const props = defineProps(['lastEvent'])
 
 const selectedSite = inject('selectedSite', ref(null))
+
+const { hasRole } = useAuth()
+const auth = useAuth()
 
 const result = ref({ data: [], total: 0, page: 1, pages: 0, limit: 25 })
 const fedJobs = ref([])
@@ -374,6 +386,26 @@ async function removeJob(id) {
     await load()
   } catch (e) {
     error.value = e.message
+  }
+}
+
+const cancellingJobId = ref(null)
+
+async function cancelJob(job) {
+  if (!confirm(`Are you sure you want to cancel job "${job.name}"?`)) return
+  cancellingJobId.value = job.id
+  try {
+    const response = await apiCancelJob(job.id)
+    if (!response.ok) {
+      const text = await response.text()
+      alert(`Failed to cancel job: ${text}`)
+      return
+    }
+    await load()
+  } catch (err) {
+    alert(`Failed to cancel job: ${err}`)
+  } finally {
+    cancellingJobId.value = null
   }
 }
 
@@ -610,6 +642,8 @@ button.primary {
 .badge.running   { background: #1a2a3a; color: #4f8ef7; }
 .badge.completed { background: #1a3a1a; color: #4caf50; }
 .badge.failed    { background: #3a1a1a; color: #e55; }
+.badge.canceling { background: #2a2a1a; color: #f0b429; }
+.badge.cancelled { background: #1a1a2a; color: #888; }
 
 button.danger-sm {
   padding: 0.2rem 0.6rem;
@@ -619,6 +653,27 @@ button.danger-sm {
   border-radius: 4px;
   cursor: pointer;
   font-size: 0.8rem;
+}
+
+.cancel-btn {
+  padding: 0.2rem 0.6rem;
+  background: #3a2a1a;
+  color: #f0b429;
+  border: 1px solid #f0b429;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.15s ease;
+}
+
+.cancel-btn:hover:not(:disabled) {
+  background: #4a3a2a;
+  color: #fff;
+}
+
+.cancel-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .action-btn {

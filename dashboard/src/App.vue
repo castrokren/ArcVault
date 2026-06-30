@@ -65,7 +65,7 @@
           <svg v-else width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M12 9a5 5 0 1 1-6-6 3.5 3.5 0 0 0 6 6z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
         </button>
 
-        <div class="ws-indicator" :class="{ connected: wsConnected }" :title="wsConnected ? 'Live â€” WebSocket connected' : 'Disconnected'">
+        <div class="ws-indicator" :class="{ connected: wsConnected }" :title="wsConnected ? 'Live — WebSocket connected' : 'Disconnected'">
           <span class="ws-dot"></span>
           <span class="ws-label">{{ wsConnected ? 'Live' : 'Off' }}</span>
         </div>
@@ -90,7 +90,7 @@
 
     <UpdateBanner v-if="updateStore.available" :onUpdate="showUpdateModal" />
 
-    <main>
+    <main :style="auth.isAuthenticated.value ? '' : 'padding:0'">
       <router-view v-slot="{ Component }">
         <Transition name="view" mode="out-in">
           <component :is="Component" :lastEvent="lastEvent" />
@@ -200,7 +200,7 @@ async function handleLogout() {
 </script>
 
 <style scoped>
-/* â”€â”€ App shell â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── App shell ───────────────────────────────────────────── */
 .app {
   display: flex;
   flex-direction: column;
@@ -208,7 +208,7 @@ async function handleLogout() {
   background: var(--bg-base);
 }
 
-/* â”€â”€ Nav â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+/* ── Nav ─────────────────────────────────────────────────── */
 .nav {
   display: flex;
   align-items: center;

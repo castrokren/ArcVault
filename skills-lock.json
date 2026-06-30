@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "modern-css": {
+      "source": "paulirish/dotfiles",
+      "sourceType": "github",
+      "skillPath": "agents/skills/modern-css/SKILL.md",
+      "computedHash": "f7cfeb258f133f50497d38445dee3026c4f3283b3a0c84868c54836dc619029b"
+    }
+  }
+}

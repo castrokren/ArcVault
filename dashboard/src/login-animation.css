@@ -1,7 +1,7 @@
 /* ============================================================
    ArcVault — Login screen animation
    Data Convergence: comets fly to the vault logo from all angles.
-   Pairs with theme-royal-purple.css (tokens) and Login.vue.
+   Pairs with style.css (tokens) and Login.vue.
    All values are token-driven where possible.
    ============================================================ */
 
@@ -86,6 +86,7 @@
   transform-origin: 0 0;
 }
 .login-beam {
+  width: 280px;
   height: 1.5px;
   background: linear-gradient(
     to left,
@@ -140,7 +141,7 @@
 
 /* ── Card shell entrance ────────────────────────────────── */
 .login-shell {
-  animation: avShellIn .55s cubic-bezier(.22, 1, .36, 1) both;
+  animation: avShellIn .55s cubic-bezier(.22, 1, .36, 1);
 }
 
 /* ── Keyframes ──────────────────────────────────────────── */

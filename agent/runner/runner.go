@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -38,7 +39,7 @@ type Job struct {
 // The report callback receives parsed progress (0–100) and log lines as the
 // backup proceeds. Pass Noop in tests to discard progress.
 // Swappable for tests or for real robocopy/rsync in production.
-type Executor func(job Job, report ProgressFunc) (exitCode int, output string)
+type Executor func(ctx context.Context, job Job, report ProgressFunc) (exitCode int, output string)
 
 // Config holds everything the runner needs to talk to the coordinator.
 type Config struct {
@@ -54,8 +55,9 @@ type Config struct {
 type Runner struct {
 	cfg       Config
 	executor  Executor
-	stop      chan struct{}
-	stopOnce  sync.Once
+	stop       chan struct{}
+	stopOnce   sync.Once
+	cancelFuncs sync.Map
 }
 
 // New creates a Runner with the given config and executor.
@@ -112,6 +114,16 @@ func (r *Runner) Start() {
 // Stop signals the runner to exit its polling loop.
 func (r *Runner) Stop() {
 	r.stopOnce.Do(func() { close(r.stop) })
+}
+
+// CancelJob cancels a running job by its ID. Returns true if the job was found.
+func (r *Runner) CancelJob(jobID string) bool {
+	cancel, ok := r.cancelFuncs.LoadAndDelete(jobID)
+	if !ok {
+		return false
+	}
+	cancel.(context.CancelFunc)()
+	return true
 }
 
 // poll fetches pending jobs and processes each one.
@@ -198,16 +210,20 @@ func (r *Runner) process(job Job) {
 
 	// 3. execute the job — wrapped in recover so deferred cleanup (credentials) always runs
 	log.Printf("Runner: executing job %s (src=%q dst=%q)", job.ID, job.SourcePath, job.DestPath)
+	ctx, cancel := context.WithCancel(context.Background())
+	r.cancelFuncs.Store(job.ID, cancel)
 	exitCode := 1
 	output := ""
 	func() {
 		defer func() {
+			r.cancelFuncs.Delete(job.ID)
+			cancel() // prevent context leak
 			if rec := recover(); rec != nil {
 				log.Printf("Runner: panic executing job %s: %v", job.ID, rec)
 				output = fmt.Sprintf("executor panic: %v", rec)
 			}
 		}()
-		exitCode, output = r.executor(job, Noop)
+		exitCode, output = r.executor(ctx, job, Noop)
 	}()
 	log.Printf("Runner: job %s finished — exit code %d, output length %d bytes", job.ID, exitCode, len(output))
 	if len(output) > 0 {

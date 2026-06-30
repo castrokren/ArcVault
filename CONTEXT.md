@@ -1,5 +1,5 @@
 # ArcVault2.0 -- Quick Reference
-**Last updated:** June 11, 2026 (Session 24) | **Coordinator v0.5.0** | **Agent v0.5.0** | **HTTPS + Obsidian Pro Dashboard** ✅
+**Last updated:** June 29, 2026 (Session 28) | **Coordinator v0.5.0** | **Agent v0.5.0** | **HTTPS + Obsidian Pro Dashboard** ✅
 
 ## Status
 ✅ Phase 12: Failure notifications (webhook + email)  
@@ -204,6 +204,17 @@
   - **Workflow lesson**: Edit-tool null-byte/truncation corruption applies to the WHOLE ArcVault2.0 mount (hit main.js + index.html) — all file writes must use bash heredoc or python
   - **Files changed**: dashboard/index.html, package.json (+3 @fontsource deps), main.js, style.css, App.vue, 9 views + admin/Credentials.vue, 5 components, new Sparkline.vue, scripts/rebuild-and-restart.ps1
 
+✅ **Session 26** (June 29, 2026): Login Animation Layers Restoration — COMPLETE
+  - **Epic**: Restored 5 missing CSS animation effects (aurora, watermark, stars, beams, halos) to Login.vue
+  - **Template changes**: Added 4 aurora blob divs, watermark SVG, 25-star starfield (v-for), 12 data-comet beams (v-for), halo rings around brand icon
+  - **Visual polish**: Deep radial gradient background, vignette overlay, gradient card border glow, animated input focus underline, button shine sweep effect
+  - **Brand refresh**: New gradient SVG shield, "Arc<b>Vault</b>" styled text with accent bold, "Backup orchestrator" subtitle
+  - **Parallax + warp**: Pointer tracking card shift, deviceorientation support, shrink+fade warp on login success
+  - **Bugs found & fixed during QA**: (1) Parallax broken by CSS animation-fill-mode (removed `both`), (2) Firefox card border broken by missing unprefixed `mask` property, (3) Watermark SVG missing explicit width/height
+  - **Tests**: 26 new Vitest tests covering all 6 animation systems + reduced-motion behavior
+  - **Build verified**: `vite build` — 0 errors, 0 warnings; `vitest run` — 89 tests, all passing
+  - **Files changed**: `dashboard/src/views/Login.vue`, `dashboard/src/login-animation.css`, `dashboard/src/views/Login.test.js` (new)
+
 ## Core Commands
 ```bash
 # Initialize coordinator
@@ -245,3 +256,59 @@ coordinator uninstall-service
   - **check-version-sync.ps1 fixed**: added `exit 0` — was silently inheriting stale non-zero $LASTEXITCODE from prior shell commands, causing build.ps1 to exit after version check with no error message
   - **Legacy build scripts deleted**: `build-installer-nsis.ps1` (hardcoded v0.2.1, no ldflags), `build-installer-simple.ps1` (hardcoded v1.1.0, no ldflags), `build-windows-installer.ps1` (git describe, missing server.Version) — all removed
   - **Files changed**: `coordinator/server/downloads_test.go`, `scripts/check-sanity.ps1`, `scripts/check-version-sync.ps1`, `scripts/build.ps1`, `scripts/rebuild-and-restart.ps1`; deleted 3 legacy build scripts
+
+✅ **Session 27** (June 29, 2026): Cancel Scheduled/Running Backups — COMPLETE
+  - **Full-stack feature**: Cancel pending jobs instantly (status → `cancelled`), cancel running jobs via WebSocket kill signal
+  - **Agent runner**: `Executor` now accepts `context.Context`; uses `exec.CommandContext` for cancellable process execution; `Runner.CancelJob(jobID)` with `sync.Map` registry of cancel funcs
+  - **Agent WS**: New `cancel_command` handler; `JobCanceller` interface + wired to Runner in `main.go`
+  - **Coordinator API**: `handleCancelJob` handles both `pending` (immediate) and `running` (WebSocket) jobs; sends `cancel_command` to agent via `hub.SendToAgent()`
+  - **Status validation**: `canceling` and `cancelled` added to `validStatuses` map
+  - **Dashboard**: Cancel button in Jobs table (pending/running, admin/operator only); confirmation dialog; loading state; `canceling`/`cancelled` status badges
+  - **Tests**: `TestCancelJob_cancelPendingJob` updated for new behavior (200 + `cancelled`); all 4 cancellation tests pass
+  - **Verification**: `go test ./agent/...` ✅ | `npx vitest run` 89/89 ✅ | `npm run build` ✅
+  - **No regressions**: Pre-existing failures in `bootstrap` and `tlscert` unchanged
+  - **Files changed**: `agent/runner/runner.go`, `agent/runner/executor.go`, `agent/runner/executor_audit.go`, `agent/runner/runner_test.go`, `agent/ws/ws.go`, `agent/main.go`, `coordinator/server/jobs.go`, `coordinator/server/job_status.go`, `coordinator/server/jobs_test.go`, `dashboard/src/api.ts`, `dashboard/src/views/Jobs.vue`
+
+✅ **Session 28** (June 29, 2026): User Action Audit Logging — BACKEND ONLY + MIDDLEWARE — COMPLETE
+  - **Epic**: Full user action audit trail for every meaningful mutation in the system
+  - **DB**: New `user_audit_log` table with 4 indexes (action, user_id, created_at, resource) — auto-migrated on startup
+  - **DB layer**: `db/audit.go` with `InsertUserAuditLog()`, `ListUserAuditLogs()` (7 filter params, paginated)
+  - **Interface**: `AuditQueries` in `db/queries.go`, included in `AllQueries` union
+  - **Business layer**: `business/audit.go` — `AuditService` with `LogAction()` + `ListAuditLogs()` + `ClientIP()` helper
+  - **Middleware**: `requestAuditMiddleware` in `server/request_audit.go` — auto-logs every API request (method, path, user, status, latency) — best-effort, never blocks — skips `/health` and `/ws/*`
+  - **API endpoint**: `GET /api/audit/user-actions` (viewer+, paginated, filterable by action/user/resource/date/success)
+  - **Structured action logging**: 35+ mutation handlers across 9 files now emit semantic audit events:
+    - Auth: login (success/failure), logout, password change
+    - Users: create, delete, role update
+    - Jobs: create, delete, cancel
+    - Agents: register, delete, update, rollback
+    - Credentials: create, delete
+    - Templates: create, update, delete, run
+    - Groups: create, update, delete, add/remove agents
+    - Federation: create, update, delete, sync
+    - Coordinator: update, rollback
+    - Alert Rules: create, update, delete, retry
+  - **Tests**: 6 new DB tests (insert, list, filter by action/date/success, pagination, empty) + 10 new business tests (LogAction, failure, filter, pagination, ClientIP)
+  - **Zero regressions**: go test all packages ✅ (coordinator/db, coordinator/business, coordinator/server, agent), vitest 89/89 ✅, npm build ✅
+  - **Files changed**:
+    - `coordinator/db/db.go` — migration
+    - `coordinator/db/audit.go` (new) — DB queries
+    - `coordinator/db/queries.go` — AuditQueries interface
+    - `coordinator/business/audit.go` (new) — AuditService
+    - `coordinator/server/request_audit.go` (new) — request audit middleware
+    - `coordinator/server/user_audit.go` (new) — audit list handler
+    - `coordinator/server/server.go` — wired audit service + middleware + route
+    - `coordinator/server/auth.go` — audit calls in 6 handlers
+    - `coordinator/server/jobs.go` — audit calls in 3 handlers
+    - `coordinator/server/agents.go` — audit calls in 2 handlers
+    - `coordinator/server/credentials.go` — audit calls in 2 handlers
+    - `coordinator/server/templates.go` — audit calls in 4 handlers
+    - `coordinator/server/groups.go` — audit calls in 5 handlers
+    - `coordinator/server/federation.go` — audit calls in 4 handlers
+    - `coordinator/server/update.go` — audit calls in 1 handler
+    - `coordinator/server/rollback.go` — audit calls in 2 handlers
+    - `coordinator/server/alert_rules.go` — audit calls in 3 handlers
+    - `coordinator/server/alert_history.go` — audit calls in 1 handler
+    - `coordinator/db/audit_test.go` (new) — 6 tests
+    - `coordinator/business/audit_test.go` (new) — 10 tests
+    - `coordinator/business/mocks_test.go` — added AuditQueries stubs to mockJobDB

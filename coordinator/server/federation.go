@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"arcvault/coordinator/business"
 	"arcvault/coordinator/db"
 )
 
@@ -55,6 +56,9 @@ func (s *Server) handleListFederation(w http.ResponseWriter, r *http.Request) {
 
 // handleCreateFederation handles POST /api/federation
 func (s *Server) handleCreateFederation(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
+
 	var input struct {
 		Name  string `json:"name"`
 		URL   string `json:"url"`
@@ -62,18 +66,22 @@ func (s *Server) handleCreateFederation(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.create", ip, false, strPtr("federation"), nil, strPtr("invalid JSON"))
 		return
 	}
 	if input.Name == "" {
 		http.Error(w, "name is required", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.create", ip, false, strPtr("federation"), nil, strPtr("name is required"))
 		return
 	}
 	if input.URL == "" {
 		http.Error(w, "url is required", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.create", ip, false, strPtr("federation"), nil, strPtr("url is required"))
 		return
 	}
 	if input.Token == "" {
 		http.Error(w, "token is required", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.create", ip, false, strPtr("federation"), nil, strPtr("token is required"))
 		return
 	}
 
@@ -87,8 +95,11 @@ func (s *Server) handleCreateFederation(w http.ResponseWriter, r *http.Request) 
 
 	if err := s.db.CreateFederation(f); err != nil {
 		http.Error(w, "failed to create federation", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.create", ip, false, strPtr("federation"), nil, strPtr(err.Error()))
 		return
 	}
+
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.create", ip, true, strPtr("federation"), &f.ID, nil)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -115,15 +126,19 @@ func (s *Server) handleGetFederation(w http.ResponseWriter, r *http.Request) {
 
 // handleUpdateFederation handles PUT /api/federation/{id}
 func (s *Server) handleUpdateFederation(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
 	id := r.PathValue("id")
 
 	existing, err := s.db.GetFederation(id)
 	if err != nil {
 		http.Error(w, "failed to query federation", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.update", ip, false, strPtr("federation"), &id, strPtr(err.Error()))
 		return
 	}
 	if existing == nil {
 		http.Error(w, "federation not found", http.StatusNotFound)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.update", ip, false, strPtr("federation"), &id, strPtr("federation not found"))
 		return
 	}
 
@@ -134,6 +149,7 @@ func (s *Server) handleUpdateFederation(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.update", ip, false, strPtr("federation"), &id, strPtr("invalid JSON"))
 		return
 	}
 
@@ -152,6 +168,7 @@ func (s *Server) handleUpdateFederation(w http.ResponseWriter, r *http.Request) 
 
 	if err := s.db.UpdateFederation(updated); err != nil {
 		http.Error(w, "failed to update federation", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.update", ip, false, strPtr("federation"), &id, strPtr(err.Error()))
 		return
 	}
 
@@ -160,21 +177,27 @@ func (s *Server) handleUpdateFederation(w http.ResponseWriter, r *http.Request) 
 		s.fedHub.DropConnection(id)
 	}
 
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.update", ip, true, strPtr("federation"), &id, nil)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(toFederationResponse(updated))
 }
 
 // handleDeleteFederation handles DELETE /api/federation/{id}
 func (s *Server) handleDeleteFederation(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
 	id := r.PathValue("id")
 
 	existing, err := s.db.GetFederation(id)
 	if err != nil {
 		http.Error(w, "failed to query federation", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.delete", ip, false, strPtr("federation"), &id, strPtr(err.Error()))
 		return
 	}
 	if existing == nil {
 		http.Error(w, "federation not found", http.StatusNotFound)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.delete", ip, false, strPtr("federation"), &id, strPtr("federation not found"))
 		return
 	}
 
@@ -182,8 +205,11 @@ func (s *Server) handleDeleteFederation(w http.ResponseWriter, r *http.Request) 
 
 	if err := s.db.DeleteFederation(id); err != nil {
 		http.Error(w, "failed to delete federation", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.delete", ip, false, strPtr("federation"), &id, strPtr(err.Error()))
 		return
 	}
+
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.delete", ip, true, strPtr("federation"), &id, nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -191,19 +217,25 @@ func (s *Server) handleDeleteFederation(w http.ResponseWriter, r *http.Request) 
 // handleSyncFederation handles POST /api/federation/{id}/sync
 // Drops the active connection — the sub reconnects and sends a fresh snapshot.
 func (s *Server) handleSyncFederation(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
 	id := r.PathValue("id")
 
 	f, err := s.db.GetFederation(id)
 	if err != nil {
 		http.Error(w, "failed to query federation", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.sync", ip, false, strPtr("federation"), &id, strPtr(err.Error()))
 		return
 	}
 	if f == nil {
 		http.Error(w, "federation not found", http.StatusNotFound)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.sync", ip, false, strPtr("federation"), &id, strPtr("federation not found"))
 		return
 	}
 
 	s.fedHub.DropConnection(id)
+
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "federation.sync", ip, true, strPtr("federation"), &id, nil)
 
 	w.WriteHeader(http.StatusAccepted)
 }

@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -265,12 +266,12 @@ func TestRunner_doesNothingWhenNoJobsPending(t *testing.T) {
 // --- test executors ---
 
 // echoExecutor simulates a successful backup (exit code 0). Ignores progress.
-func echoExecutor(job Job, _ ProgressFunc) (exitCode int, output string) {
+func echoExecutor(ctx context.Context, job Job, _ ProgressFunc) (exitCode int, output string) {
 	return 0, "ok"
 }
 
 // failExecutor simulates a failed backup (exit code 1). Ignores progress.
-func failExecutor(job Job, _ ProgressFunc) (exitCode int, output string) {
+func failExecutor(ctx context.Context, job Job, _ ProgressFunc) (exitCode int, output string) {
 	return 1, "error: source not found"
 }
 

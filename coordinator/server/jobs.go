@@ -2,6 +2,8 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 )
 
@@ -37,6 +39,8 @@ type Job struct {
 // - If group_id is provided: creates one job per group member with shared dispatch_id
 // - Both cannot be provided (validation required)
 func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+
 	var input struct {
 		AgentID             string                 `json:"agent_id"`
 		GroupID             *int                   `json:"group_id"`
@@ -55,6 +59,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 	// Validation: exactly one of agent_id or group_id must be provided
 	if (input.AgentID == "") == (input.GroupID == nil) {
 		http.Error(w, "must provide either agent_id or group_id, not both", http.StatusBadRequest)
+		s.logAudit(r, claims, "job.create", false, nil, nil)
 		return
 	}
 
@@ -63,6 +68,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		jobDTO, err := s.jobService.CreateJob(input.AgentID, input.Name, input.SourcePath, input.DestPath, input.Schedule, input.SyncFlags)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			s.logAudit(r, claims, "job.create", false, nil, nil)
 			return
 		}
 
@@ -115,6 +121,8 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 		payload, _ := json.Marshal(job)
 		s.db.AppendFederationEvent(s.coordinatorID, "job_created", string(payload))
 
+		s.logAudit(r, claims, "job.create", true, strPtr("job"), strPtr(jobDTO.ID))
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(job)
@@ -133,6 +141,7 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 			statusCode = http.StatusBadRequest
 		}
 		http.Error(w, err.Error(), statusCode)
+		s.logAudit(r, claims, "job.create", false, nil, nil)
 		return
 	}
 
@@ -151,6 +160,8 @@ func (s *Server) handleCreateJob(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:  jobDTO.CreatedAt,
 		}
 	}
+
+	s.logAudit(r, claims, "job.create", true, strPtr("job"), strPtr(response.DispatchID))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -249,51 +260,88 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 
 // handleDeleteJob handles DELETE /api/jobs/{id}
 func (s *Server) handleDeleteJob(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
 	id := r.PathValue("id")
 
 	// Verify job exists before deleting
 	if exists, err := s.db.JobExists(id); err != nil || !exists {
 		http.Error(w, "job not found", http.StatusNotFound)
+		s.logAudit(r, claims, "job.delete", false, strPtr("job"), strPtr(id))
 		return
 	}
 
 	if err := s.jobService.DeleteJob(id); err != nil {
 		http.Error(w, "failed to delete job", http.StatusInternalServerError)
+		s.logAudit(r, claims, "job.delete", false, strPtr("job"), strPtr(id))
 		return
 	}
+
+	s.logAudit(r, claims, "job.delete", true, strPtr("job"), strPtr(id))
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleCancelJob handles POST /api/jobs/{id}/cancel (Phase 20)
-// Cancels a running job by marking it as "canceling" and notifying the agent
+// handleCancelJob handles POST /api/jobs/{id}/cancel
+// Cancels a pending job immediately (status → cancelled) or signals a running
+// job by setting status to "canceling" and sending a WebSocket message to the agent.
 func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
 	id := r.PathValue("id")
 
 	// Fetch the job to check its current status
 	jobDTO, err := s.jobService.GetJob(id)
 	if err != nil {
 		http.Error(w, "job not found", http.StatusNotFound)
+		s.logAudit(r, claims, "job.cancel", false, strPtr("job"), strPtr(id))
 		return
 	}
 
-	// Only allow canceling running jobs
-	if jobDTO.Status != "running" {
-		http.Error(w, "job is not running", http.StatusBadRequest)
+	switch jobDTO.Status {
+	case "pending":
+		// Pending job — agent hasn't picked it up yet, cancel immediately
+		if err := s.jobService.UpdateJobStatus(id, "cancelled"); err != nil {
+			http.Error(w, "failed to cancel job", http.StatusInternalServerError)
+			s.logAudit(r, claims, "job.cancel", false, strPtr("job"), strPtr(id))
+			return
+		}
+
+	case "running":
+		// Running job — mark as canceling and notify agent via WebSocket
+		if err := s.jobService.UpdateJobStatus(id, "canceling"); err != nil {
+			http.Error(w, "failed to update job status", http.StatusInternalServerError)
+			s.logAudit(r, claims, "job.cancel", false, strPtr("job"), strPtr(id))
+			return
+		}
+
+		// Send cancel message to agent via WebSocket
+		if err := s.hub.SendToAgent(jobDTO.AgentID, map[string]interface{}{
+			"type":   "cancel_command",
+			"job_id": id,
+		}); err != nil {
+			// Agent not connected — job is still marked as "canceling".
+			// The agent will pick it up on next poll or reconnect.
+			log.Printf("Warning: agent %s not connected for cancel of job %s: %v", jobDTO.AgentID, id, err)
+		}
+
+	default:
+		// Already completed, failed, or cancelled — reject
+		http.Error(w, fmt.Sprintf("job is already %s", jobDTO.Status), http.StatusBadRequest)
+		s.logAudit(r, claims, "job.cancel", false, strPtr("job"), strPtr(id))
 		return
 	}
 
-	// Update job status to "canceling"
-	if err := s.jobService.UpdateJobStatus(id, "canceling"); err != nil {
-		http.Error(w, "failed to update job status", http.StatusInternalServerError)
-		return
+	// Broadcast cancellation event to dashboard clients
+	s.hub.Broadcast(Event{
+		Type:    "job.updated",
+		Payload: map[string]string{"id": id, "status": jobDTO.Status},
+	})
+
+	// Build response with the new status
+	newStatus := "cancelled"
+	if jobDTO.Status == "running" {
+		newStatus = "canceling"
 	}
 
-	// Send cancel message to agent via WebSocket
-	// TODO: Implement WebSocket message sending in Phase 20
-	// For now, just return the updated job with status="canceling"
-
-	// Return updated job
 	j := Job{
 		ID:         jobDTO.ID,
 		AgentID:    jobDTO.AgentID,
@@ -302,9 +350,12 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 		DestPath:   jobDTO.DestPath,
 		Schedule:   jobDTO.Schedule,
 		SyncFlags:  jobDTO.SyncFlags,
-		Status:     "canceling",
+		Status:     newStatus,
 		CreatedAt:  jobDTO.CreatedAt,
 	}
+
+	s.logAudit(r, claims, "job.cancel", true, strPtr("job"), strPtr(id))
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(j)

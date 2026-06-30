@@ -11,6 +11,8 @@ var validStatuses = map[string]bool{
 	"running":   true,
 	"completed": true,
 	"failed":    true,
+	"canceling": true,
+	"cancelled": true,
 }
 
 // handleUpdateJobStatus handles PATCH /api/jobs/{id}/status
@@ -25,7 +27,7 @@ func (s *Server) handleUpdateJobStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validStatuses[input.Status] {
-		http.Error(w, "invalid status: must be pending, running, completed, or failed", http.StatusBadRequest)
+		http.Error(w, "invalid status: must be pending, running, completed, failed, canceling, or cancelled", http.StatusBadRequest)
 		return
 	}
 
