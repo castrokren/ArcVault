@@ -331,13 +331,10 @@ async function handleSubmit() {
     return                                          // skip warp, open modal
   }
 
-  // Success path — warp (or fade) then redirect
+  // Success path — minimal fade+scale then redirect
+  // ponytail: full warp freezes browser; use lightweight fade+scale (css-only, no canvas)
   isWarping.value = true
-  if (prefersReducedMotion) {
-    await new Promise(r => setTimeout(r, 200))      // quick fade ~200ms, no warp
-  } else {
-    await orbitField.value?.warp()                  // await ~1.25s warp dive
-  }
+  await new Promise(r => setTimeout(r, 300))        // ~300ms lightweight transition
   isWarping.value = false
   router.push('/')
   isSubmitting.value = false
@@ -371,9 +368,10 @@ async function handleSubmit() {
 }
 
 .login-shell.warping {
-  transform: scale(0.8) translateY(-8px) !important;
+  /* ponytail: minimal fade+scale animation (~300ms), no expensive canvas effects */
+  transform: scale(0.95) !important;
   opacity: 0;
-  transition: transform 1.05s cubic-bezier(0.6, 0, 0.25, 1), opacity 0.9s ease;
+  transition: transform 0.3s ease, opacity 0.3s ease;
 }
 
 /* ── Vignette overlay ───────────────────────────────────── */
