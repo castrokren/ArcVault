@@ -9,8 +9,10 @@
   - TLS/HTTPS ✅ | Credential profiles ✅ | RBAC ✅ | Federation HA ✅
   - Obsidian Pro design system ✅ | Cancel backups ✅ | Login animations ✅
   - **NEW: User Action Audit Logging** — request audit middleware + structured action logging in all mutation handlers
+  - **NEW: Orbital Login (Plan A-D implemented)** — orbital canvas, purple theme, motion-v entrance, but warp animation needs optimization
 
 🎯 **Next Actions:**
+  - **PRIORITY: Fix login warp animation freeze** — Currently disabled; need to optimize OrbitField.warp() or find lightweight alternative that doesn't block UI
   - Frontend AuditLog.vue page with searchable table, filters, date range picker
   - Audit log retention/pruning (cron-based TTL)
   - Fix pre-existing test failures in `internal/bootstrap` and `internal/tlscert`
@@ -18,6 +20,7 @@
 
 ## Memory Files
 
+- [Session 30 (June 30): Orbital Login Performance Fix](#orbital-login-performance) — backdrop-filter blur reduced (24px→8px), warp animation simplified (1.05s→300ms), login now responsive but warp still needs full optimization
 - [Session 20: Installer UI Redesign](../CONTEXT.md) — full dark-theme redesign matching dashboard; bubble checkbox cards; icon embedded; URL/token auto-populate only on combined installs; use bash heredoc to write the file
 - [Sessions 18–19: Robocopy + Freeze Fix](../CONTEXT.md) — robocopy output/exit code fixed; coordinator freeze fixed (removed SetMaxOpenConns(1)); progress module removed; auto token regen in rebuild script
 - [Phase 22 Complete](phase22_complete.md) — Full integration testing suite, stress tests, agent disconnect recovery validation
