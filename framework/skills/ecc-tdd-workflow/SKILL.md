@@ -2,6 +2,10 @@
 name: tdd-workflow
 description: Use this skill when writing new features, fixing bugs, or refactoring code. Enforces test-driven development with 80%+ coverage including unit, integration, and E2E tests.
 argument-hint: <path/to/*.plan.md>
+category: skill
+priority: high
+last_updated: 2026-07-01
+stale_after_days: 90
 metadata:
   origin: ECC
 ---

@@ -1,9 +1,15 @@
 ---
 name: security-review
 description: Use this skill when adding authentication, handling user input, working with secrets, creating API endpoints, or implementing payment/sensitive features. Provides comprehensive security checklist and patterns.
+category: skill
+priority: high
+last_updated: 2026-07-01
+stale_after_days: 90
 metadata:
   origin: ECC
 ---
+
+> **Project Context:** This skill includes code examples in TypeScript/Next.js for illustration. ArcVault uses Go and Vue 3 — adapt the security patterns (parameterized queries, rate limiting, input validation) to the project's actual stack.
 
 # Security Review Skill
 

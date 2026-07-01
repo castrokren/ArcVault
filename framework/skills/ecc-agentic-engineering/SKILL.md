@@ -1,6 +1,10 @@
 ---
 name: agentic-engineering
 description: Operate as an agentic engineer using eval-first execution, decomposition, and cost-aware model routing.
+category: skill
+priority: high
+last_updated: 2026-07-01
+stale_after_days: 90
 metadata:
   origin: ECC
 ---
