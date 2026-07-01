@@ -25,6 +25,9 @@ Read this file completely before taking any action. Use the routing table below 
 | Managing task lifecycle | `modules/tasks.md` |
 | Go development | `rules/golang/` |
 | Dashboard (Vue) | `rules/typescript/` |
+| TDD workflow | `framework/skills/ecc-tdd-workflow/SKILL.md` |
+| Security review | `framework/skills/ecc-security-review/SKILL.md` |
+| Agentic engineering | `framework/skills/ecc-agentic-engineering/SKILL.md` |
 
 Multiple modules may be loaded for a single task. These entries are not mutually exclusive.
 
