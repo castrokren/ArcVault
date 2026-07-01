@@ -50,6 +50,13 @@
       </form>
     </div>
 
+    <!-- Decorative arc rings (respects prefers-reduced-motion) -->
+    <div v-if="!prefersReducedMotion" class="arc-rings">
+      <div class="arc arc-1"></div>
+      <div class="arc arc-2"></div>
+      <div class="arc arc-3"></div>
+    </div>
+
     <ChangePasswordModal
       :isOpen="showChangePw"
       @close="showChangePw = false"
@@ -59,7 +66,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuth } from '../composables/useAuth.js'
 import ChangePasswordModal from '../components/ChangePasswordModal.vue'
@@ -73,6 +80,24 @@ const remember = ref(true)
 const isSubmitting = ref(false)
 const errorMsg = ref(null)
 const showChangePw = ref(false)
+
+// ponytail: matchMedia listener for reduced motion (drives v-if on arcs)
+const prefersReducedMotion = ref(false)
+let mql = null
+
+onMounted(() => {
+  mql = window.matchMedia('(prefers-reduced-motion: reduce)')
+  prefersReducedMotion.value = mql.matches
+  mql.addEventListener('change', onMotionChange)
+})
+
+onBeforeUnmount(() => {
+  if (mql) mql.removeEventListener('change', onMotionChange)
+})
+
+function onMotionChange(e) {
+  prefersReducedMotion.value = e.matches
+}
 
 async function handleSubmit() {
   if (isSubmitting.value) return
@@ -245,5 +270,73 @@ async function handleSubmit() {
 .submit-btn {
   margin-top: 0.5rem;
   width: 100%;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Arc Rings — decorative rotating arc segments
+   Three concentric arcs (purple, teal, pink) that sweep
+   around the login card at different speeds. Created with
+   conic-gradient (colored segment) + radial-gradient mask
+   (thin ring shape) — pure CSS, no canvas.
+   ═══════════════════════════════════════════════════════════ */
+
+.arc-rings {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 0;          /* behind the login card (z-index: 1) */
+}
+
+.arc {
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform;
+}
+
+/* Arc 1 — large, purple, slow sweep (90°) */
+.arc-1 {
+  width: 580px;
+  height: 580px;
+  background: conic-gradient(from 0deg, transparent 0deg, #9d72ff 50deg, transparent 90deg);
+  -webkit-mask: radial-gradient(circle, transparent 48%, #000 49%, #000 52%, transparent 53%);
+  mask: radial-gradient(circle, transparent 48%, #000 49%, #000 52%, transparent 53%);
+  animation: av-arc-spin 22s linear infinite;
+  filter: drop-shadow(0 0 10px rgba(157, 114, 255, 0.5));
+}
+
+/* Arc 2 — medium, cyan, reverse sweep (120°) */
+.arc-2 {
+  width: 420px;
+  height: 420px;
+  background: conic-gradient(from 120deg, transparent 0deg, #6ee7ff 60deg, transparent 130deg);
+  -webkit-mask: radial-gradient(circle, transparent 47%, #000 48%, #000 53%, transparent 54%);
+  mask: radial-gradient(circle, transparent 47%, #000 48%, #000 53%, transparent 54%);
+  animation: av-arc-spin 16s linear infinite reverse;
+  filter: drop-shadow(0 0 8px rgba(110, 231, 255, 0.45));
+}
+
+/* Arc 3 — small, pink, fastest sweep (70°) */
+.arc-3 {
+  width: 280px;
+  height: 280px;
+  background: conic-gradient(from 240deg, transparent 0deg, #ff6eb4 35deg, transparent 75deg);
+  -webkit-mask: radial-gradient(circle, transparent 45%, #000 46%, #000 55%, transparent 56%);
+  mask: radial-gradient(circle, transparent 45%, #000 46%, #000 55%, transparent 56%);
+  animation: av-arc-spin 12s linear infinite;
+  filter: drop-shadow(0 0 8px rgba(255, 110, 180, 0.4));
+}
+
+@keyframes av-arc-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Safety net for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .arc {
+    animation: none !important;
+  }
 }
 </style>
