@@ -406,23 +406,32 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 				}
 			}
 
-			if origin != "" && allowed {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Vary", "Origin")
-			} else if origin != "" && !allowed {
-				// Non-matching origin: don't set ACAO header — browser will block it.
+			// Case 1: Disallowed origin (non-empty and not in whitelist)
+			if origin != "" && !allowed {
 				if r.Method == http.MethodOptions {
 					w.WriteHeader(http.StatusForbidden)
 					return
 				}
+				// For non-OPTIONS requests, fall through without CORS headers
+				next.ServeHTTP(w, r)
+				return
 			}
 
+			// Case 2: Allowed origin (empty or in whitelist)
+			if origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+			}
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+
+			// Handle preflight requests
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
+
+			// Process actual request
 			next.ServeHTTP(w, r)
 		})
 	}

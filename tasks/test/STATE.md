@@ -7,10 +7,18 @@ Test that STATE injection works at session start.
 None yet.
 
 ## Done
-- 
+- ✅ Built new arcvault-coordinator.exe binary with WebSocket origin validation fix
+- ✅ Created full ArcVault-Setup-0.5.1-windows-amd64.exe installer (31.5 MB)
+  - Bundles coordinator.exe + agent.exe + Python setup wizard
+  - Includes all configuration options and service installation
+- ✅ Updated architecture documentation (docs/architecure/)
+  - Updated version from v0.4.0 to v0.5.1
+  - Added WebSocket origin validation notation
+  - Updated build/deployment timestamp to June 25, 2026
+- Testing STATE inject hook
 
 ## In-progress
-- Testing STATE inject hook
+- 
 
 ## Next
 - Verify state-guard warning on session end
