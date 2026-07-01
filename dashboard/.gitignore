@@ -22,3 +22,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# === Secret protection (security remediation)
+*.pem
+*.key
+*.pfx
+*.p12
+config.json
+.env
+.env.*
+credentials.json
+passcode.dat
+*.salt
+*.bin
