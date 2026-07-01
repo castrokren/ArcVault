@@ -1,5 +1,5 @@
 dist/
-.claude/
+# .claude/  — removed for ECC commands/hooks (TASK-00)
 
 # Built binaries - match only files, not directories containing source code
 *.exe
