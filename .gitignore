@@ -9,6 +9,9 @@ installer-inputs.txt
 build/
 deployment/
 
+# Test binaries
+*.test
+
 # Secrets and credentials — never commit
 *.pem
 *.key
