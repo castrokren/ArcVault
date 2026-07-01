@@ -164,7 +164,7 @@
       <div class="modal">
         <div class="modal-header">
           <h3>Job Logs: {{ logsJobName }}</h3>
-          <button class="close-btn" @click="showLogsModal = false">✕</button>
+          <button class="modal-close" @click="showLogsModal = false">×</button>
         </div>
         <div class="modal-body">
           <div v-if="logsLoading" class="skeleton-group" aria-busy="true">
@@ -472,15 +472,17 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Global design system handles: .page-header, .stale-banner, .form-card, .dispatch-mode,
-   .mode-btn, .form-grid, .search-input, .chip, .table, .badge, .danger-sm, .empty, .error,
-   .filters, .modal-overlay, .modal-backdrop */
+/* Jobs-specific styles using global design tokens.
+   Global token-driven classes from style.css handle: .page-header, .form-card,
+   .form-grid, .dispatch-mode, .mode-btn, .table, .badge, .chip, .search-input,
+   .filters, .error, .empty, .modal-overlay, .modal, .modal-header, .modal-body,
+   .modal-footer, .modal-close, .mono, .danger-sm. */
 
 .sync-flags-row {
   margin-bottom: 1rem;
 }
 
-/* Table action buttons */
+/* Table action buttons — Jobs-specific */
 .action-btn {
   padding: 0.22rem 0.65rem;
   background: var(--accent-2-dim);
@@ -513,11 +515,11 @@ onMounted(() => {
 .cancel-btn:hover:not(:disabled) { filter: brightness(1.1); }
 .cancel-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-/* badge.canceling / badge.cancelled not in global — add here */
+/* ponytail: cancelled/canceling badges not in global — keep here */
 :deep(.badge.canceling) { background: var(--bg-warning);  color: var(--color-warning); border-color: rgba(251,191,36,0.25); }
 :deep(.badge.cancelled) { background: var(--bg-elevated); color: var(--text-muted);    border-color: var(--border-default); }
 
-/* Logs modal — wider than the global modal (900px vs 520px) */
+/* Logs modal — wider than global (900px vs 520px) */
 .modal {
   width: min(900px, 94vw);
   max-height: 82vh;

@@ -1,5 +1,13 @@
 import { ref, computed } from 'vue'
 
+// SECURITY: JWT tokens stored in localStorage — violates OWASP ASVS Session Management guidelines.
+// localStorage is accessible via XSS, has no expiration isolation, and is shared across all
+// subdirectories on the same origin. For production hardening, migrate to:
+//   - httpOnly SameSite=Strict cookie (recommended) OR
+//   - in-memory token with refresh token rotation using a secure cookie
+// Tracked as: tech-debt/auth-storage-hardening
+// ponytail: Full refactor deferred — token flow is functional and scoped to dashboard alone.
+
 // Role hierarchy: admin > operator > viewer
 const ROLE_HIERARCHY = { admin: 3, operator: 2, viewer: 1 }
 
