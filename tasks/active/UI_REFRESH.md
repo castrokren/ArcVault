@@ -1,47 +1,39 @@
 # UI Refresh Task
 
-**Status:** Planning  
-**Branch:** feat/login-orbital (can start new branch or continue on this)  
-**Date:** Jun 30, 2026
+**Status:** In Progress — Color scheme done, login page next  
+**Last session:** Session 29, Jun 30, 2026
 
 ## What We're Doing
-Dashboard UI refresh while keeping all functionality. The design system exists; we're improving component styling and visual hierarchy.
+Dashboard UI refresh while keeping all functionality. Color scheme landed; next target is the login page.
 
-## Current State
-- ✅ Login simplified to working minimal version (no animations)
-- ✅ Dashboard shell, navigation, themes working
-- 🔄 Ready for UI improvements
+## Completed This Sprint
+- ✅ Jobs.vue — stripped 350+ lines hardcoded CSS → token-based scoped styles (~60 lines)
+- ✅ style.css — full dark theme rewrite (navy/charcoal base + cyan/teal accents)
+- ✅ charts.css — created; token-driven bar charts, sparklines, donut gauges
+- ✅ History.vue — rebuilt stat cards (Total Runs bar, Completed sparkline, Success Rate donut)
+- ✅ vite.config.js — proxy `/api` → `https://localhost` (dev server now works with backend)
 
-## Design System (Already In Place)
-- **Fonts:** Space Grotesk (display), Inter (body), JetBrains Mono (code)
-- **Colors:** Dark theme with purple/blue accents, semantic colors (success, error, warning, info)
-- **File:** `dashboard/src/style.css` — all tokens defined
+## Current Color Scheme (Dark Theme)
+| Token | Value | Role |
+|---|---|---|
+| `--bg-base` | `#141824` | Page background |
+| `--bg-card` | `#1c2236` | Cards |
+| `--bg-elevated` | `#222a42` | Elevated surfaces, modals |
+| `--accent` | `#00d4e8` | Cyan — primary data/interaction |
+| `--accent-2` | `#00e58a` | Green — secondary charts/badges |
 
-## High-Impact Changes (No Breaking Changes)
-1. **Stat cards** — better shadows, borders, readability
-2. **Tables** — improved rows, hover effects, spacing
-3. **Buttons** — refined styling and feedback
-4. **Badges** — more prominent with better contrast
-5. **Global spacing** — better consistency
-6. **Transitions** — subtle polish on interactions
+## Next Session: Login Page
+Design a new login page to match the dashboard's navy/cyan aesthetic.
+- Reference: the existing `Login.vue` has an orbit animation scene (may want to retheme it)
+- Match surface colors to new design system tokens
+- Keep all auth functionality intact (JWT, redirect after login)
+- File: `dashboard/src/views/Login.vue`
+- Related: `dashboard/src/login-animation.css`
 
-## Key Files to Refresh
-- `dashboard/src/views/Agents.vue` (primary user view)
-- `dashboard/src/views/Jobs.vue`
-- `dashboard/src/views/History.vue`
-- `dashboard/src/App.vue` (navigation)
-- `dashboard/src/style.css` (global styles)
-- Component styles in `dashboard/src/components/`
-
-## Suggested Approach
-Start with **stat cards and table styling** (Agents view) — highest ROI for visual impact.
-
-## Next Steps
-1. Choose starting component (recommend: stat cards or table)
-2. Update component CSS in scoped styles
-3. Test on running coordinator
-4. Move to other key views
-5. Commit with descriptive messages
+## Design System Files
+- **Tokens**: `dashboard/src/style.css`
+- **Chart helpers**: `dashboard/src/charts.css`
+- **Fonts**: Space Grotesk (display), Inter (body), JetBrains Mono (mono)
 
 ---
-**Ready to pick up in desktop app. All infrastructure running and tested.**
+**Infrastructure is running. Dev server: `npm run dev` in `dashboard/` (proxy to https://localhost).**

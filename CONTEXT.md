@@ -312,3 +312,16 @@ coordinator uninstall-service
     - `coordinator/db/audit_test.go` (new) — 6 tests
     - `coordinator/business/audit_test.go` (new) — 10 tests
     - `coordinator/business/mocks_test.go` — added AuditQueries stubs to mockJobDB
+
+✅ **Session 29** (June 30, 2026): Dashboard UI Refresh — Color Scheme + Component Polish — COMPLETE
+  - **Jobs.vue**: Stripped 350+ lines of hardcoded CSS; replaced with ~60 lines of token-based scoped styles
+  - **style.css**: Full dark theme token refresh — surface values, accent colors, shadows, ambient glows
+  - **History.vue**: Rebuilt stat cards to match Agents.vue layout — 3 cards (Total Runs bar chart, Completed sparkline, Success Rate donut)
+  - **charts.css**: New token-driven mini-chart helpers (bar-chart, spark-area, donut gauge, update badges)
+  - **vite.config.js**: Added proxy config — `/api` → `https://localhost` (secure: false) for dev server
+  - **Color scheme iteration**: Landed on dark navy/charcoal + cyan/teal (matching reference dashboard aesthetic)
+    - bg-base: `#141824`, bg-card: `#1c2236`, bg-elevated: `#222a42`
+    - accent: `#00d4e8` (cyan), accent-2: `#00e58a` (green)
+    - Charts: cyan→green gradient bars, 10% area fill on sparklines
+  - **Next session**: Login page redesign
+  - **Files changed**: `dashboard/src/style.css`, `dashboard/src/charts.css` (new), `dashboard/src/views/Jobs.vue`, `dashboard/src/views/History.vue`, `dashboard/vite.config.js`

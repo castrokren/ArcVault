@@ -43,7 +43,7 @@
   flex: 1 1 0;
   min-width: 5px;
   border-radius: 2px 2px 0 0;
-  background: linear-gradient(180deg, var(--accent-2), var(--accent));
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
 }
 
 /* ── Area / line sparkline ──────────────────────────────── */
@@ -54,12 +54,12 @@
   margin-top: 0.5rem;
 }
 .spark-area .area {
-  fill: color-mix(in oklab, var(--accent) 16%, transparent);
+  fill: color-mix(in oklab, var(--accent) 10%, transparent);
 }
 .spark-area .line {
   fill: none;
   stroke: var(--accent);
-  stroke-width: 2;
+  stroke-width: 1.5;
   stroke-linecap: round;
   stroke-linejoin: round;
 }

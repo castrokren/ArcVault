@@ -15,25 +15,36 @@
 
     <!-- ── Visualization panels (local only) ─────────────── -->
     <!-- Stat cards (local only, fed from already-fetched runs) -->
-    <div v-if="!selectedSite && !tlLoading" class="history-stats history-section">
+    <div v-if="!selectedSite && !tlLoading" class="stat-grid history-section">
+      <!-- Total runs · bar chart -->
       <div class="stat-card">
-        <span class="stat-label">Recent Runs</span>
+        <span class="stat-label">Total Runs</span>
         <span class="stat-value">{{ statTotals.total }}</span>
-        <Sparkline class="stat-spark" :points="statBuckets.total" color="var(--accent-2)" />
+        <div class="bar-chart">
+          <span v-for="(h, i) in statBuckets.total" :key="i" :style="{ height: barPct(h, statBuckets.total) }"></span>
+        </div>
       </div>
+
+      <!-- Completed · area sparkline -->
       <div class="stat-card">
         <span class="stat-label">Completed</span>
         <span class="stat-value">{{ statTotals.completed }}</span>
-        <Sparkline class="stat-spark" :points="statBuckets.completed" color="var(--color-success)" />
+        <svg class="spark-area spark-success" viewBox="0 0 130 50" preserveAspectRatio="none">
+          <path class="area" :d="completedSpark.area" />
+          <polyline class="line" :points="completedSpark.line" />
+        </svg>
       </div>
-      <div class="stat-card">
-        <span class="stat-label">Failed</span>
-        <span class="stat-value">{{ statTotals.failed }}</span>
-        <Sparkline class="stat-spark" :points="statBuckets.failed" color="var(--color-error)" />
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Success Rate</span>
-        <span class="stat-value">{{ statTotals.rate }}</span>
+
+      <!-- Success Rate · donut -->
+      <div class="stat-card is-donut">
+        <div class="stat-body">
+          <span class="stat-label">Success Rate</span>
+          <span class="stat-value">{{ statTotals.rate }}</span>
+          <span class="stat-sub">{{ statTotals.failed }} failed</span>
+        </div>
+        <div class="donut" :style="{ '--pct': statRateNum }">
+          <div class="donut-hole">{{ statRateNum }}</div>
+        </div>
       </div>
     </div>
 
@@ -204,7 +215,6 @@
 import JobTimeline from '../components/JobTimeline.vue'
 import AgentRunChart from '../components/AgentRunChart.vue'
 import Pagination from '../components/Pagination.vue'
-import Sparkline from '../components/Sparkline.vue'
 import { getJobRuns, getFederationHistory } from '../api'
 import { fmtStaleTime } from '../utils/format.js'
 import { inject, ref } from 'vue'
@@ -212,7 +222,7 @@ import { useFederationLag } from '../composables/useFederationLag.js'
 
 export default {
   name: 'HistoryView',
-  components: { JobTimeline, AgentRunChart, Pagination, Sparkline },
+  components: { JobTimeline, AgentRunChart, Pagination },
 
   setup() {
     const selectedSite = inject('selectedSite', ref(null))
@@ -310,6 +320,19 @@ export default {
         failed,
         rate: done ? Math.round((completed / done) * 100) + '%' : '—'
       }
+    },
+
+    statRateNum() {
+      const completed = this.tlRuns.filter(r => r.status === 'completed').length
+      const failed = this.tlRuns.filter(r => r.status === 'failed').length
+      const done = completed + failed
+      return done ? Math.round((completed / done) * 100) : 0
+    },
+
+    completedSpark() {
+      const data = this.statBuckets.completed
+      if (!data || data.length < 2) return { line: '', area: '' }
+      return this.buildSpark(data)
     },
 
     agentChartData() {
@@ -415,6 +438,27 @@ export default {
       }
     },
 
+    barPct(v, arr) {
+      const max = Math.max(...arr, 1)
+      return Math.round((v / max) * 100) + '%'
+    },
+
+    buildSpark(data, w = 130, h = 50, pad = 6) {
+      const max = Math.max(...data), min = Math.min(...data)
+      const span = max - min || 1
+      const step = w / (data.length - 1)
+      const pts = data.map((v, i) => {
+        const x = Math.round(i * step)
+        const y = Math.round(pad + (h - pad * 2) * (1 - (v - min) / span))
+        return [x, y]
+      })
+      const line = pts.map(p => p.join(',')).join(' ')
+      const area = `M${pts[0][0]},${pts[0][1]} ` +
+        pts.slice(1).map(p => `L${p[0]},${p[1]}`).join(' ') +
+        ` L${w},${h} L0,${h} Z`
+      return { line, area }
+    },
+
     onSelectJob(jobId) { this.filterJobId = jobId; this.loadTableRuns() },
     onSelectAgent(agentId) { this.filterAgentId = agentId; this.loadTableRuns() },
     onFilterChange() { this.loadTableRuns(1) },
@@ -473,11 +517,11 @@ export default {
 
 .history-section { margin-bottom: 1.1rem; }
 
-.history-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.9rem;
-}
+/* .history-stats replaced by global .stat-grid (charts.css) */
+
+/* Completed sparkline — success green instead of default accent */
+.spark-success .area { fill: color-mix(in oklab, var(--color-success) 6%, transparent); }
+.spark-success .line { stroke: var(--color-success); }
 
 .section-label {
   font-family: var(--font-body);

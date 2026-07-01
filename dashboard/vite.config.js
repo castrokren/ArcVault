@@ -6,6 +6,15 @@ export default defineConfig({
   build: {
     emptyOutDir: false,
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'https://localhost',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
   test: {
     environment: 'node',
   },
