@@ -6,8 +6,6 @@ paths:
 ---
 # Go Coding Standards
 
-> This file extends [common/coding-standards.md](../common/coding-standards.md) with Go specific content.
-
 ## Formatting
 
 - Run **`gofmt`** (or `go fmt ./...`) on all code before committing.

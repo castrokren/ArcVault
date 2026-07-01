@@ -6,8 +6,6 @@ paths:
 ---
 # Go Error Handling
 
-> This file extends [common/error-handling.md](../common/error-handling.md) with Go specific content.
-
 ## Principles
 
 - Handle every error — no bare `_` assignments for error returns.

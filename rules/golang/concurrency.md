@@ -6,8 +6,6 @@ paths:
 ---
 # Go Concurrency
 
-> This file extends [common/concurrency.md](../common/concurrency.md) with Go specific content.
-
 ## Goroutines
 
 - Always know when a goroutine stops — use `sync.WaitGroup` or errgroup.
