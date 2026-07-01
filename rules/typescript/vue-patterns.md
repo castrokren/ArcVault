@@ -1,12 +1,9 @@
-
 ---
 paths:
   - "**/*.vue"
 ---
 
 # Vue Patterns
-
-> This file extends [common/patterns.md](../common/patterns.md) with Vue specific content.
 
 ## Composables
 
