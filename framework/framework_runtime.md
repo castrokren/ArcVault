@@ -24,6 +24,7 @@ Read this file completely before taking any action. Use the routing table below 
 | Creating or updating a skill file | `modules/skills.md` |
 | Managing task lifecycle | `modules/tasks.md` |
 | Go development | `rules/golang/` |
+| Dashboard (Vue) | `rules/typescript/` |
 
 Multiple modules may be loaded for a single task. These entries are not mutually exclusive.
 
