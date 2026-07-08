@@ -219,19 +219,18 @@ $agentConfigPath = "C:\ArcVault-Agent\agent-config.yaml"
 $coordConfigPath = "C:\ArcVault\config.json"
 
 if ((Test-Path $agentConfigPath) -and (Test-Path $coordConfigPath)) {
-    $adminToken  = (Get-Content $coordConfigPath | ConvertFrom-Json).admin_token
     $agentConfig = Get-Content $agentConfigPath -Raw
 
     # Pull agent_id from agent-config.yaml
     $agentId = ($agentConfig | Select-String "agent_id:\s*(.+)").Matches[0].Groups[1].Value.Trim()
 
     try {
-        $resp = Invoke-RestMethod -Uri "$coordBase/api/agent-tokens" `
-            -Method POST `
-            -Headers @{ Authorization = "Bearer $adminToken"; "Content-Type" = "application/json" } `
-            -Body (@{ agent_id = $agentId } | ConvertTo-Json) -TimeoutSec 5 -SkipCertificateCheck
-
-        $newToken = $resp.token
+        # Mint a fresh agent token via the coordinator CLI. There is no HTTP
+        # endpoint for this (the old POST /api/agent-tokens never existed and
+        # failed silently every deploy). The exe resolves config.json — and thus
+        # the DB — next to itself, so no working-directory assumption is needed.
+        $newToken = (& "C:\ArcVault\coordinator.exe" create-agent-token $agentId --token-only)
+        if (-not $newToken) { throw "create-agent-token returned empty output" }
         # Update auth_token in agent-config.yaml in-place.
         # [^\r\n]+ avoids consuming the \r in \r\n line endings
         $agentConfig = $agentConfig -replace '(?m)^(\s*auth_token:\s*)[^\r\n]+', ('$1' + $newToken)
