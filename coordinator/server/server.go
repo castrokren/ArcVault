@@ -183,6 +183,7 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.cfg.Port)
 
 	s.StartOfflineDetector(60*time.Second, 90*time.Second)
+	s.StartTokenPruner(1 * time.Hour)
 	s.StartScheduler()
 	go s.StartHeartbeatDetector()
 

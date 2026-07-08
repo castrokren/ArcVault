@@ -64,6 +64,41 @@ func TestRevokeToken_storesComparableUTCExpiry(t *testing.T) {
 	}
 }
 
+// Prune must drop expired rows and keep live ones. Getting this backwards
+// un-revokes every logged-out token, so assert both directions, not just the count.
+func TestPruneExpiredTokens_dropsExpiredKeepsLive(t *testing.T) {
+	forceNonUTCLocal(t)
+	d := newTestDB(t)
+
+	if err := d.RevokeToken("expired", time.Now().Add(-1*time.Hour)); err != nil {
+		t.Fatalf("RevokeToken(expired): %v", err)
+	}
+	if err := d.RevokeToken("live", time.Now().Add(4*time.Hour)); err != nil {
+		t.Fatalf("RevokeToken(live): %v", err)
+	}
+
+	if err := d.PruneExpiredTokens(); err != nil {
+		t.Fatalf("PruneExpiredTokens: %v", err)
+	}
+
+	var expiredRows int
+	if err := d.conn.QueryRow(`SELECT COUNT(*) FROM revoked_tokens WHERE jti = 'expired'`).Scan(&expiredRows); err != nil {
+		t.Fatalf("count expired: %v", err)
+	}
+	if expiredRows != 0 {
+		t.Error("expired row survived prune — revoked_tokens grows without bound")
+	}
+
+	// The live row must still be *functionally* revoked, not merely present.
+	revoked, err := d.IsTokenRevoked("live")
+	if err != nil {
+		t.Fatalf("IsTokenRevoked: %v", err)
+	}
+	if !revoked {
+		t.Fatal("prune un-revoked a live token — a logged-out session is valid again")
+	}
+}
+
 // The old bug's tell: it only passed while the stored string and datetime('now')
 // shared a second-level prefix. Let the clock tick past that and it flips.
 func TestRevokeToken_survivesClockTick(t *testing.T) {

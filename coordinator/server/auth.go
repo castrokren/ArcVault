@@ -116,6 +116,29 @@ func (s *Server) tokenRevoked(claims *JWTClaims) (bool, error) {
 	return s.db.IsTokenRevoked(claims.ID)
 }
 
+// StartTokenPruner deletes already-expired rows from revoked_tokens on a ticker.
+// Nothing else calls PruneExpiredTokens, so without this the table grows one row
+// per logout, forever. A revoked token that is also expired is rejected by
+// ValidateJWT anyway, so dropping the row loses nothing.
+//
+// ponytail: own ticker rather than folding into StartOfflineDetector -- a
+// function named "offline detector" that also GCs tokens is a 3am puzzle.
+func (s *Server) StartTokenPruner(interval time.Duration) {
+	prune := func() {
+		if err := s.db.PruneExpiredTokens(); err != nil {
+			log.Printf("TokenPruner: prune failed: %v", err)
+		}
+	}
+	prune() // once at startup, to clear whatever the last run left behind
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for range ticker.C {
+			prune()
+		}
+	}()
+}
+
 // JWTMiddleware validates JWT tokens in Authorization header.
 // Falls back to admin/agent token validation for backward compatibility.
 // Stores user claims in request context for downstream handlers.
