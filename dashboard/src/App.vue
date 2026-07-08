@@ -126,7 +126,13 @@ const updateModalOpen = ref(false)
 const showChangePasswordModal = ref(false)
 const adminMenuOpen = ref(false)
 const theme = ref(localStorage.getItem('arcvault-theme') || 'dark')
-const { connected: wsConnected, lastEvent, connect } = useWebSocket()
+const { connected: wsConnected, lastEvent, connect, disconnect } = useWebSocket()
+
+// Login happens via SPA navigation (no remount), so connect on auth change too
+watch(auth.isAuthenticated, (authed) => {
+  if (authed) connect()
+  else disconnect()
+})
 
 const isAdmin = computed(() => auth.hasRole('admin'))
 
