@@ -7,7 +7,7 @@ Close the auth/session vulnerabilities found in the 2026-07-08 audit of the coor
 - **Deploy only via `.\scripts\rebuild-and-restart.ps1`.** Never hand-build without ldflags (version flows from `VERSION`).
 - **Do not modify dashboard token storage.** Reuse `useAuth.login()`; the localStorage key is `arcvault_token` (mirrored to `arcvault_jwt`).
 - **Live prod config is `C:\ArcVault\config.json`**, NOT the repo `config.json`. It has `environment = production`, a 64-char `admin_token`, and no `jwt_secret` (the secret now comes from the env var — see below).
-- **The service's env comes from the registry, not a script.** `HKLM\SYSTEM\CurrentControlSet\Services\arcvault-coordinator\Environment` (REG_MULTI_SZ, one `NAME=value` per entry). SCM injects it; verified empirically. `C:\ArcVault\service-run.bat` is **dead** — it launches `arcvault-coordinator.exe` (June 5 binary) while the service runs `coordinator.exe`. Nothing reads it. Editing it changes nothing.
+- **The service's env comes from the registry, not a script.** `HKLM\SYSTEM\CurrentControlSet\Services\arcvault-coordinator\Environment` (REG_MULTI_SZ, one `NAME=value` per entry). SCM injects it; verified empirically. (`C:\ArcVault\service-run.bat` — a dead script that launched the wrong binary and held a plaintext credential key — was **deleted 2026-07-08**; the service `ImagePath` never referenced it.)
 - **The coordinator has no log sink.** `run-service` discards stdout; nothing writes a log file or event log. You cannot verify startup behavior by reading logs — drive the API.
 - **Live DB is `C:\ArcVault\arcvault.db`.** `~/.arcvault/arcvault.db` is a stale June snapshot — do not draw conclusions from it.
 - `modernc.org/sqlite` binds `time.Time` as Go's `String()` form in **local time**. Never bind a `time.Time` into a `DATETIME` column compared against `datetime('now')` (UTC). Use `db.sqliteTime()`.
@@ -49,11 +49,11 @@ Ordered by value:
 
 1. **Admin-token architecture.** `GET /api/admin/token` (`server.go:368`) hands a permanent, unrevocable, role-bypassing credential to any admin session. One XSS → permanent compromise surviving password rotation. Load-bearing for agent registration + installer, so this is a scoped-token redesign, not a patch. Needs a design conversation.
 2. **Plaintext agent tokens.** `tokens.token` stored raw, matched by equality (`db.go:123`). Store `sha256(token)` instead. Touches registration, installer, and every deployed agent — needs a migration path. Lower urgency: requires DB file access, which already implies compromise.
-3. **Delete `C:\ArcVault\service-run.bat`.** Dead, and actively misleading: it names a stale binary, and the credential key it exports is now redundant with the registry. It cost this session a wrong first move.
-4. **Password policy** is length ≥ 8 only. Recommendation: **skip character-class rules** (they produce `Password1!`). If pursuing, a breached-password check at set time is worth more.
+3. **Password policy** is length ≥ 8 only. Recommendation: **skip character-class rules** (they produce `Password1!`). If pursuing, a breached-password check at set time is worth more.
 
 ~~`decryptCredentials()` fails silently~~ — **DONE 2026-07-08**, see Done.
 ~~Rate-limit `handleChangePassword`~~ — **DONE 2026-07-08**, see Done (committed, deploy pending).
+~~Delete `C:\ArcVault\service-run.bat`~~ — **DONE 2026-07-08**. Verified dead first: service `ImagePath` is `coordinator.exe run-service` (never referenced the .bat), registry `Environment` already holds `ARCVAULT_CREDENTIAL_KEY` (so its exported key was redundant). Deleted; service still Running. Removed a plaintext credential key from disk — not backed up on purpose (would re-expose the key).
 
 ### Known-dirty prod data (cosmetic, non-blocking)
 - ~~`revoked_tokens` malformed row~~ — pruned on the 2026-07-08 13:20 deploy, as predicted.
@@ -85,7 +85,7 @@ A negative control proved the test *could* fail. It did not prove the test measu
 - `coordinator/server/change_password_throttle_test.go` — NEW: 6th wrong old-password for one user is 429; a different user is unaffected
 - `coordinator/server/auth_hardening_test.go` — NEW: jti, logout revocation, empty-admin-token bypass (6 middlewares), per-account throttle, XFF-rotation resistance
 - `coordinator/db/token_expiry_test.go` — NEW: canonical UTC storage, clock-tick survival, prune, bootstrap-token validation
-- `C:\ArcVault\` — live deployment (config.json, arcvault.db, service-run.bat)
+- `C:\ArcVault\` — live deployment (config.json, arcvault.db; service-run.bat deleted 2026-07-08)
 
 ## Pre-existing test failures (NOT caused by this work)
 `internal/tlscert` (5 tests, `x509: malformed certificate`) and `internal/bootstrap` (`TestGenerateScript_crossEdition`). Confirmed failing identically on a clean `git stash` of HEAD. Unrelated — do not chase them as regressions.
