@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArcVault 2.0 — Architecture</title>
+<style>
+  body{font-family:'Segoe UI',Helvetica,Arial,sans-serif;max-width:900px;margin:0 auto;padding:32px 20px;color:#2C2C2A;background:#faf9f5}
+  h1{font-size:22px;font-weight:500;margin:0 0 4px}
+  h2{font-size:18px;font-weight:500;margin:40px 0 6px}
+  h3{font-size:14px;font-weight:500;margin:20px 0 8px}
+  p{font-size:15px;line-height:1.6;color:#5F5E5A;margin:0 0 12px}
+  .meta{font-size:13px;color:#888780;margin-bottom:24px}
+  .card{background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:12px;padding:16px;margin-bottom:16px}
+  img{display:block;width:100%;height:auto;max-width:900px;margin:0 0 16px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:10px;border-bottom:1px solid #e0e0e0}
+  th{font-weight:600;background:#f5f5f5}
+</style>
+</head>
+<body>
+<h1>ArcVault 2.0 — Architecture</h1>
+<p class="meta">Coordinator v0.5.1 · Agent v0.5.1 · teal = coordinator, purple = agent, gray = clients/storage/external · Updated July 1, 2026</p>
+
+<h2>Deployment Topology</h2>
+<p>Who talks to whom, and over what.</p>
+<div class="card">
+  <img src="arcvault-deployment-topology.svg" alt="Deployment topology diagram"/>
+</div>
+
+<h2>Backend Layered Architecture</h2>
+<p>Inside the coordinator: each request flows top-down through the three-layer split (handlers → service → DB interface), with the Zod contract and RBAC guarding the boundaries.</p>
+<div class="card">
+  <img src="arcvault-backend-layers.svg" alt="Backend layered architecture"/>
+</div>
+
+<h2>Communication Flow — Job Execution Sequence</h2>
+<p>Chronological sequence of protocol exchanges during a typical backup job.</p>
+<div class="card">
+  <img src="arcvault-communication-protocols.svg" alt="Communication protocol flow"/>
+</div>
+
+<h2>Security — Encryption Overview</h2>
+<p>Complete visual representation of encryption mechanisms across all components and data flows.</p>
+<div class="card">
+  <img src="arcvault-encryption-visual.svg" alt="Encryption overview"/>
+</div>
+
+<h2>Security — Encryption in Transit (Details)</h2>
+<p>Transport protocols and message formats between components. <strong>All data is encrypted in transit via TLS 1.2+</strong></p>
+<div class="card">
+  <table>
+    <tr>
+      <th>Path</th>
+      <th>Protocol</th>
+      <th>Encryption</th>
+      <th>Auth</th>
+    </tr>
+    <tr>
+      <td>Browser → Coordinator</td>
+      <td>HTTPS (443)</td>
+      <td>✅ TLS 1.2+</td>
+      <td>JWT</td>
+    </tr>
+    <tr>
+      <td>Browser ↔ Coordinator (live)</td>
+      <td>WebSocket over TLS</td>
+      <td>✅ TLS 1.2+ (WSS)</td>
+      <td>JWT + origin-validated</td>
+    </tr>
+    <tr>
+      <td>Agent → Coordinator</td>
+      <td>HTTPS</td>
+      <td>✅ TLS 1.2+ (pinned cert)</td>
+      <td>Bearer token</td>
+    </tr>
+    <tr>
+      <td>Agent ← Coordinator</td>
+      <td>HTTPS</td>
+      <td>✅ TLS 1.2+ (pinned cert)</td>
+      <td>Bearer token</td>
+    </tr>
+    <tr>
+      <td>Agent ↔ Coordinator (events)</td>
+      <td>WebSocket over TLS</td>
+      <td>✅ TLS 1.2+ (WSS, pinned)</td>
+      <td>Bearer token</td>
+    </tr>
+    <tr>
+      <td>Agent → Backup target</td>
+      <td>Local FS / SMB</td>
+      <td>⚠️ SMB encryption (optional)</td>
+      <td>Windows credentials</td>
+    </tr>
+    <tr>
+      <td>Coordinator ↔ Coordinator</td>
+      <td>HTTPS + WebSocket</td>
+      <td>✅ TLS 1.2+ (mTLS)</td>
+      <td>Peer certs</td>
+    </tr>
+    <tr>
+      <td>Coordinator → Alert channel</td>
+      <td>HTTPS (webhooks)</td>
+      <td>✅ TLS 1.2+</td>
+      <td>API key / token</td>
+    </tr>
+    <tr>
+      <td>Coordinator → GitHub</td>
+      <td>HTTPS (REST API)</td>
+      <td>✅ TLS 1.2+</td>
+      <td>Rate-limited anon</td>
+    </tr>
+  </table>
+</div>
+
+<h2>Security — Certificate Pinning Flow</h2>
+<p>How agents validate coordinator identity to prevent MITM attacks. Agents download and pin the coordinator certificate on first registration, then verify every subsequent connection.</p>
+<div class="card">
+  <img src="arcvault-certificate-pinning.svg" alt="Certificate pinning flow"/>
+</div>
+
+<h2>TLS & Certificate Management</h2>
+<div class="card">
+  <h3>Server Certificate</h3>
+  <p>Coordinator generates a self-signed TLS certificate during <code>init</code>. Certificate includes SANs (Subject Alternate Names) for IP addresses and hostnames (e.g., 127.0.0.1, localhost, hostname).</p>
+
+  <h3>Agent Certificate Pinning</h3>
+  <p>Agent downloads coordinator's certificate during registration and stores it as <code>coordinator.crt</code>. All subsequent HTTPS + WebSocket connections validate against this pinned certificate. Prevents MITM attacks even if system root CA is compromised.</p>
+
+  <h3>Certificate Regeneration</h3>
+  <p>Use <code>coordinator rekey-cert</code> to regenerate TLS certificate if hostname/IP changes. Installer copies coordinator cert to agents during combined install.</p>
+
+  <h3>Protocol</h3>
+  <p>TLS 1.2+ (enforced by Go's crypto/tls package); AES-256 ciphers negotiated at handshake.</p>
+</div>
+
+<h2>WebSocket Security</h2>
+<div class="card">
+  <h3>Origin Validation</h3>
+  <p>Browser WebSocket connections checked against <code>AllowedOrigins</code> config (default: localhost). Rejects cross-origin requests in production mode. Kill-switch env var for emergency rollback if needed.</p>
+
+  <h3>Transport</h3>
+  <p>WSS (WebSocket Secure) — runs over established TLS connection, inherits all TLS protections.</p>
+
+  <h3>Authentication</h3>
+  <p>Browser sends JWT in WebSocket handshake; agents use Bearer tokens. Same validation as REST API.</p>
+</div>
+
+<h2>Data Encryption — At Rest</h2>
+<div class="card">
+  <h3>Credentials</h3>
+  <p>Backup credentials (passwords, SSH keys) encrypted with AES-256-GCM using a credential key stored in <code>config.json</code> (or env var fallback).</p>
+
+  <h3>Database</h3>
+  <p>SQLite with WAL mode (not encrypted by default). Consider full-disk encryption for production deployments containing sensitive credentials.</p>
+</div>
+
+<h2>Key API Endpoints by Protocol</h2>
+<div class="card">
+  <h3>Browser Endpoints (HTTPS + JWT)</h3>
+  <p><strong>Dashboard (Vue 3):</strong> GET /api/jobs, GET /api/agents, POST /api/jobs, GET /api/users, etc.</p>
+  <p><strong>WebSocket:</strong> GET /ws (job updates, agent status, live logs)</p>
+  <p><strong>Auth:</strong> POST /api/auth/login, POST /api/auth/refresh, PUT /api/auth/change-password</p>
+
+  <h3>Agent Endpoints (HTTPS + Bearer token)</h3>
+  <p><strong>Registration:</strong> POST /api/agents/register (initial handshake, TLS cert exchange)</p>
+  <p><strong>Heartbeat:</strong> POST /api/agents/{id}/heartbeat (every 30s, includes status/uptime)</p>
+  <p><strong>Job polling:</strong> GET /api/jobs (agent queries for assigned work)</p>
+  <p><strong>Job results:</strong> POST /api/jobs/{id}/results (exit code + output after completion)</p>
+  <p><strong>Status updates:</strong> PATCH /api/jobs/{id}/status (running → complete state change)</p>
+  <p><strong>WebSocket:</strong> GET /ws/agent (job assignment push notifications)</p>
+
+  <h3>Admin Endpoints (HTTPS + JWT, admin-only)</h3>
+  <p><strong>Updates:</strong> GET /api/update/check, POST /api/update/apply, POST /api/agents/{id}/update</p>
+  <p><strong>Downloads:</strong> GET /downloads/installer (agent installer binary)</p>
+  <p><strong>Bootstrap:</strong> GET /api/admin/bootstrap.ps1 (Windows agent setup script with cert pinning)</p>
+
+  <h3>Federation (optional, Coordinator ↔ Coordinator)</h3>
+  <p><strong>Transport:</strong> HTTPS (mTLS with peer certificates) + WebSocket (state sync)</p>
+  <p><strong>Purpose:</strong> Event forwarding, failover detection, distributed job coordination</p>
+
+  <h3>Audit & Monitoring (viewer+ and above)</h3>
+  <p><strong>Audit:</strong> GET /api/audit/commands, GET /api/audit/user-actions, GET /api/audit/stats (full user action audit trail)</p>
+  <p><strong>Alert rules:</strong> GET /api/alert-rules, POST /api/alert-rules (per-job configurable rules: on_failure, duration_exceeded, missed_schedule)</p>
+  <p><strong>Alert history:</strong> GET /api/alert-history (30-day retention by default)</p>
+</div>
+
+<h2>Job Execution Flow</h2>
+<p>The runtime path of a single backup job, from creation to the alert engine. Color marks which component owns each step.</p>
+<div class="card">
+  <img src="arcvault-job-execution-flow.svg" alt="Job execution flow"/>
+  <p><strong>Note:</strong> Jobs can be cancelled mid-execution via <code>POST /api/jobs/{id}/cancel</code> (operator+). The cancel command is sent to the agent over WebSocket, which terminates the running child process (robocopy/rsync) and reports the cancelled status back.</p>
+</div>
+
+<h2>Security Checklist</h2>
+<div class="card">
+  <p>✅ All network traffic between browser, coordinator, and agents is encrypted in transit via TLS.</p>
+  <p>✅ Agents use certificate pinning to prevent MITM attacks.</p>
+  <p>✅ WebSocket connections validate origin in production mode.</p>
+  <p>✅ Credentials encrypted with AES-256-GCM at rest.</p>
+  <p>✅ CORS enforced with explicit origin whitelist (rejects wildcard &quot;*&quot;).</p>
+  <p>✅ HSTS headers configurable for TLS deployments via coordinator config.json.</p>
+  <p>✅ Command audit logging with non-whitelisted program detection (Session 28).</p>
+  <p>✅ Job cancellation flow via WebSocket: POST /api/jobs/{id}/cancel → WebSocket kill signal → agent terminates child process.</p>
+  <p>⚠️ SMB connections from agent to backup target use SMB3 with optional signing/encryption (configured via Windows SMB policy).</p>
+  <p>⚠️ SQLite database not encrypted by default (use full-disk encryption for production).</p>
+  <p>🔑 For production: enable TLS cert renewal before expiry, configure full-disk encryption on coordinator machine, and back up <code>config.json</code> (contains credential key).</p>
+</div>
+
+</body>
+</html>

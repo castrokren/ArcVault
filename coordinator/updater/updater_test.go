@@ -1,0 +1,432 @@
+package updater
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"runtime"
+	"testing"
+)
+
+// TestResolveAssetURL tests asset resolution for different OS/arch combinations.
+func TestResolveAssetURL(t *testing.T) {
+	assets := []ReleaseAsset{
+		{Name: "coordinator_linux_amd64", DownloadURL: "http://example.com/linux"},
+		{Name: "coordinator_darwin_arm64", DownloadURL: "http://example.com/darwin"},
+		{Name: "coordinator_windows_amd64.exe", DownloadURL: "http://example.com/windows"},
+	}
+
+	cases := []struct {
+		goos, goarch string
+		wantURL      string
+	}{
+		{"linux", "amd64", "http://example.com/linux"},
+		{"darwin", "arm64", "http://example.com/darwin"},
+		{"windows", "amd64", "http://example.com/windows"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.goos+"_"+tc.goarch, func(t *testing.T) {
+			url, err := resolveAsset("coordinator", tc.goos, tc.goarch, assets)
+			if err != nil {
+				t.Fatalf("resolveAsset failed: %v", err)
+			}
+			if url != tc.wantURL {
+				t.Fatalf("resolveAsset returned %q, want %q", url, tc.wantURL)
+			}
+		})
+	}
+}
+
+func TestResolveVersionedAssetURL(t *testing.T) {
+	// This test was removed when resolver broadened to accept versioned/archive names.
+	// Reverting to strict matching, so no versioned asset tests here.
+}
+
+// TestDownloadBinary tests downloading a binary to a file.
+func TestDownloadBinary(t *testing.T) {
+	// Create a mock server
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Length", "100")
+		payload := make([]byte, 100)
+		for i := range payload {
+			payload[i] = 'x'
+		}
+		w.Write(payload)
+	}))
+	defer server.Close()
+
+	// Create temp file
+	tmpDir := t.TempDir()
+	destPath := filepath.Join(tmpDir, "test.bin")
+
+	// Download
+	progressCalled := false
+	progress := func(pct int) {
+		progressCalled = true
+	}
+
+	err := DownloadBinary(server.URL, destPath, progress)
+	if err != nil {
+		t.Errorf("DownloadBinary failed: %v", err)
+	}
+
+	// Check file was created
+	fi, err := os.Stat(destPath)
+	if err != nil {
+		t.Errorf("Downloaded file not found: %v", err)
+	}
+	if fi.Size() != 100 {
+		t.Errorf("Downloaded file size: got %d, want 100", fi.Size())
+	}
+
+	if !progressCalled {
+		t.Errorf("Progress callback was not called")
+	}
+}
+
+// TestDownloadBinaryNetworkError tests cleanup on network error.
+func TestDownloadBinaryNetworkError(t *testing.T) {
+	// Create a mock server that closes connection mid-stream
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000")
+		// Write only partial data
+		w.Write([]byte("partial"))
+		panic("intentional panic to close connection")
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+	destPath := filepath.Join(tmpDir, "test.bin")
+
+	// Download should fail
+	err := DownloadBinary(server.URL, destPath, func(pct int) {})
+	if err == nil {
+		t.Errorf("Expected error on network failure")
+	}
+
+	// File should be cleaned up
+	if _, err := os.Stat(destPath); err == nil {
+		t.Errorf("Temp file was not cleaned up after download failure")
+	}
+}
+
+// TestVerifyBinary tests binary verification.
+func TestVerifyBinary(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a mock binary that returns version
+	binPath := filepath.Join(tmpDir, "test_binary")
+	if runtime.GOOS == "windows" {
+		binPath += ".exe"
+	}
+
+	content := `#!/bin/bash
+if [ "$1" = "--version" ]; then
+  echo "v0.2.0"
+  exit 0
+fi
+exit 1
+`
+
+	if runtime.GOOS == "windows" {
+		// For Windows, create a batch file
+		content = "@echo v0.2.0\nexit /b 0"
+		binPath = filepath.Join(tmpDir, "test_binary.bat")
+	}
+
+	err := os.WriteFile(binPath, []byte(content), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create mock binary: %v", err)
+	}
+
+	// On non-Windows, use the bash script
+	if runtime.GOOS != "windows" {
+		err = VerifyBinary(binPath)
+		if err != nil {
+			// This is expected to work on Unix
+			t.Errorf("VerifyBinary failed: %v", err)
+		}
+	}
+}
+
+// TestVerifyBinaryFails tests verification failure.
+func TestVerifyBinaryFails(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a mock binary that exits with error
+	binPath := filepath.Join(tmpDir, "test_binary_fail")
+	content := `#!/bin/bash
+exit 1
+`
+
+	if runtime.GOOS == "windows" {
+		content = "exit /b 1"
+		binPath = filepath.Join(tmpDir, "test_binary_fail.bat")
+	}
+
+	err := os.WriteFile(binPath, []byte(content), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create mock binary: %v", err)
+	}
+
+	err = VerifyBinary(binPath)
+	if err == nil {
+		t.Errorf("Expected VerifyBinary to fail for non-zero exit")
+	}
+}
+
+// TestDetectServiceMode tests service mode detection.
+func TestDetectServiceMode(t *testing.T) {
+	// Test with env var not set
+	os.Unsetenv("ARCVAULT_SERVICE")
+	if IsServiceMode() {
+		t.Errorf("IsServiceMode returned true when env var not set")
+	}
+
+	// Test with env var set
+	os.Setenv("ARCVAULT_SERVICE", "1")
+	if !IsServiceMode() {
+		t.Errorf("IsServiceMode returned false when env var set to 1")
+	}
+
+	// Test with env var set to other value
+	os.Setenv("ARCVAULT_SERVICE", "0")
+	if IsServiceMode() {
+		t.Errorf("IsServiceMode returned true when env var set to 0")
+	}
+
+	// Cleanup
+	os.Unsetenv("ARCVAULT_SERVICE")
+}
+
+// TestUpdateProgressEvents tests progress event generation.
+func TestUpdateProgressEvents(t *testing.T) {
+	events := []ProgressEvent{
+		{Type: "update_progress", Step: "resolving", Pct: 10},
+		{Type: "update_progress", Step: "downloading", Pct: 30},
+		{Type: "update_progress", Step: "verifying", Pct: 80},
+		{Type: "update_progress", Step: "staging", Pct: 88},
+		{Type: "update_progress", Step: "restarting", Pct: 95},
+		{Type: "update_progress", Step: "done", Pct: 100},
+	}
+
+	for i, evt := range events {
+		if evt.Type != "update_progress" {
+			t.Errorf("Event %d: wrong type %s", i, evt.Type)
+		}
+		if evt.Pct < 0 || evt.Pct > 100 {
+			t.Errorf("Event %d: invalid percentage %d", i, evt.Pct)
+		}
+	}
+
+	// Test that events can be marshaled to JSON
+	for _, evt := range events {
+		_, err := json.Marshal(evt)
+		if err != nil {
+			t.Errorf("Failed to marshal event: %v", err)
+		}
+	}
+}
+
+// TestVersionComparison tests semantic version comparison.
+func TestVersionComparison(t *testing.T) {
+	tests := []struct {
+		v1       string
+		v2       string
+		expected int
+		desc     string
+	}{
+		{"0.2.0", "0.3.0", -1, "v0.2.0 < v0.3.0"},
+		{"0.3.0", "0.2.0", 1, "v0.3.0 > v0.2.0"},
+		{"0.2.0", "0.2.0", 0, "v0.2.0 == v0.2.0"},
+		{"1.0.0", "0.9.9", 1, "v1.0.0 > v0.9.9"},
+		{"0.2.1", "0.2.0", 1, "v0.2.1 > v0.2.0"},
+		{"v0.3.1", "v0.2.0", 1, "v0.3.1 > v0.2.0 (with v prefix)"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			result := compareVersions(tt.v1, tt.v2)
+			if result != tt.expected {
+				t.Errorf("compareVersions(%q, %q) = %d, want %d", tt.v1, tt.v2, result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestStageBinary tests binary staging (renaming).
+func TestStageBinary(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a temp file
+	tmpPath := filepath.Join(tmpDir, "tmp.bin")
+	err := os.WriteFile(tmpPath, []byte("binary"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+
+	// Stage it
+	stagedPath := filepath.Join(tmpDir, "staged.bin")
+	err = StageBinary(tmpPath, stagedPath)
+	if err != nil {
+		t.Errorf("StageBinary failed: %v", err)
+	}
+
+	// Check that tmp file is gone and staged file exists
+	if _, err := os.Stat(tmpPath); err == nil {
+		t.Errorf("Temp file still exists after staging")
+	}
+
+	if _, err := os.Stat(stagedPath); err != nil {
+		t.Errorf("Staged file does not exist: %v", err)
+	}
+}
+
+// BenchmarkVersionComparison benchmarks version comparison.
+func BenchmarkVersionComparison(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		compareVersions("0.2.0", "0.3.1")
+	}
+}
+
+// TestBackupCurrent tests backing up the current binary.
+func TestBackupCurrent(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+
+	// Set env var for test
+	os.Setenv("ARCVAULT_BACKUP_DIR", backupDir)
+	defer os.Unsetenv("ARCVAULT_BACKUP_DIR")
+
+	// Create a mock current binary
+	currentPath := filepath.Join(tmpDir, "coordinator")
+	if runtime.GOOS == "windows" {
+		currentPath += ".exe"
+	}
+	err := os.WriteFile(currentPath, []byte("binary_content"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create current binary: %v", err)
+	}
+
+	err = BackupCurrent(currentPath)
+	if err != nil {
+		t.Errorf("BackupCurrent failed: %v", err)
+	}
+
+	// Check that backup file exists
+	backupPath := filepath.Join(backupDir, "coordinator.previous")
+	if _, err := os.Stat(backupPath); err != nil {
+		t.Errorf("Backup file not created: %v", err)
+	}
+
+	// Verify backup content matches original
+	content, err := os.ReadFile(backupPath)
+	if err != nil {
+		t.Errorf("Failed to read backup: %v", err)
+	}
+	if string(content) != "binary_content" {
+		t.Errorf("Backup content mismatch: got %q, want %q", string(content), "binary_content")
+	}
+}
+
+// TestIsRollbackAvailable tests checking if rollback is available.
+func TestIsRollbackAvailable(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+
+	os.Setenv("ARCVAULT_BACKUP_DIR", backupDir)
+	defer os.Unsetenv("ARCVAULT_BACKUP_DIR")
+
+	// Test when no backup exists
+	available, err := IsRollbackAvailable()
+	if err != nil {
+		t.Errorf("IsRollbackAvailable failed: %v", err)
+	}
+	if available {
+		t.Errorf("IsRollbackAvailable should return false when no backup exists")
+	}
+
+	// Create a backup file
+	os.MkdirAll(backupDir, 0755)
+	backupPath := filepath.Join(backupDir, "coordinator.previous")
+	err = os.WriteFile(backupPath, []byte("backup_content"), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create backup file: %v", err)
+	}
+
+	// Test when backup exists
+	available, err = IsRollbackAvailable()
+	if err != nil {
+		t.Errorf("IsRollbackAvailable failed: %v", err)
+	}
+	if !available {
+		t.Errorf("IsRollbackAvailable should return true when backup exists")
+	}
+}
+
+// TestRollbackHappyPath tests successful rollback binary verification.
+func TestRollbackHappyPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping rollback test on Windows")
+	}
+
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+
+	os.Setenv("ARCVAULT_BACKUP_DIR", backupDir)
+	defer os.Unsetenv("ARCVAULT_BACKUP_DIR")
+
+	currentPath := filepath.Join(tmpDir, "coordinator")
+	os.WriteFile(currentPath, []byte("current"), 0755)
+
+	// Create a valid backup binary that passes verification
+	os.MkdirAll(backupDir, 0755)
+	backupPath := filepath.Join(backupDir, "coordinator.previous")
+	backupScript := `#!/bin/bash
+if [ "$1" = "--version" ]; then
+  echo "v0.1.0"
+  exit 0
+fi
+exit 1
+`
+	os.WriteFile(backupPath, []byte(backupScript), 0755)
+
+	progressCalls := 0
+	progress := func(evt ProgressEvent) {
+		progressCalls++
+		if evt.Type != "rollback_progress" {
+			t.Errorf("Wrong progress event type: %s", evt.Type)
+		}
+	}
+
+	// Rollback will fail on ApplyUpdate (platform-specific) but progress events should still emit
+	Rollback(currentPath, progress)
+
+	if progressCalls == 0 {
+		t.Errorf("Rollback did not emit progress events")
+	}
+}
+
+// TestRollbackNoBackupError tests rollback when no backup exists.
+func TestRollbackNoBackupError(t *testing.T) {
+	tmpDir := t.TempDir()
+	backupDir := filepath.Join(tmpDir, "backups")
+
+	os.Setenv("ARCVAULT_BACKUP_DIR", backupDir)
+	defer os.Unsetenv("ARCVAULT_BACKUP_DIR")
+
+	currentPath := filepath.Join(tmpDir, "coordinator")
+
+	progress := func(evt ProgressEvent) {}
+	err := Rollback(currentPath, progress)
+	if err == nil {
+		t.Errorf("Expected error when no backup exists")
+	}
+	if err.Error() != "no backup available for rollback" {
+		t.Errorf("Wrong error message: %v", err)
+	}
+}

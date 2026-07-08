@@ -1,0 +1,150 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="750" viewBox="0 0 900 750">
+<defs>
+  <style>
+    text { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; }
+    .title { font-size: 18px; font-weight: 600; fill: #2C2C2A; }
+    .label { font-size: 12px; font-weight: 500; fill: #2C2C2A; }
+    .small { font-size: 11px; fill: #5F5E5A; }
+    .encrypted { stroke: #00d4aa; stroke-width: 3; }
+    .warning { stroke: #f59e0b; stroke-width: 2; }
+    .component { stroke: #222638; stroke-width: 1; }
+  </style>
+
+  <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="3" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0 0 L10 3 L0 6 Z" fill="#00d4aa"/>
+  </marker>
+
+  <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="3" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0 0 L10 3 L0 6 Z" fill="#f59e0b"/>
+  </marker>
+</defs>
+
+<rect width="900" height="750" fill="#ffffff"/>
+
+<!-- Title -->
+<text class="title" x="450" y="30" text-anchor="middle">ArcVault Encryption In Transit &amp; At Rest</text>
+<text class="small" x="450" y="48" text-anchor="middle">Green = Encrypted (TLS 1.2+) | Orange = Optional | Red = Unencrypted</text>
+
+<!-- Legend -->
+<line x1="40" y1="65" x2="80" y2="65" class="encrypted" marker-end="url(#arrowGreen)"/>
+<text class="small" x="90" y="70">HTTPS/WSS (TLS 1.2+)</text>
+
+<line x1="40" y1="85" x2="80" y2="85" class="warning" marker-end="url(#arrowOrange)"/>
+<text class="small" x="90" y="90">Optional/Conditional</text>
+
+<line x1="40" y1="105" x2="80" y2="105" stroke="#ff4d6d" stroke-width="2" marker-end="url(#arrowGreen)"/>
+<text class="small" x="90" y="110">Unencrypted / Local</text>
+
+<!-- Browser -->
+<rect x="40" y="140" width="140" height="70" rx="8" fill="#F1EFE8" class="component"/>
+<text class="label" x="110" y="165" text-anchor="middle">Web Browser</text>
+<text class="small" x="110" y="180" text-anchor="middle">Dashboard</text>
+<circle cx="160" cy="155" r="6" fill="#00d4aa"/>
+
+<!-- Coordinator -->
+<rect x="350" y="140" width="160" height="70" rx="8" fill="#E1F5EE" class="component"/>
+<text class="label" x="430" y="165" text-anchor="middle">Coordinator</text>
+<text class="small" x="430" y="180" text-anchor="middle">Port 443</text>
+<circle cx="490" cy="155" r="6" fill="#00d4aa"/>
+
+<!-- Agent -->
+<rect x="680" y="140" width="140" height="70" rx="8" fill="#EEEDFE" class="component"/>
+<text class="label" x="750" y="165" text-anchor="middle">Agent Service</text>
+<text class="small" x="750" y="180" text-anchor="middle">TLS Pinned</text>
+<circle cx="800" cy="155" r="6" fill="#00d4aa"/>
+
+<!-- Connections between components -->
+<line x1="180" y1="160" x2="350" y2="160" class="encrypted" marker-end="url(#arrowGreen)"/>
+<text class="small" x="265" y="150" text-anchor="middle" fill="#0F6E56">HTTPS REST</text>
+
+<line x1="180" y1="180" x2="350" y2="180" class="encrypted" marker-end="url(#arrowGreen)"/>
+<text class="small" x="265" y="195" text-anchor="middle" fill="#0F6E56">WSS Live</text>
+
+<line x1="650" y1="160" x2="510" y2="160" class="encrypted" marker-end="url(#arrowGreen)"/>
+<text class="small" x="580" y="150" text-anchor="middle" fill="#534AB7">HTTPS</text>
+
+<line x1="650" y1="180" x2="510" y2="180" class="encrypted" marker-end="url(#arrowGreen)"/>
+<text class="small" x="580" y="195" text-anchor="middle" fill="#534AB7">WSS Pinned</text>
+
+<!-- Storage Components -->
+<rect x="60" y="320" width="140" height="80" rx="8" fill="#FEF08A" class="component"/>
+<text class="label" x="130" y="345" text-anchor="middle">Credentials</text>
+<text class="small" x="130" y="363" text-anchor="middle">AES-256-GCM</text>
+<circle cx="180" cy="335" r="6" fill="#00d4aa"/>
+
+<rect x="340" y="320" width="160" height="80" rx="8" fill="#FAECE7" class="component"/>
+<text class="label" x="420" y="345" text-anchor="middle">SQLite Database</text>
+<text class="small" x="420" y="363" text-anchor="middle">arcvault.db</text>
+<circle cx="480" cy="335" r="6" fill="#ff4d6d" opacity="0.3"/>
+
+<rect x="680" y="320" width="140" height="80" rx="8" fill="#F1EFE8" class="component"/>
+<text class="label" x="750" y="345" text-anchor="middle">Backup Target</text>
+<text class="small" x="750" y="363" text-anchor="middle">SMB Optional</text>
+<circle cx="800" cy="335" r="6" fill="#f59e0b" opacity="0.3"/>
+
+<!-- Connections to storage -->
+<line x1="110" y1="210" x2="130" y2="320" stroke="#00d4aa" stroke-width="2" marker-end="url(#arrowGreen)"/>
+<text class="small" x="50" y="270" text-anchor="middle" fill="#5F5E5A">Encrypted</text>
+
+<line x1="430" y1="210" x2="420" y2="320" stroke="#ff4d6d" stroke-width="2" marker-end="url(#arrowGreen)"/>
+<text class="small" x="480" y="270" text-anchor="middle" fill="#dc2626">Not Encrypted</text>
+
+<line x1="750" y1="210" x2="750" y2="320" class="warning" marker-end="url(#arrowOrange)"/>
+<text class="small" x="820" y="270" text-anchor="middle" fill="#b45309">Optional</text>
+
+<!-- Summary section -->
+<text class="label" x="40" y="480" fill="#2C2C2A">Summary Table</text>
+
+<rect x="40" y="495" width="820" height="220" rx="4" fill="#fff" stroke="#ddd" stroke-width="1"/>
+
+<!-- Table headers -->
+<line x1="40" y1="520" x2="860" y2="520" stroke="#ddd"/>
+<text class="label" x="50" y="515" font-weight="600">Connection Type</text>
+<text class="label" x="300" y="515" font-weight="600">Status</text>
+<text class="label" x="500" y="515" font-weight="600">Protocol</text>
+<text class="label" x="700" y="515" font-weight="600">Details</text>
+
+<!-- Table rows -->
+<line x1="40" y1="540" x2="860" y2="540" stroke="#f5f5f5"/>
+<text class="small" x="50" y="535" fill="#2C2C2A">Browser to Coordinator</text>
+<circle cx="310" cy="532" r="4" fill="#00d4aa"/>
+<text class="small" x="500" y="535" fill="#2C2C2A">HTTPS + WSS</text>
+<text class="small" x="700" y="535" fill="#5F5E5A">TLS 1.2+, Origin Validated</text>
+
+<line x1="40" y1="560" x2="860" y2="560" stroke="#f5f5f5"/>
+<text class="small" x="50" y="555" fill="#2C2C2A">Agent to Coordinator</text>
+<circle cx="310" cy="552" r="4" fill="#00d4aa"/>
+<text class="small" x="500" y="555" fill="#2C2C2A">HTTPS + WSS</text>
+<text class="small" x="700" y="555" fill="#5F5E5A">TLS 1.2+, Certificate Pinned</text>
+
+<line x1="40" y1="580" x2="860" y2="580" stroke="#f5f5f5"/>
+<text class="small" x="50" y="575" fill="#2C2C2A">Credentials (At Rest)</text>
+<circle cx="310" cy="572" r="4" fill="#00d4aa"/>
+<text class="small" x="500" y="575" fill="#2C2C2A">AES-256-GCM</text>
+<text class="small" x="700" y="575" fill="#5F5E5A">Encrypted in config.json</text>
+
+<line x1="40" y1="600" x2="860" y2="600" stroke="#f5f5f5"/>
+<text class="small" x="50" y="595" fill="#2C2C2A">Database (At Rest)</text>
+<circle cx="310" cy="592" r="4" fill="#ff4d6d"/>
+<text class="small" x="500" y="595" fill="#2C2C2A">SQLite WAL</text>
+<text class="small" x="700" y="595" fill="#5F5E5A">Use full-disk encryption</text>
+
+<line x1="40" y1="620" x2="860" y2="620" stroke="#f5f5f5"/>
+<text class="small" x="50" y="615" fill="#2C2C2A">Agent to Backup Target</text>
+<circle cx="310" cy="612" r="4" fill="#f59e0b"/>
+<text class="small" x="500" y="615" fill="#2C2C2A">SMB 3</text>
+<text class="small" x="700" y="615" fill="#5F5E5A">Configure SMB3 signing</text>
+
+<line x1="40" y1="640" x2="860" y2="640" stroke="#f5f5f5"/>
+<text class="small" x="50" y="635" fill="#2C2C2A">Coordinator Federation</text>
+<circle cx="310" cy="632" r="4" fill="#00d4aa"/>
+<text class="small" x="500" y="635" fill="#2C2C2A">HTTPS + WSS</text>
+<text class="small" x="700" y="635" fill="#5F5E5A">mTLS with peer certs</text>
+
+<line x1="40" y1="660" x2="860" y2="660" stroke="#f5f5f5"/>
+<text class="small" x="50" y="655" fill="#2C2C2A">Webhooks to Alerts</text>
+<circle cx="310" cy="652" r="4" fill="#00d4aa"/>
+<text class="small" x="500" y="655" fill="#2C2C2A">HTTPS</text>
+<text class="small" x="700" y="655" fill="#5F5E5A">Slack, Teams, GitHub</text>
+
+</svg>

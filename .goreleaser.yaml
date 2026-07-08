@@ -1,0 +1,133 @@
+version: 2
+
+project_name: arcvault
+
+before:
+  hooks:
+    - npm run build --prefix dashboard
+    - cmd /c xcopy /E /I /Y dashboard\dist coordinator\static\dist
+
+builds:
+  - id: coordinator
+    main: ./coordinator
+    binary: coordinator
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -X main.Version={{.Version}}
+    goos:
+      - windows
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+  - id: agent
+    main: ./agent
+    binary: agent
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+  - id: setup
+    main: ./cmd/setup
+    binary: arcvault-setup
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -X main.Version={{.Version}}
+    goos:
+      - windows
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: coordinator-archive
+    ids:
+      - coordinator
+    name_template: "coordinator_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+
+  - id: agent-archive
+    ids:
+      - agent
+    name_template: "agent_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - agent-config.yaml
+      - README.md
+
+nfpm:
+  - id: arcvault-deb
+    package_name: arcvault
+    file_name_template: "arcvault_{{ .Version }}_{{ .Arch }}"
+    homepage: https://github.com/castrokren/ArcVault
+    maintainer: "ArcVault Team"
+    description: "User-friendly backup orchestration system"
+    vendor: "ArcVault"
+    license: "MIT"
+    formats:
+      - deb
+    bindir: /usr/local/bin
+    scripts:
+      postinstall: installer/linux/postinst
+      preremove: installer/linux/prerm
+    contents:
+      - src: coordinator
+        dst: /usr/local/bin/coordinator
+        type: file
+      - src: agent
+        dst: /usr/local/bin/agent
+        type: file
+      - src: cmd/setup/arcvault-setup
+        dst: /usr/local/bin/arcvault-setup
+        type: file
+
+  - id: arcvault-rpm
+    package_name: arcvault
+    file_name_template: "arcvault-{{ .Version }}-1.{{ .Arch }}"
+    homepage: https://github.com/castrokren/ArcVault
+    maintainer: "ArcVault Team"
+    description: "User-friendly backup orchestration system"
+    vendor: "ArcVault"
+    license: "MIT"
+    formats:
+      - rpm
+    bindir: /usr/local/bin
+    scripts:
+      postinstall: installer/linux/postinst
+      preremove: installer/linux/prerm
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  draft: true
+  replace_existing_draft: true

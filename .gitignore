@@ -1,0 +1,28 @@
+dist/
+# .claude/  — removed for ECC commands/hooks (TASK-00)
+
+# Built binaries - match only files, not directories containing source code
+*.exe
+installer-test-output.txt
+test-results.txt
+installer-inputs.txt
+build/
+deployment/
+
+# Test binaries
+*.test
+
+# Secrets and credentials — never commit
+*.pem
+*.key
+config.json
+.env
+.env.local
+
+# Local AI tooling — not for the corporate repo
+.claude/
+
+# Test-run artifacts
+coverage.out
+test_report.json
+coordinator/cmd/arcvault-test/reports/
