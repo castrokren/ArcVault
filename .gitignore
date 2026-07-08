@@ -26,3 +26,7 @@ config.json
 coverage.out
 test_report.json
 coordinator/cmd/arcvault-test/reports/
+
+# Local tooling output
+.understand-anything/
+start-ua-dashboard.ps1
