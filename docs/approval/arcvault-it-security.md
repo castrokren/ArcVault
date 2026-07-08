@@ -53,7 +53,7 @@ ArcVault is a fully self-hosted backup orchestrator. It has no cloud dependency 
 
 ### Static admin token
 
-`config.json` contains an `admin_token` field — a static bearer token used for CLI operations and initial setup. It bypasses JWT validation and has full admin access. This token must be treated as a high-privilege credential, protected like the JWT signing secret, and rotated if exposure is suspected.
+The coordinator holds a static `admin_token` (sourced from the `ARCVAULT_ADMIN_TOKEN` environment variable in production; blanked from `config.json` on write). It is a machine credential for local ops scripts (build/deploy and sanity checks) and is **not** a general-purpose master key: it is accepted only on an explicit allowlist of read endpoints (`GET /api/agents`, `GET /api/version`, `GET /downloads/installer`) plus the agent register/heartbeat/results endpoints. It can no longer authenticate user-management, role, credential, or federation routes, and it is no longer retrievable through the API. It must still be treated as a high-privilege credential, protected like the JWT signing secret, and rotated if exposure is suspected.
 
 ---
 
