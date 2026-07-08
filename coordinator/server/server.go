@@ -402,7 +402,6 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("GET /api/federation/health", s.viewerRoute(s.handleFederationHealth))
 
 	// Admin utility endpoints
-	s.router.HandleFunc("GET /api/admin/token", s.adminRoute(s.handleGetAdminToken))
 	s.router.HandleFunc("GET /api/admin/bootstrap.ps1", s.adminRoute(s.handleBootstrapScript))
 	s.router.HandleFunc("GET /downloads/installer", s.adminRoute(s.handleDownloadInstaller))
 

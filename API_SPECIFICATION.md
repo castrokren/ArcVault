@@ -2081,25 +2081,6 @@ Default limit: **25** (max 100). Page default: 1.
 
 ## Admin Utility API
 
-### GET /api/admin/token
-**Purpose:** Get the admin token for agent registration (admin)
-
-**Request:** No body
-
-**Response:** 200 OK
-```json
-{
-  "token": "string"
-}
-```
-
-**Errors:**
-- `401` — Unauthenticated
-- `403` — Not authorized (not admin)
-- `500` — Internal server error
-
----
-
 ### GET /api/admin/bootstrap.ps1
 **Purpose:** Generate and download a PowerShell bootstrap script for agent setup (admin)
 
