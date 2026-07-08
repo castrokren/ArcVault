@@ -220,11 +220,17 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 		// Inject credentials for agent token requests
 		if isAgentRequest {
 			credProfileID, err := s.db.GetJobCredentialProfileID(jobDTO.ID)
-			if err == nil && credProfileID != "" {
-				credentials := s.decryptCredentials(credProfileID)
-				if credentials != nil {
-					jobs[i].Credentials = credentials
+			if err != nil {
+				http.Error(w, "failed to look up job credentials", http.StatusInternalServerError)
+				return
+			}
+			if credProfileID != "" {
+				credentials, err := s.decryptCredentials(credProfileID)
+				if err != nil {
+					http.Error(w, "failed to decrypt job credentials", http.StatusInternalServerError)
+					return
 				}
+				jobs[i].Credentials = credentials
 			}
 		}
 	}
@@ -258,11 +264,17 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	// Inject credentials for agent token requests
 	if isAgentTokenRequest(r) {
 		credProfileID, err := s.db.GetJobCredentialProfileID(id)
-		if err == nil && credProfileID != "" {
-			credentials := s.decryptCredentials(credProfileID)
-			if credentials != nil {
-				j.Credentials = credentials
+		if err != nil {
+			http.Error(w, "failed to look up job credentials", http.StatusInternalServerError)
+			return
+		}
+		if credProfileID != "" {
+			credentials, err := s.decryptCredentials(credProfileID)
+			if err != nil {
+				http.Error(w, "failed to decrypt job credentials", http.StatusInternalServerError)
+				return
 			}
+			j.Credentials = credentials
 		}
 	}
 

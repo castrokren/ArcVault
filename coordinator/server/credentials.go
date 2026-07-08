@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
 
 	"arcvault/coordinator/internal/credcrypto"
@@ -188,31 +190,38 @@ func isAgentTokenRequest(r *http.Request) bool {
 	return !hasUserClaims
 }
 
-// decryptCredentials decrypts a credential profile's encrypted data
-// Returns nil if key not available
-func (s *Server) decryptCredentials(profileID string) map[string]interface{} {
+// decryptCredentials decrypts a credential profile's encrypted data.
+// A non-nil error means the caller must NOT proceed without credentials: a job
+// that binds a profile whose key is unavailable or whose ciphertext won't
+// decrypt should fail loudly, not silently run a backup with no credentials.
+func (s *Server) decryptCredentials(profileID string) (map[string]interface{}, error) {
 	key, err := s.loadCredentialKey()
 	if err != nil {
-		return nil
+		log.Printf("[credentials] key unavailable for profile %s: %v", profileID, err)
+		return nil, err
 	}
 
-	// Get profile
 	profile, err := s.db.GetCredentialProfile(profileID)
-	if err != nil || profile == nil {
-		return nil
+	if err != nil {
+		log.Printf("[credentials] failed to load profile %s: %v", profileID, err)
+		return nil, err
+	}
+	if profile == nil {
+		log.Printf("[credentials] profile %s not found", profileID)
+		return nil, fmt.Errorf("credential profile %s not found", profileID)
 	}
 
-	// Decrypt
 	plaintext, err := credcrypto.Decrypt(key, profile.EncryptedData)
 	if err != nil {
-		return nil
+		log.Printf("[credentials] decrypt failed for profile %s: %v", profileID, err)
+		return nil, err
 	}
 
-	// Unmarshal JSON
 	var credentials map[string]interface{}
 	if err := json.Unmarshal(plaintext, &credentials); err != nil {
-		return nil
+		log.Printf("[credentials] malformed plaintext for profile %s: %v", profileID, err)
+		return nil, err
 	}
 
-	return credentials
+	return credentials, nil
 }
