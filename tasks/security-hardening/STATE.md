@@ -6,7 +6,9 @@ Close the auth/session vulnerabilities found in the 2026-07-08 audit of the coor
 ## Invariants / decisions
 - **Deploy only via `.\scripts\rebuild-and-restart.ps1`.** Never hand-build without ldflags (version flows from `VERSION`).
 - **Do not modify dashboard token storage.** Reuse `useAuth.login()`; the localStorage key is `arcvault_token` (mirrored to `arcvault_jwt`).
-- **Live prod config is `C:\ArcVault\config.json`**, NOT the repo `config.json`. It has `environment = production`, a 64-char `admin_token`, and **no `jwt_secret`** (so the secret regenerates every restart and all sessions die).
+- **Live prod config is `C:\ArcVault\config.json`**, NOT the repo `config.json`. It has `environment = production`, a 64-char `admin_token`, and no `jwt_secret` (the secret now comes from the env var — see below).
+- **The service's env comes from the registry, not a script.** `HKLM\SYSTEM\CurrentControlSet\Services\arcvault-coordinator\Environment` (REG_MULTI_SZ, one `NAME=value` per entry). SCM injects it; verified empirically. `C:\ArcVault\service-run.bat` is **dead** — it launches `arcvault-coordinator.exe` (June 5 binary) while the service runs `coordinator.exe`. Nothing reads it. Editing it changes nothing.
+- **The coordinator has no log sink.** `run-service` discards stdout; nothing writes a log file or event log. You cannot verify startup behavior by reading logs — drive the API.
 - **Live DB is `C:\ArcVault\arcvault.db`.** `~/.arcvault/arcvault.db` is a stale June snapshot — do not draw conclusions from it.
 - `modernc.org/sqlite` binds `time.Time` as Go's `String()` form in **local time**. Never bind a `time.Time` into a `DATETIME` column compared against `datetime('now')` (UTC). Use `db.sqliteTime()`.
 - Revocation checks are **fail-closed**: no `jti`, or an unreachable revocation store, means reject.
@@ -24,23 +26,25 @@ All deployed to prod (coordinator.exe built 12:32:47, PID restarted 12:32:51) an
 - **Audit log `Success`** is now `< 400`, not `< 500` — 401/403 no longer recorded as successes.
 - **Security headers + CSP** on all responses; HSTS gated on `r.TLS != nil || externalTLS`. Verified no CSP violations in the real dashboard (clean console, WebSocket "Live").
 - **Confirmed already fine:** no SQL injection (all parameterized), no `v-html`/`innerHTML`, no path traversal in `downloads.go`, bcrypt cost 10, generic login error (no user enumeration), WebSocket origin validation real and production-gated, `admin`/`changeme` already rotated.
+- **Committed and merged.** `main` fast-forwarded to `cb5145f` (was 2 behind). A rebuild on `main` now deploys the hardened code — the "rebuild silently regresses prod" trap is closed.
+- **`ARCVAULT_JWT_SECRET` set in prod.** 64 hex chars, written to the service key's `Environment` (registry only; never printed). Verified by observable behavior: a JWT minted before a restart still returned 200 on `/api/auth/me` and `/api/jobs` from a fresh PID. Before this, every restart invalidated every session and made revocation moot.
 
 ## In-progress
-- **NOTHING IS COMMITTED.** 8 modified files + 2 new test files sit in the working tree. Deployed but unversioned — a `git checkout` destroys all of it. **Commit this first, before any new work.**
+- Nothing. Working tree clean, `main` == deployed behavior.
 
 ## Next
 Ordered by value:
 
-1. **Commit the working tree.** `git status` shows: modified `business/audit.go`, `business/audit_test.go`, `config/config.go`, `db/db.go`, `server/auth.go`, `server/hub.go`, `server/request_audit.go`, `server/server.go`; untracked `db/token_expiry_test.go`, `server/auth_hardening_test.go`.
-2. **Set `ARCVAULT_JWT_SECRET` in prod** (`C:\ArcVault\service-run.bat` already sets `ARCVAULT_CREDENTIAL_KEY`, add it there). Without it the secret regenerates each restart, every session dies, and working revocation is moot. One line, highest value-per-effort.
-3. **Wire `PruneExpiredTokens()`.** Defined at `db.go:165`, **never called** by anything outside tests. `revoked_tokens` grows one row per logout, forever. Suggested: fold into the existing offline-detector ticker in `Server.Start()`. (Earlier claim that the malformed row "self-cleans" was WRONG — nothing prunes.)
-4. **Rate-limit `handleChangePassword`.** ~10 lines, reuse `loginKeyAllowed()` with a `pwchange:<userid>` key. Currently a stolen token allows unlimited old-password brute force.
-5. **Admin-token architecture (#3).** `GET /api/admin/token` (`server.go:368`) hands a permanent, unrevocable, role-bypassing credential to any admin session. One XSS → permanent compromise surviving password rotation. Load-bearing for agent registration + installer, so this is a scoped-token redesign, not a patch. Needs a design conversation.
-6. **Plaintext agent tokens (#6).** `tokens.token` stored raw, matched by equality (`db.go:123`). Store `sha256(token)` instead. Touches registration, installer, and every deployed agent — needs a migration path. Lower urgency: requires DB file access, which already implies compromise.
+1. **Wire `PruneExpiredTokens()`.** Defined at `db.go:165`, **never called** by anything outside tests. `revoked_tokens` grows one row per logout, forever. Suggested: fold into the existing offline-detector ticker in `Server.Start()`. (Earlier claim that the malformed row "self-cleans" was WRONG — nothing prunes.)
+2. **`ARCVAULT_CREDENTIAL_KEY` never reaches the service.** NEW FINDING. The value lives only in the dead `service-run.bat`; the service key's `Environment` had *nothing* in it before 2026-07-08. So `credcrypto.LoadKey()` (`internal/credcrypto/crypto.go:23`) returns `ErrKeyNotSet` in prod — credential encryption is either failing at every call site or entirely unused. **Do not just paste the batch file's key into the registry**: if any ciphertext in the DB was written under a different key, that silently produces garbage instead of an error. First find whether any stored credentials exist and what key encrypted them.
+3. **Rate-limit `handleChangePassword`.** ~10 lines, reuse `loginKeyAllowed()` with a `pwchange:<userid>` key. Currently a stolen token allows unlimited old-password brute force.
+4. **Admin-token architecture (#3).** `GET /api/admin/token` (`server.go:368`) hands a permanent, unrevocable, role-bypassing credential to any admin session. One XSS → permanent compromise surviving password rotation. Load-bearing for agent registration + installer, so this is a scoped-token redesign, not a patch. Needs a design conversation.
+5. **Plaintext agent tokens (#6).** `tokens.token` stored raw, matched by equality (`db.go:123`). Store `sha256(token)` instead. Touches registration, installer, and every deployed agent — needs a migration path. Lower urgency: requires DB file access, which already implies compromise.
+6. **Delete `C:\ArcVault\service-run.bat`.** Dead, and actively misleading: it names a stale binary and a credential key that nothing loads. It cost this session a wrong first move.
 7. **Password policy** is length ≥ 8 only. Recommendation: **skip character-class rules** (they produce `Password1!`). If pursuing, a breached-password check at set time is worth more.
 
 ### Known-dirty prod data (cosmetic, non-blocking)
-- `revoked_tokens` has 1 malformed row: `expires_at = '2026-07-08 16:24:02 -0400 EDT'`. Harmless (never matches) but won't be removed until (3) lands.
+- `revoked_tokens` has 1 malformed row: `expires_at = '2026-07-08 16:24:02 -0400 EDT'`. Harmless (never matches) but won't be removed until (1) lands.
 - `tokens` has 2 malformed bootstrap rows dated 2026-06-11 with Go monotonic-clock suffixes (`m=+3632.86...`). These could **never** have validated — if agent bootstrap seemed flaky around then, this was why.
 - `tokens` holds **29 agent tokens with `expires_at = NULL`** across only 3 agents. Non-expiring, plaintext, no revocation path. Suggests tokens accumulate on re-registration rather than being replaced. Worth investigating alongside (6).
 
