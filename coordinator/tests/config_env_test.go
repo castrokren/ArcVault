@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"testing"
@@ -167,6 +168,7 @@ func TestSave_NeverWritesTokensToDisk(t *testing.T) {
 		DatabasePath:   "/tmp/db",
 		AdminToken:     "super-secret-admin-token",
 		JWTSecret:      "super-secret-jwt-secret",
+		CredentialKey:  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		Environment:    "production",
 		AllowedOrigins: []string{"https://example.com"},
 	}
@@ -196,6 +198,15 @@ func TestSave_NeverWritesTokensToDisk(t *testing.T) {
 
 	if savedConfig.JWTSecret != "" {
 		t.Errorf("JWTSecret in saved file = %q, want empty string", savedConfig.JWTSecret)
+	}
+
+	// config.json sits in the same directory as arcvault.db, so a credential key
+	// written here lands next to the ciphertext it protects.
+	if savedConfig.CredentialKey != "" {
+		t.Errorf("CredentialKey in saved file = %q, want empty string", savedConfig.CredentialKey)
+	}
+	if bytes.Contains(data, []byte("0123456789abcdef")) {
+		t.Error("credential key bytes present in config file — omitempty did not drop the field")
 	}
 
 	// Verify other fields are preserved

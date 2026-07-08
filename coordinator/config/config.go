@@ -79,11 +79,15 @@ func GetConfigPath() (string, error) {
 }
 
 func Save(cfg *Config) error {
-	// Create sanitized copy for file storage
-	// Never write AdminToken or JWTSecret to disk
+	// Create sanitized copy for file storage.
+	// Never write AdminToken, JWTSecret, or CredentialKey to disk. The last one
+	// matters most: config.json lives beside arcvault.db, so a key written here
+	// sits next to the ciphertext it protects. CredentialKey is `omitempty`, so
+	// blanking it drops the field entirely.
 	sanitized := *cfg
 	sanitized.AdminToken = ""
 	sanitized.JWTSecret = ""
+	sanitized.CredentialKey = ""
 
 	path, err := GetConfigPath()
 	if err != nil {
@@ -97,8 +101,8 @@ func Save(cfg *Config) error {
 		return fmt.Errorf("could not marshal config: %w", err)
 	}
 
-	log.Printf("[config] Sensitive fields (AdminToken, JWTSecret) cleared from config file")
-	log.Printf("[config] Set ARCVAULT_ADMIN_TOKEN and ARCVAULT_JWT_SECRET environment variables")
+	log.Printf("[config] Sensitive fields (AdminToken, JWTSecret, CredentialKey) cleared from config file")
+	log.Printf("[config] Set ARCVAULT_ADMIN_TOKEN, ARCVAULT_JWT_SECRET and ARCVAULT_CREDENTIAL_KEY environment variables")
 
 	return os.WriteFile(path, data, 0600)
 }
