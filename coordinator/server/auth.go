@@ -757,3 +757,123 @@ func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 }
 
 func strPtr(s string) *string { return &s }
+
+// LoginRequest defines the shape of a login request body
+type LoginRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// Validate checks if LoginRequest is valid
+func (r *LoginRequest) Validate() error {
+	if r.Username == "" {
+		return fmt.Errorf("username is required")
+	}
+	if r.Password == "" {
+		return fmt.Errorf("password is required")
+	}
+	if len(r.Password) < 8 {
+		return fmt.Errorf("password must be 8 or more characters")
+	}
+	return nil
+}
+
+// ChangePasswordRequest defines password change request
+type ChangePasswordRequest struct {
+	OldPassword string `json:"old_password"`
+	NewPassword string `json:"new_password"`
+}
+
+// Validate checks if ChangePasswordRequest is valid
+func (r *ChangePasswordRequest) Validate() error {
+	if r.OldPassword == "" {
+		return fmt.Errorf("old_password is required")
+	}
+	if r.NewPassword == "" {
+		return fmt.Errorf("new_password is required")
+	}
+	if len(r.OldPassword) < 8 {
+		return fmt.Errorf("old_password must be 8 or more characters")
+	}
+	if len(r.NewPassword) < 8 {
+		return fmt.Errorf("new_password must be 8 or more characters")
+	}
+	if r.OldPassword == r.NewPassword {
+		return fmt.Errorf("new_password must be different from old_password")
+	}
+	return nil
+}
+
+// ChangePasswordResponse defines the response after password change
+type ChangePasswordResponse struct {
+	Message string `json:"message"`
+}
+
+// CreateUserRequest defines the request to create a new user
+type CreateUserRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Role     string `json:"role"`
+}
+
+// Validate checks if CreateUserRequest is valid
+func (r *CreateUserRequest) Validate() error {
+	if r.Username == "" {
+		return fmt.Errorf("username is required")
+	}
+	if len(r.Username) < 1 || len(r.Username) > 255 {
+		return fmt.Errorf("username must be 1-255 characters")
+	}
+	if r.Password == "" {
+		return fmt.Errorf("password is required")
+	}
+	if len(r.Password) < 8 {
+		return fmt.Errorf("password must be 8 or more characters")
+	}
+	if r.Role == "" {
+		return fmt.Errorf("role is required")
+	}
+	if r.Role != "admin" && r.Role != "viewer" {
+		return fmt.Errorf("role must be 'admin' or 'viewer'")
+	}
+	return nil
+}
+
+// UserResponse defines the user response (no password hash exposed)
+type UserResponse struct {
+	UserID             int    `json:"user_id"`
+	Username           string `json:"username"`
+	Role               string `json:"role"`
+	MustChangePassword bool   `json:"must_change_password"`
+	CreatedAt          string `json:"created_at"`
+}
+
+// PaginatedUsersResponse wraps paginated users list
+type PaginatedUsersResponse struct {
+	Data       []UserResponse `json:"data"`
+	Pagination PaginationMeta `json:"pagination"`
+}
+
+// UpdateUserRoleRequest defines the request to update a user's role
+type UpdateUserRoleRequest struct {
+	Role string `json:"role"`
+}
+
+// Validate checks if UpdateUserRoleRequest is valid
+func (r *UpdateUserRoleRequest) Validate() error {
+	if r.Role == "" {
+		return fmt.Errorf("role is required")
+	}
+	if r.Role != "admin" && r.Role != "viewer" {
+		return fmt.Errorf("role must be 'admin' or 'viewer'")
+	}
+	return nil
+}
+
+// UpdateUserRoleResponse defines the response after updating user role
+type UpdateUserRoleResponse struct {
+	UserID    int    `json:"user_id"`
+	Username  string `json:"username"`
+	Role      string `json:"role"`
+	UpdatedAt string `json:"updated_at"`
+}
