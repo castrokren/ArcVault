@@ -559,6 +559,14 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Throttle before bcrypt: a stolen token must not allow unlimited
+	// old-password brute force. Keyed per user, reusing the login limiter.
+	pwKey := fmt.Sprintf("pwchange:%d", claims.UserID)
+	if !s.loginKeyAllowed(pwKey) {
+		writeLoginThrottled(w)
+		return
+	}
+
 	var req ChangePasswordRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -578,6 +586,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	// Use service to update password
 	if err := s.userService.UpdatePassword(claims.UserID, req.OldPassword, req.NewPassword); err != nil {
+		s.recordLoginFailure(pwKey)
 		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "auth.change_password", business.ClientIP(r), false, strPtr("user"), nil, strPtr(err.Error()))
 		w.Header().Set("Content-Type", "application/json")
 		if err.Error() == "incorrect password" {
@@ -588,6 +597,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
+	s.recordLoginSuccess(pwKey)
 
 	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "auth.change_password", business.ClientIP(r), true, strPtr("user"), nil, nil)
 
