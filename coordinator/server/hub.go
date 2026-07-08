@@ -142,10 +142,7 @@ var upgrader = websocket.Upgrader{
 // (browsers cannot set headers on WebSocket connections).
 // Dashboard must use JWT — admin token not accepted here (use handleAgentWS for admin access).
 func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
-	if len(token) > 7 && token[:7] == "Bearer " {
-		token = token[7:]
-	}
+	token := bearerToken(r)
 	// Try Sec-WebSocket-Protocol header as fallback (for browser clients).
 	if token == "" {
 		for _, proto := range r.Header["Sec-Websocket-Protocol"] {
@@ -156,7 +153,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// Dashboard connections must use valid JWT token (no admin token).
-	if _, err := ValidateJWT(token, s.cfg.JWTSecret); err != nil {
+	claims, err := ValidateJWT(token, s.cfg.JWTSecret)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	// A revoked (logged-out) token must not be able to open a socket either.
+	if revoked, err := s.tokenRevoked(claims); revoked || err != nil {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -196,19 +199,13 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 // and relays inbound update_progress events to dashboard clients.
 // Auth: agent token (from Authorization header only).
 func (s *Server) handleAgentWS(w http.ResponseWriter, r *http.Request) {
-	token := r.Header.Get("Authorization")
-	if len(token) > 7 && token[:7] == "Bearer " {
-		token = token[7:]
-	}
+	token := bearerToken(r)
 	// Note: ?token= query param removed — tokens must be in Authorization header.
 
 	// Accept both admin token and valid agent tokens.
-	isAdmin := token == s.cfg.AdminToken
-	if !isAdmin {
-		if _, err := s.db.ValidateToken(token); err != nil {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
-			return
-		}
+	if !s.isAdminToken(token) && !s.isAgentToken(token) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
 	}
 
 	agentID := r.URL.Query().Get("agent_id")

@@ -242,21 +242,52 @@ func TestAuditService_ListAuditLogs_Empty(t *testing.T) {
 
 // ---------- ClientIP tests ----------
 
+// withTrustedProxy enables proxy-header trust for the duration of a test.
+func withTrustedProxy(t *testing.T) {
+	t.Helper()
+	SetTrustProxyHeaders(true)
+	t.Cleanup(func() { SetTrustProxyHeaders(false) })
+}
+
 func TestClientIP_ForwardedFor(t *testing.T) {
+	withTrustedProxy(t)
 	req := httptest.NewRequest("GET", "/", nil)
+	// Rightmost entry is the one our own proxy appended.
 	req.Header.Set("X-Forwarded-For", "10.0.0.1, 10.0.0.2")
 	ip := ClientIP(req)
-	if ip != "10.0.0.1" {
-		t.Fatalf("expected 10.0.0.1, got %q", ip)
+	if ip != "10.0.0.2" {
+		t.Fatalf("expected 10.0.0.2, got %q", ip)
 	}
 }
 
 func TestClientIP_ForwardedForSingle(t *testing.T) {
+	withTrustedProxy(t)
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("X-Forwarded-For", "10.0.0.5")
 	ip := ClientIP(req)
 	if ip != "10.0.0.5" {
 		t.Fatalf("expected 10.0.0.5, got %q", ip)
+	}
+}
+
+// Without a configured proxy, forged headers must be ignored entirely.
+func TestClientIP_IgnoresProxyHeadersByDefault(t *testing.T) {
+	req := httptest.NewRequest("GET", "/", nil)
+	req.RemoteAddr = "203.0.113.9:1234"
+	req.Header.Set("X-Forwarded-For", "1.2.3.4")
+	req.Header.Set("X-Real-IP", "5.6.7.8")
+	if ip := ClientIP(req); ip != "203.0.113.9" {
+		t.Fatalf("forged header trusted: got %q, want 203.0.113.9", ip)
+	}
+}
+
+// A client that pre-seeds X-Forwarded-For must not displace the proxy's entry.
+func TestClientIP_ForwardedForSpoofPrefix(t *testing.T) {
+	withTrustedProxy(t)
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set("X-Forwarded-For", "1.2.3.4, 198.51.100.7")
+	if ip := ClientIP(req); ip != "198.51.100.7" {
+		t.Fatalf("spoofed prefix won: got %q, want 198.51.100.7", ip)
 	}
 }
 
@@ -270,6 +301,7 @@ func TestClientIP_RemoteAddr(t *testing.T) {
 }
 
 func TestClientIP_RealIP(t *testing.T) {
+	withTrustedProxy(t)
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("X-Real-IP", "172.16.0.1")
 	ip := ClientIP(req)

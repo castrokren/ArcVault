@@ -2,9 +2,12 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -45,15 +48,32 @@ type RefreshTokenResponse struct {
 // UserClaimsCtxKey is the context key for storing user claims
 type UserClaimsCtxKey struct{}
 
+// newJTI returns a random JWT ID. Every issued token needs one: logout
+// revocation keys the revoked_tokens table on it, and a token without a jti
+// can never be revoked.
+func newJTI() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
 // GenerateJWT creates a signed JWT token with the given claims.
 // Token expires in 4 hours.
 func GenerateJWT(userID int, username, role string, mustChange bool, secret string) (string, error) {
+	jti, err := newJTI()
+	if err != nil {
+		return "", fmt.Errorf("could not generate token id: %w", err)
+	}
+
 	claims := &JWTClaims{
 		UserID:     userID,
 		Username:   username,
 		Role:       role,
 		MustChange: mustChange,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        jti,
 			Subject:   fmt.Sprintf("%d", userID),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(4 * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -86,6 +106,16 @@ func ValidateJWT(tokenString, secret string) (*JWTClaims, error) {
 	return claims, nil
 }
 
+// tokenRevoked reports whether the token behind these claims has been revoked.
+// A token with no jti predates jti issuance and cannot be revoked, so it is
+// treated as revoked rather than trusted.
+func (s *Server) tokenRevoked(claims *JWTClaims) (bool, error) {
+	if claims.ID == "" {
+		return true, nil
+	}
+	return s.db.IsTokenRevoked(claims.ID)
+}
+
 // JWTMiddleware validates JWT tokens in Authorization header.
 // Falls back to admin/agent token validation for backward compatibility.
 // Stores user claims in request context for downstream handlers.
@@ -98,14 +128,17 @@ func (s *Server) JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 			claims, err := ValidateJWT(tokenString, s.cfg.JWTSecret)
 			if err == nil {
-				// Check token revocation
-				if claims.ID != "" {
-					if revoked, err := s.db.IsTokenRevoked(claims.ID); err == nil && revoked {
-						w.Header().Set("Content-Type", "application/json")
-						w.WriteHeader(http.StatusUnauthorized)
-						json.NewEncoder(w).Encode(map[string]string{"error": "token has been revoked"})
-						return
-					}
+				// Revocation check is fail-closed: a token we cannot prove is live
+				// (no jti, or the revocation store is unreachable) is not accepted.
+				revoked, err := s.tokenRevoked(claims)
+				if err != nil {
+					log.Printf("JWTMiddleware: revocation check failed: %v", err)
+				}
+				if revoked || err != nil {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusUnauthorized)
+					json.NewEncoder(w).Encode(map[string]string{"error": "token has been revoked"})
+					return
 				}
 				// JWT is valid, store claims in context
 				ctx := context.WithValue(r.Context(), UserClaimsCtxKey{}, claims)
@@ -116,13 +149,10 @@ func (s *Server) JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		// Fall back to admin/agent token validation (backward compatibility)
 		if authHeader != "" {
-			token := authHeader
-			if strings.HasPrefix(token, "Bearer ") {
-				token = strings.TrimPrefix(token, "Bearer ")
-			}
+			token := bearerToken(r)
 
 			// admin token — always valid (for backward compatibility)
-			if token == s.cfg.AdminToken {
+			if s.isAdminToken(token) {
 				// Inject fake admin claims for compatibility with role-based middleware
 				adminClaims := &JWTClaims{
 					UserID:     0, // Special ID for admin token
@@ -136,7 +166,7 @@ func (s *Server) JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			}
 
 			// check agent token in DB
-			if _, err := s.db.ValidateToken(token); err == nil {
+			if s.isAgentToken(token) {
 				// Agent token is valid, but don't inject claims (agent endpoints handle this differently)
 				next(w, r)
 				return
@@ -220,33 +250,54 @@ func GetUserClaims(r *http.Request) *JWTClaims {
 	return claims
 }
 
-// loginAllowed checks per-IP rate limit for login attempts.
-// Returns false (and writes 429) if the IP is rate-limited or locked out.
-// Call this at the top of handleLogin before any bcrypt work.
-func (s *Server) loginAllowed(w http.ResponseWriter, r *http.Request) bool {
-	ip := r.RemoteAddr
-	// Strip port
-	if idx := strings.LastIndex(ip, ":"); idx != -1 {
-		ip = ip[:idx]
-	}
+// Login throttling is applied to two independent keys per attempt:
+//
+//	ip:<addr>       — stops one host hammering many accounts
+//	user:<username> — stops many hosts hammering one account
+//
+// Per-IP alone left a distributed attack against a known username (admin)
+// effectively unlimited. Both keys share the same budget: 5 attempt burst,
+// refilling 1 per 12s, plus a 10-minute lockout after 10 consecutive failures.
+const (
+	loginBurst       = 5
+	loginLockAfter   = 10
+	loginLockFor     = 10 * time.Minute
+	limiterIdleAfter = 30 * time.Minute
+	limiterMaxKeys   = 4096
+)
 
+// clientIPKey derives the throttle key for the caller's network address.
+// It deliberately uses RemoteAddr, never X-Forwarded-For: a forgeable key
+// would let an attacker sidestep the limit with a fresh header per request.
+func clientIPKey(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	return "ip:" + host
+}
+
+// accountKey derives the throttle key for a username. It is applied whether or
+// not the account exists, so a locked response reveals nothing about existence.
+func accountKey(username string) string {
+	return "user:" + strings.ToLower(strings.TrimSpace(username))
+}
+
+// loginKeyAllowed consumes one token for key. Returns false when the key is
+// locked out or over its rate. Callers must hold no locks.
+func (s *Server) loginKeyAllowed(key string) bool {
 	s.loginLimiterMu.Lock()
-	entry, ok := s.loginLimiters[ip]
+	entry, ok := s.loginLimiters[key]
 	if !ok {
-		// 5 attempts per minute, burst of 5
-		entry = &loginRateLimiter{
-			limiter: rate.NewLimiter(rate.Every(time.Minute/5), 5),
-		}
-		s.loginLimiters[ip] = entry
+		s.pruneLoginLimitersLocked()
+		entry = &loginRateLimiter{limiter: rate.NewLimiter(rate.Every(time.Minute/loginBurst), loginBurst)}
+		s.loginLimiters[key] = entry
 	}
+	entry.lastSeen = time.Now()
 
-	// Check lockout (10-minute lockout after 10 consecutive failures)
 	if entry.lockedAt != nil {
-		if time.Since(*entry.lockedAt) < 10*time.Minute {
+		if time.Since(*entry.lockedAt) < loginLockFor {
 			s.loginLimiterMu.Unlock()
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusTooManyRequests)
-			json.NewEncoder(w).Encode(ErrorResponse{Error: "too many failed attempts, try again later"})
 			return false
 		}
 		// Lockout expired — reset
@@ -255,43 +306,77 @@ func (s *Server) loginAllowed(w http.ResponseWriter, r *http.Request) bool {
 	}
 	s.loginLimiterMu.Unlock()
 
-	if !entry.limiter.Allow() {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusTooManyRequests)
-		json.NewEncoder(w).Encode(ErrorResponse{Error: "too many requests"})
-		return false
-	}
-	return true
+	return entry.limiter.Allow()
 }
 
-// recordLoginFailure increments the failure counter for an IP and locks it out at 10.
-func (s *Server) recordLoginFailure(r *http.Request) {
-	ip := r.RemoteAddr
-	if idx := strings.LastIndex(ip, ":"); idx != -1 {
-		ip = ip[:idx]
+// pruneLoginLimitersLocked drops idle, unlocked entries once the map grows past
+// limiterMaxKeys, so a wide scan of source IPs cannot grow it without bound.
+// Caller must hold loginLimiterMu.
+func (s *Server) pruneLoginLimitersLocked() {
+	if len(s.loginLimiters) < limiterMaxKeys {
+		return
 	}
+	for k, e := range s.loginLimiters {
+		if e.lockedAt == nil && time.Since(e.lastSeen) > limiterIdleAfter {
+			delete(s.loginLimiters, k)
+		}
+	}
+}
+
+// loginAllowed applies the per-IP throttle and writes 429 if it trips.
+// Call before any bcrypt work. The per-account throttle is applied separately
+// once the username is known — see accountAllowed.
+func (s *Server) loginAllowed(w http.ResponseWriter, r *http.Request) bool {
+	if s.loginKeyAllowed(clientIPKey(r)) {
+		return true
+	}
+	writeLoginThrottled(w)
+	return false
+}
+
+// accountAllowed applies the per-account throttle and writes 429 if it trips.
+func (s *Server) accountAllowed(w http.ResponseWriter, username string) bool {
+	if s.loginKeyAllowed(accountKey(username)) {
+		return true
+	}
+	writeLoginThrottled(w)
+	return false
+}
+
+// writeLoginThrottled emits one response shape for both throttles, so the
+// caller cannot tell which limit it hit.
+func writeLoginThrottled(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusTooManyRequests)
+	json.NewEncoder(w).Encode(ErrorResponse{Error: "too many failed attempts, try again later"})
+}
+
+// recordLoginFailure increments the failure counter for a key and locks it at 10.
+func (s *Server) recordLoginFailure(keys ...string) {
 	s.loginLimiterMu.Lock()
 	defer s.loginLimiterMu.Unlock()
-	if entry, ok := s.loginLimiters[ip]; ok {
+	for _, key := range keys {
+		entry, ok := s.loginLimiters[key]
+		if !ok {
+			continue
+		}
 		entry.failures++
-		if entry.failures >= 10 {
+		if entry.failures >= loginLockAfter {
 			now := time.Now()
 			entry.lockedAt = &now
 		}
 	}
 }
 
-// recordLoginSuccess resets the failure counter for an IP on successful login.
-func (s *Server) recordLoginSuccess(r *http.Request) {
-	ip := r.RemoteAddr
-	if idx := strings.LastIndex(ip, ":"); idx != -1 {
-		ip = ip[:idx]
-	}
+// recordLoginSuccess resets the failure counters for the given keys.
+func (s *Server) recordLoginSuccess(keys ...string) {
 	s.loginLimiterMu.Lock()
 	defer s.loginLimiterMu.Unlock()
-	if entry, ok := s.loginLimiters[ip]; ok {
-		entry.failures = 0
-		entry.lockedAt = nil
+	for _, key := range keys {
+		if entry, ok := s.loginLimiters[key]; ok {
+			entry.failures = 0
+			entry.lockedAt = nil
+		}
 	}
 }
 
@@ -328,10 +413,19 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Throttle the target account too, so a distributed attack on one username
+	// is limited even though every request arrives from a different IP.
+	if !s.accountAllowed(w, req.Username) {
+		log.Printf("Login throttled for account %q from %s", req.Username, r.RemoteAddr)
+		return
+	}
+
+	throttleKeys := []string{clientIPKey(r), accountKey(req.Username)}
+
 	// Use service to validate credentials
 	user, err := s.userService.ValidateCredentials(req.Username, req.Password)
 	if err != nil {
-		s.recordLoginFailure(r)
+		s.recordLoginFailure(throttleKeys...)
 		log.Printf("Login failed for username %q from %s", req.Username, r.RemoteAddr)
 		s.auditService.LogAction(nil, req.Username, "", "auth.login", business.ClientIP(r), false, nil, nil, strPtr("invalid credentials"))
 		// Return generic error to prevent user enumeration
@@ -340,7 +434,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid username or password"})
 		return
 	}
-	s.recordLoginSuccess(r)
+	s.recordLoginSuccess(throttleKeys...)
 
 	// Generate JWT token
 	token, err := GenerateJWT(user.ID, user.Username, user.Role, user.MustChangePassword, s.cfg.JWTSecret)
@@ -380,7 +474,15 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		if claims.ExpiresAt != nil {
 			expiry = claims.ExpiresAt.Time
 		}
-		_ = s.db.RevokeToken(claims.ID, expiry)
+		// A logout that fails to revoke leaves the token live — say so rather
+		// than reporting success.
+		if err := s.db.RevokeToken(claims.ID, expiry); err != nil {
+			log.Printf("Logout: failed to revoke token for %q: %v", claims.Username, err)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(ErrorResponse{Error: "logout failed"})
+			return
+		}
 	}
 
 	if claims != nil {

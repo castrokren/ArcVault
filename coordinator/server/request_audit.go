@@ -52,7 +52,8 @@ func (s *Server) requestAuditMiddleware(next http.Handler) http.Handler {
 			ResourceType:  &method,
 			ResourceID:    &path,
 			IPAddress:     ip,
-			Success:       statusCode >= 200 && statusCode < 500,
+			// 4xx is a failed request: logging 401/403 as success hid brute force.
+			Success:       statusCode >= 200 && statusCode < 400,
 			RequestMethod: &method,
 			RequestPath:   &path,
 			StatusCode:    &statusCode,

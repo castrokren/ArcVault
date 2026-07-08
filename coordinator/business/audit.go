@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"arcvault/coordinator/db"
@@ -118,17 +119,28 @@ func (s *AuditService) ListAuditLogs(filter AuditLogFilter) ([]UserAuditEntryDTO
 	return dtos, total, nil
 }
 
+// trustProxyHeaders controls whether ClientIP believes X-Forwarded-For and
+// X-Real-IP. It is off by default: ArcVault normally terminates TLS itself, so
+// those headers are supplied by the caller and let anyone forge the IP recorded
+// in every audit row. Enable it only when a reverse proxy you control sets them.
+var trustProxyHeaders atomic.Bool
+
+// SetTrustProxyHeaders configures ClientIP. Call once at startup from config.
+func SetTrustProxyHeaders(trust bool) { trustProxyHeaders.Store(trust) }
+
 // ClientIP extracts the client IP address from an HTTP request.
-// Checks X-Forwarded-For and X-Real-IP headers first, falls back to RemoteAddr.
+// Falls back to RemoteAddr, which is the only value a client cannot forge.
 func ClientIP(r *http.Request) string {
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		if idx := strings.Index(fwd, ","); idx != -1 {
-			return strings.TrimSpace(fwd[:idx])
+	if trustProxyHeaders.Load() {
+		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+			// Take the rightmost entry: that is the one our own proxy appended.
+			// A client that pre-seeds its own X-Forwarded-For only prepends.
+			parts := strings.Split(fwd, ",")
+			return strings.TrimSpace(parts[len(parts)-1])
 		}
-		return strings.TrimSpace(fwd)
-	}
-	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
-		return strings.TrimSpace(realIP)
+		if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
+			return strings.TrimSpace(realIP)
+		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

@@ -78,6 +78,17 @@ func (d *DB) Conn() *sql.DB {
 	return d.conn
 }
 
+// sqliteTime renders t for storage in a DATETIME column so that it string-compares
+// correctly against SQLite's datetime('now'), which is always UTC.
+//
+// Binding a time.Time directly stores Go's String() form — "2026-07-08 16:24:02
+// -0400 EDT" — in local time. That sorts below any UTC datetime('now') string, so
+// every `expires_at > datetime('now')` check silently reads false. For revoked
+// tokens that fails open: a logged-out token stays valid.
+func sqliteTime(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04:05")
+}
+
 // CreateAgentToken generates a new token for the given agent and stores it.
 // Multiple tokens per agent are allowed — each call creates a new one.
 // For bootstrap tokens (role starting with "bootstrap"), expires_at is set to 1 hour.
@@ -98,7 +109,7 @@ func (d *DB) CreateAgentToken(roleOrAgentID string) (string, error) {
 	if expiresAt != nil {
 		_, err := d.conn.Exec(
 			`INSERT INTO tokens (token, agent_id, role, expires_at) VALUES (?, ?, 'agent', ?)`,
-			token, roleOrAgentID, expiresAt,
+			token, roleOrAgentID, sqliteTime(*expiresAt),
 		)
 		if err != nil {
 			return "", fmt.Errorf("failed to store token: %w", err)
@@ -136,7 +147,7 @@ func (d *DB) ValidateToken(token string) (string, error) {
 func (d *DB) RevokeToken(jti string, expiresAt time.Time) error {
 	_, err := d.conn.Exec(
 		`INSERT OR IGNORE INTO revoked_tokens (jti, expires_at) VALUES (?, ?)`,
-		jti, expiresAt,
+		jti, sqliteTime(expiresAt),
 	)
 	return err
 }

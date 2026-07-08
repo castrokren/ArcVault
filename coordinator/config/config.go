@@ -29,6 +29,10 @@ type Config struct {
 	InstallerDir                     string              `json:"installer_dir,omitempty"`
 	AllowedOrigins                   []string            `json:"allowed_origins,omitempty"`
 	WebSocketOriginValidationEnabled bool                `json:"websocket_origin_validation_enabled"`
+	// TrustProxyHeaders makes the audit log believe X-Forwarded-For / X-Real-IP.
+	// Only enable behind a reverse proxy you control — otherwise any client can
+	// forge the IP recorded against its actions.
+	TrustProxyHeaders bool `json:"trust_proxy_headers,omitempty"`
 }
 
 type NotificationConfig struct {

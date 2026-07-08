@@ -1,10 +1,12 @@
 package server
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,11 +28,12 @@ type tokenCacheEntry struct {
 	expiresAt time.Time
 }
 
-// loginRateLimiter tracks failed attempts per IP.
+// loginRateLimiter tracks failed attempts for one throttle key (an IP or an account).
 type loginRateLimiter struct {
 	limiter  *rate.Limiter
 	failures int
 	lockedAt *time.Time
+	lastSeen time.Time // for pruning idle entries
 }
 
 type Server struct {
@@ -82,6 +85,12 @@ func NewWithFS(cfg *config.Config, database *db.DB, staticFS fs.FS) *Server {
 		auditService:  business.NewAuditService(database),
 		tokenCache:    make(map[string]tokenCacheEntry),
 		loginLimiters: make(map[string]*loginRateLimiter),
+	}
+
+	// Audit logging only believes X-Forwarded-For behind a proxy we control.
+	business.SetTrustProxyHeaders(cfg.TrustProxyHeaders)
+	if cfg.TrustProxyHeaders && !cfg.ExternalTLS {
+		log.Printf("WARNING: trust_proxy_headers is on but external_tls is off — if nothing sits in front of this coordinator, clients can forge audit log IPs")
 	}
 
 	// Initialize WebSocket upgrader with origin validation
@@ -184,7 +193,7 @@ func (s *Server) Start() error {
 
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      s.requestAuditMiddleware(corsMiddleware(s.cfg.AllowedOrigins)(s.router)),
+		Handler:      securityHeaders(s.cfg.ExternalTLS)(s.requestAuditMiddleware(corsMiddleware(s.cfg.AllowedOrigins)(s.router))),
 		ReadTimeout:  60 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -211,6 +220,36 @@ func (s *Server) Start() error {
 	return srv.ListenAndServeTLS(s.cfg.CertFile, s.cfg.KeyFile)
 }
 
+// === Token Helpers ===
+//
+// Every bearer-token check in this package routes through these three helpers.
+// Comparing against s.cfg.AdminToken by hand is what let an absent Authorization
+// header authenticate as admin whenever AdminToken was unset ("" == "").
+
+// bearerToken pulls the token out of the Authorization header, stripping an
+// optional "Bearer " prefix. Returns "" when no token is present.
+func bearerToken(r *http.Request) string {
+	return strings.TrimSpace(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
+}
+
+// isAdminToken reports whether tok is the configured admin token. An empty
+// token — or an empty configured token — never matches. Constant-time compare.
+func (s *Server) isAdminToken(tok string) bool {
+	if tok == "" || s.cfg.AdminToken == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(tok), []byte(s.cfg.AdminToken)) == 1
+}
+
+// isAgentToken reports whether tok is a live, unexpired agent token.
+func (s *Server) isAgentToken(tok string) bool {
+	if tok == "" {
+		return false
+	}
+	_, err := s.db.ValidateToken(tok)
+	return err == nil
+}
+
 // === Middleware Helper Functions ===
 
 // adminRoute wraps a handler with JWT, password change check, and admin role requirement
@@ -225,17 +264,14 @@ func (s *Server) adminRoute(next http.HandlerFunc) http.HandlerFunc {
 // adminTokenRoute allows either admin token (for CLI testing) or JWT with admin role
 func (s *Server) adminTokenRoute(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("Authorization")
+		token := bearerToken(r)
 		if token == "" {
 			http.Error(w, "missing Authorization header", http.StatusUnauthorized)
 			return
 		}
-		if len(token) > 7 && token[:7] == "Bearer " {
-			token = token[7:]
-		}
 
 		// Check for admin token first (for testing/CLI)
-		if token == s.cfg.AdminToken {
+		if s.isAdminToken(token) {
 			next(w, r)
 			return
 		}
@@ -392,6 +428,28 @@ func (s *Server) registerRoutes() {
 	}
 }
 
+// securityHeaders sets the baseline response headers. The dashboard is fully
+// self-hosted (no inline scripts, no external origins), so a strict CSP holds.
+// HSTS is only sent when the connection is actually HTTPS.
+func securityHeaders(externalTLS bool) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h := w.Header()
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("X-Frame-Options", "DENY")
+			h.Set("Referrer-Policy", "no-referrer")
+			h.Set("Content-Security-Policy",
+				"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "+
+					"img-src 'self' data:; font-src 'self' data:; connect-src 'self' wss: ws:; "+
+					"frame-ancestors 'none'; base-uri 'self'; form-action 'self'")
+			if r.TLS != nil || externalTLS {
+				h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -442,23 +500,13 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 // 2. A valid agent token stored in the tokens table
 func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("Authorization")
+		token := bearerToken(r)
 		if token == "" {
 			http.Error(w, "missing Authorization header", http.StatusUnauthorized)
 			return
 		}
-		if len(token) > 7 && token[:7] == "Bearer " {
-			token = token[7:]
-		}
 
-		// admin token — always valid
-		if token == s.cfg.AdminToken {
-			next(w, r)
-			return
-		}
-
-		// check agent token in DB
-		if _, err := s.db.ValidateToken(token); err == nil {
+		if s.isAdminToken(token) || s.isAgentToken(token) {
 			next(w, r)
 			return
 		}
@@ -471,15 +519,8 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 // with viewer+ role. Used for endpoints called by both agents and dashboard users.
 func (s *Server) agentOrViewerRoute(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("Authorization")
-		if len(token) > 7 && token[:7] == "Bearer " {
-			token = token[7:]
-		}
-		if token == s.cfg.AdminToken {
-			next(w, r)
-			return
-		}
-		if _, err := s.db.ValidateToken(token); err == nil {
+		token := bearerToken(r)
+		if s.isAdminToken(token) || s.isAgentToken(token) {
 			next(w, r)
 			return
 		}
@@ -491,15 +532,8 @@ func (s *Server) agentOrViewerRoute(next http.HandlerFunc) http.HandlerFunc {
 // with operator+ role. Used for status updates called by both agents and operators.
 func (s *Server) agentOrOperatorRoute(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("Authorization")
-		if len(token) > 7 && token[:7] == "Bearer " {
-			token = token[7:]
-		}
-		if token == s.cfg.AdminToken {
-			next(w, r)
-			return
-		}
-		if _, err := s.db.ValidateToken(token); err == nil {
+		token := bearerToken(r)
+		if s.isAdminToken(token) || s.isAgentToken(token) {
 			next(w, r)
 			return
 		}
@@ -511,15 +545,8 @@ func (s *Server) agentOrOperatorRoute(next http.HandlerFunc) http.HandlerFunc {
 // with admin role. Used for agent downloads.
 func (s *Server) agentOrAdminRoute(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("Authorization")
-		if len(token) > 7 && token[:7] == "Bearer " {
-			token = token[7:]
-		}
-		if token == s.cfg.AdminToken {
-			next(w, r)
-			return
-		}
-		if _, err := s.db.ValidateToken(token); err == nil {
+		token := bearerToken(r)
+		if s.isAdminToken(token) || s.isAgentToken(token) {
 			next(w, r)
 			return
 		}
@@ -530,16 +557,13 @@ func (s *Server) agentOrAdminRoute(next http.HandlerFunc) http.HandlerFunc {
 // adminMiddleware accepts only the admin token from config.
 func (s *Server) adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("Authorization")
+		token := bearerToken(r)
 		if token == "" {
 			http.Error(w, "missing Authorization header", http.StatusUnauthorized)
 			return
 		}
-		if len(token) > 7 && token[:7] == "Bearer " {
-			token = token[7:]
-		}
 
-		if token != s.cfg.AdminToken {
+		if !s.isAdminToken(token) {
 			http.Error(w, "admin token required", http.StatusForbidden)
 			return
 		}
