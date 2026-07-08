@@ -270,10 +270,12 @@ Location: `C:/ArcVault/config.json` (Windows) or `/etc/arcvault/config.json` (Li
 |-------|----------|-------------|
 | `port` | Yes | HTTP listener port (443 for TLS, 8080 for dev) |
 | `database_path` | Yes | Path to SQLite database file |
-| `admin_token` | Yes | Bootstrap token for initial agent registration |
+| `admin_token` | Yes | Machine credential for local ops scripts (build/deploy, sanity checks). Allowlisted to a few read endpoints + agent endpoints — **not** a general admin master key. |
 | `jwt_secret` | Yes | Secret for signing JWT tokens (change on first login) |
 | `jwt_expiry` | No | JWT token TTL (default: 4h) |
 | `credential_key` | No | 64-char hex for AES-256-GCM credential encryption |
+
+> **Production secret sourcing (2026-07):** `admin_token`, `jwt_secret`, and `credential_key` are read from the environment variables `ARCVAULT_ADMIN_TOKEN`, `ARCVAULT_JWT_SECRET`, and `ARCVAULT_CREDENTIAL_KEY` (on the Windows service, these live in the registry key `HKLM\SYSTEM\CurrentControlSet\Services\arcvault-coordinator\Environment`). The coordinator **blanks all three from `config.json` on write**, so they no longer persist to disk. Set them in the environment, not the file.
 | `environment` | No | "development" or "production" (affects defaults) |
 | `allowed_origins` | No | CORS origins (default: localhost) |
 | `coordinator_id` | No | Unique ID for federation |
@@ -462,8 +464,9 @@ The coordinator self-updates by:
 ### Updating Agents
 
 ```bash
-# Via coordinator API
-curl -X POST https://coordinator:443/api/agents/agent-01/update   -H "Authorization: Bearer <admin-token>"
+# Via coordinator API — requires an admin session JWT (obtain from POST /api/auth/login).
+# The admin token no longer works here: it is not accepted on admin routes.
+curl -X POST https://coordinator:443/api/agents/agent-01/update   -H "Authorization: Bearer <admin-jwt>"
 ```
 
 Or via the dashboard: Agents -> Select agent -> Update.
@@ -485,10 +488,11 @@ coordinator rekey
 
 ### Backing Up the Coordinator
 
-Essential files to back up:
-1. `config.json` (contains credential key and admin token)
-2. `arcvault.db` (all job history, configuration, credentials)
-3. `cert.pem` and `key.pem` (TLS certificate)
+Essential items to back up:
+1. `config.json` (non-secret settings; the admin token, JWT secret, and credential key are **not** here anymore — see below)
+2. The three secrets from the environment (`ARCVAULT_ADMIN_TOKEN`, `ARCVAULT_JWT_SECRET`, `ARCVAULT_CREDENTIAL_KEY` — on Windows, exported from the service registry `Environment` key). **Losing `ARCVAULT_CREDENTIAL_KEY` makes all stored credentials unrecoverable.**
+3. `arcvault.db` (all job history, configuration, encrypted credentials)
+4. `cert.pem` and `key.pem` (TLS certificate)
 
 ```powershell
 # Example backup script
@@ -627,16 +631,16 @@ sc.exe start arcvault-agent
 ### Recovery
 
 #### Lost credential_key
-If the `credential_key` in config.json is lost, all stored credentials become unrecoverable. Create new credentials via the dashboard and re-authorize backup jobs.
+If `ARCVAULT_CREDENTIAL_KEY` (service registry `Environment`) is lost, all stored credentials become unrecoverable. Create new credentials via the dashboard and re-authorize backup jobs.
 
-**Prevention:** Back up `config.json` in a secure location.
+**Prevention:** Back up the `ARCVAULT_CREDENTIAL_KEY` value in a secure location (a secrets manager, not next to `arcvault.db`).
 
 #### Lost admin_token
-Reset by editing config.json directly:
+The admin token is a machine credential for local ops scripts; agents do **not** use it (they authenticate with their own per-agent tokens). To rotate:
 1. Stop the coordinator service
-2. Edit config.json and generate a new admin_token
-3. Update agent-config.yaml on all agents to use the new token
-4. Restart the coordinator and agent services
+2. Set a new value in `ARCVAULT_ADMIN_TOKEN` (service registry `Environment`)
+3. Restart the coordinator service
+4. Update the token in any local ops scripts that read it
 
 ---
 
