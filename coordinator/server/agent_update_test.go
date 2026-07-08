@@ -39,8 +39,10 @@ func TestAgentUpdateEndpointRejectsNonAdmin(t *testing.T) {
 	rr := httptest.NewRecorder()
 	s.router.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusForbidden {
-		t.Errorf("expected 403, got %d", rr.Code)
+	// An agent token is not a valid user JWT, so JWTMiddleware rejects it with 401
+	// before role evaluation (it is no longer accepted as a master admin token).
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rr.Code)
 	}
 }
 

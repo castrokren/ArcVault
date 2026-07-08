@@ -17,7 +17,7 @@ func TestOfflineDetector_marksAgentOfflineAfterTimeout(t *testing.T) {
 	// register an agent
 	body := `{"agent_id":"agent-stale","hostname":"box","os":"windows","version":"0.1.0"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/agents/register", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Authorization", machineAuthHeader())
 	req.Header.Set("Content-Type", "application/json")
 	s.router.ServeHTTP(httptest.NewRecorder(), req)
 
@@ -59,7 +59,7 @@ func TestOfflineDetector_doesNotMarkRecentAgentOffline(t *testing.T) {
 	// register an agent with last_seen = now
 	body := `{"agent_id":"agent-fresh","hostname":"box","os":"windows","version":"0.1.0"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/agents/register", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Authorization", machineAuthHeader())
 	req.Header.Set("Content-Type", "application/json")
 	s.router.ServeHTTP(httptest.NewRecorder(), req)
 
@@ -94,7 +94,7 @@ func TestOfflineDetector_broadcastsEventForEachOfflineAgent(t *testing.T) {
 	for _, id := range []string{"agent-a", "agent-b"} {
 		body := `{"agent_id":"` + id + `","hostname":"box","os":"windows","version":"0.1.0"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/agents/register", bytes.NewBufferString(body))
-		req.Header.Set("Authorization", authHeader())
+		req.Header.Set("Authorization", machineAuthHeader())
 		req.Header.Set("Content-Type", "application/json")
 		s.router.ServeHTTP(httptest.NewRecorder(), req)
 

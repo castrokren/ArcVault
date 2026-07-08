@@ -139,14 +139,19 @@ func (s *Server) StartTokenPruner(interval time.Duration) {
 	}()
 }
 
-// JWTMiddleware validates JWT tokens in Authorization header.
-// Falls back to admin/agent token validation for backward compatibility.
-// Stores user claims in request context for downstream handlers.
+// JWTMiddleware validates a JWT in the Authorization header and stores the
+// claims in the request context for downstream handlers.
+//
+// It does NOT accept the admin or agent token. Those are machine credentials,
+// not user sessions: routes that legitimately accept them wrap the handler in
+// authMiddleware / agentOrViewerRoute / adminTokenRoute, which check the token
+// explicitly. Previously JWTMiddleware fell back to injecting fake admin claims
+// for the admin token, which made it a role-bypassing master key on every
+// user route (user management, roles, credentials); that fallback is gone.
 func (s *Server) JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 
-		// Try JWT first
 		if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
 			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 			claims, err := ValidateJWT(tokenString, s.cfg.JWTSecret)
@@ -166,32 +171,6 @@ func (s *Server) JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
 				// JWT is valid, store claims in context
 				ctx := context.WithValue(r.Context(), UserClaimsCtxKey{}, claims)
 				next(w, r.WithContext(ctx))
-				return
-			}
-		}
-
-		// Fall back to admin/agent token validation (backward compatibility)
-		if authHeader != "" {
-			token := bearerToken(r)
-
-			// admin token — always valid (for backward compatibility)
-			if s.isAdminToken(token) {
-				// Inject fake admin claims for compatibility with role-based middleware
-				adminClaims := &JWTClaims{
-					UserID:     0, // Special ID for admin token
-					Username:   "admin",
-					Role:       "admin",
-					MustChange: false,
-				}
-				ctx := context.WithValue(r.Context(), UserClaimsCtxKey{}, adminClaims)
-				next(w, r.WithContext(ctx))
-				return
-			}
-
-			// check agent token in DB
-			if s.isAgentToken(token) {
-				// Agent token is valid, but don't inject claims (agent endpoints handle this differently)
-				next(w, r)
 				return
 			}
 		}

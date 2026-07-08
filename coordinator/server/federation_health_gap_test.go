@@ -33,7 +33,7 @@ func TestFederationHealthAgentCount(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/federation/health", nil)
-	req.Header.Set("Authorization", "Bearer "+s.cfg.AdminToken)
+	req.Header.Set("Authorization", authHeader())
 	s.router.ServeHTTP(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)

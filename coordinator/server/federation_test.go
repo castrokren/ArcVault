@@ -629,8 +629,10 @@ func TestFedAPI_RequiresAdminToken(t *testing.T) {
 	rr := httptest.NewRecorder()
 	s.router.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for agent token on federation endpoint, got %d", rr.Code)
+	// Agent token is not a valid user JWT: JWTMiddleware rejects it with 401
+	// before role evaluation (no longer accepted as a master admin token).
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for agent token on federation endpoint, got %d", rr.Code)
 	}
 }
 

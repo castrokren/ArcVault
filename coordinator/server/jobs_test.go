@@ -9,7 +9,19 @@ import (
 	"testing"
 )
 
+// authHeader returns an admin *JWT* — the credential for user/JWT-guarded routes
+// (adminRoute/operatorRoute/viewerRoute and the agentOr* variants' JWT fallback).
+// The admin token is no longer a master key on these routes, so tests must
+// authenticate as an admin user. Uses the newTestServer default JWT secret.
 func authHeader() string {
+	token, _ := GenerateJWT(1, "admin", "admin", false, "test-secret")
+	return "Bearer " + token
+}
+
+// machineAuthHeader returns the admin token, for the machine-credential routes
+// that authMiddleware guards (POST /api/jobs/{id}/results and /progress), which
+// accept an agent or admin token but not a user JWT.
+func machineAuthHeader() string {
 	return "Bearer test-token"
 }
 
@@ -617,7 +629,7 @@ func TestPostJobProgress_updatesProgressForRunningJob(t *testing.T) {
 		"status": "running"
 	}`
 	progressReq := httptest.NewRequest(http.MethodPost, "/api/jobs/"+jobID+"/progress", bytes.NewBufferString(progressBody))
-	progressReq.Header.Set("Authorization", authHeader())
+	progressReq.Header.Set("Authorization", machineAuthHeader())
 	progressReq.Header.Set("Content-Type", "application/json")
 	progressRR := httptest.NewRecorder()
 	s.router.ServeHTTP(progressRR, progressReq)
@@ -659,7 +671,7 @@ func TestPostJobProgress_nonexistentJobReturns404(t *testing.T) {
 
 	progressBody := `{"percentage": 50, "logs": [], "status": "running"}`
 	progressReq := httptest.NewRequest(http.MethodPost, "/api/jobs/job-nonexistent/progress", bytes.NewBufferString(progressBody))
-	progressReq.Header.Set("Authorization", authHeader())
+	progressReq.Header.Set("Authorization", machineAuthHeader())
 	progressReq.Header.Set("Content-Type", "application/json")
 	progressRR := httptest.NewRecorder()
 	s.router.ServeHTTP(progressRR, progressReq)

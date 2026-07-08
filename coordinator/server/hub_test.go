@@ -174,7 +174,7 @@ func TestWebSocket_jobResultsEventBroadcastOnResultPost(t *testing.T) {
 	// post result — should trigger broadcast
 	result := `{"exit_code":0,"output":"done"}`
 	req2 := httptest.NewRequest(http.MethodPost, "/api/jobs/"+created.ID+"/results", strings.NewReader(result))
-	req2.Header.Set("Authorization", authHeader())
+	req2.Header.Set("Authorization", machineAuthHeader())
 	req2.Header.Set("Content-Type", "application/json")
 	s.router.ServeHTTP(httptest.NewRecorder(), req2)
 

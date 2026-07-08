@@ -135,7 +135,7 @@ func TestPostJobResults_storesResultAndReturns201(t *testing.T) {
 	// post result
 	result := `{"exit_code":0,"output":"Copied 42 files"}`
 	req2 := httptest.NewRequest(http.MethodPost, "/api/jobs/"+created.ID+"/results", bytes.NewBufferString(result))
-	req2.Header.Set("Authorization", authHeader())
+	req2.Header.Set("Authorization", machineAuthHeader())
 	req2.Header.Set("Content-Type", "application/json")
 	rr2 := httptest.NewRecorder()
 	s.router.ServeHTTP(rr2, req2)
@@ -177,7 +177,7 @@ func TestPostJobResults_nonZeroExitCode(t *testing.T) {
 
 	result := `{"exit_code":1,"output":"ERROR: source path not found"}`
 	req2 := httptest.NewRequest(http.MethodPost, "/api/jobs/"+created.ID+"/results", bytes.NewBufferString(result))
-	req2.Header.Set("Authorization", authHeader())
+	req2.Header.Set("Authorization", machineAuthHeader())
 	req2.Header.Set("Content-Type", "application/json")
 	rr2 := httptest.NewRecorder()
 	s.router.ServeHTTP(rr2, req2)
@@ -198,7 +198,7 @@ func TestPostJobResults_unknownJobIDReturns404(t *testing.T) {
 
 	result := `{"exit_code":0,"output":"done"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs/does-not-exist/results", bytes.NewBufferString(result))
-	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Authorization", machineAuthHeader())
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	s.router.ServeHTTP(rr, req)

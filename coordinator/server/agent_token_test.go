@@ -41,7 +41,7 @@ func TestAgentToken_agentCanHeartbeatWithOwnToken(t *testing.T) {
 	// create agent and its token
 	body := `{"agent_id":"agent-01","hostname":"box","os":"windows","version":"0.1.0"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/agents/register", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Authorization", machineAuthHeader())
 	req.Header.Set("Content-Type", "application/json")
 	s.router.ServeHTTP(httptest.NewRecorder(), req)
 

@@ -286,6 +286,21 @@ func (s *Server) adminTokenRoute(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// adminTokenViewerRoute allows either the admin token (for local ops scripts —
+// e.g. rebuild-and-restart.ps1 / check-sanity.ps1 reading GET /api/agents and
+// GET /api/version) or a JWT with viewer+ role. Since JWTMiddleware no longer
+// treats the admin token as a master key, these machine reads must accept it
+// explicitly. Read-only endpoints only.
+func (s *Server) adminTokenViewerRoute(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.isAdminToken(bearerToken(r)) {
+			next(w, r)
+			return
+		}
+		s.viewerRoute(next)(w, r)
+	}
+}
+
 // operatorRoute wraps a handler with JWT, password change check, and operator+ role requirement
 func (s *Server) operatorRoute(next http.HandlerFunc) http.HandlerFunc {
 	return s.JWTMiddleware(
@@ -313,7 +328,7 @@ func (s *Server) authRoute(next http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) registerRoutes() {
 	s.router.HandleFunc("GET /health", s.handleHealth)
-	s.router.HandleFunc("GET /api/version", s.viewerRoute(s.handleVersion))
+	s.router.HandleFunc("GET /api/version", s.adminTokenViewerRoute(s.handleVersion))
 	s.router.HandleFunc("GET /ws", s.handleWS)
 	s.router.HandleFunc("GET /ws/agent", s.handleAgentWS)
 	s.router.HandleFunc("GET /ws/federation", s.fedHub.HandleSubConnect)
@@ -349,7 +364,7 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("GET /api/jobs/{id}/progress", s.viewerRoute(s.handleGetProgress))
 	s.router.HandleFunc("GET /api/jobs/{id}/logs", s.viewerRoute(s.handleGetJobLogs))
 	// Agent list (viewer+) and delete (admin only)
-	s.router.HandleFunc("GET /api/agents", s.viewerRoute(s.handleListAgents))
+	s.router.HandleFunc("GET /api/agents", s.adminTokenViewerRoute(s.handleListAgents))
 	s.router.HandleFunc("DELETE /api/agents/{id}", s.adminRoute(s.handleDeleteAgent))
 
 	// Credential profiles endpoints
@@ -403,7 +418,7 @@ func (s *Server) registerRoutes() {
 
 	// Admin utility endpoints
 	s.router.HandleFunc("GET /api/admin/bootstrap.ps1", s.adminRoute(s.handleBootstrapScript))
-	s.router.HandleFunc("GET /downloads/installer", s.adminRoute(s.handleDownloadInstaller))
+	s.router.HandleFunc("GET /downloads/installer", s.adminTokenRoute(s.handleDownloadInstaller))
 
 	// Downloads (agent.exe auth: agent token OR admin token)
 	s.router.HandleFunc("GET /downloads/agent.exe", s.agentOrAdminRoute(s.handleDownloadAgent))

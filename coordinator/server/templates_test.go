@@ -35,6 +35,7 @@ func newTemplateTestServer(t *testing.T) *Server {
 	cfg := &config.Config{
 		Port:       8080,
 		AdminToken: "test-token",
+		JWTSecret:  "test-secret",
 	}
 	return NewWithFS(cfg, database, nil)
 }
@@ -50,7 +51,7 @@ func doTemplateRequest(t *testing.T, srv *Server, method, path string, body any)
 		}
 	}
 	req := httptest.NewRequest(method, path, &buf)
-	req.Header.Set("Authorization", "Bearer test-token")
+	req.Header.Set("Authorization", authHeader())
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 

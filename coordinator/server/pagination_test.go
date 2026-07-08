@@ -60,7 +60,7 @@ func registerAgent(t *testing.T, s *Server, agentID, hostname string) {
 	t.Helper()
 	body := `{"agent_id":"` + agentID + `","hostname":"` + hostname + `","os":"linux","arch":"amd64","version":"0.1.0"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/agents/register", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Authorization", machineAuthHeader())
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	s.router.ServeHTTP(rr, req)
@@ -93,7 +93,7 @@ func postJobResult(t *testing.T, s *Server, jobID string) {
 	t.Helper()
 	body := `{"exit_code":0,"output":"done"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/jobs/"+jobID+"/results", bytes.NewBufferString(body))
-	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Authorization", machineAuthHeader())
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	s.router.ServeHTTP(rr, req)

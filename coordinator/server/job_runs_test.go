@@ -58,7 +58,7 @@ func TestGetJobRuns_returnsRunsForJob(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		result := `{"exit_code":0,"output":"done"}`
 		req2 := httptest.NewRequest(http.MethodPost, "/api/jobs/"+created.ID+"/results", bytes.NewBufferString(result))
-		req2.Header.Set("Authorization", authHeader())
+		req2.Header.Set("Authorization", machineAuthHeader())
 		req2.Header.Set("Content-Type", "application/json")
 		s.router.ServeHTTP(httptest.NewRecorder(), req2)
 	}
@@ -97,7 +97,7 @@ func TestGetJobRuns_runsContainCorrectFields(t *testing.T) {
 
 	result := `{"exit_code":1,"output":"something went wrong"}`
 	req2 := httptest.NewRequest(http.MethodPost, "/api/jobs/"+created.ID+"/results", bytes.NewBufferString(result))
-	req2.Header.Set("Authorization", authHeader())
+	req2.Header.Set("Authorization", machineAuthHeader())
 	req2.Header.Set("Content-Type", "application/json")
 	s.router.ServeHTTP(httptest.NewRecorder(), req2)
 
@@ -164,7 +164,7 @@ func TestGetJobRuns_onlyReturnsRunsForRequestedJob(t *testing.T) {
 
 	result := `{"exit_code":0,"output":"done"}`
 	req2 := httptest.NewRequest(http.MethodPost, "/api/jobs/"+jobIDs[0]+"/results", bytes.NewBufferString(result))
-	req2.Header.Set("Authorization", authHeader())
+	req2.Header.Set("Authorization", machineAuthHeader())
 	req2.Header.Set("Content-Type", "application/json")
 	s.router.ServeHTTP(httptest.NewRecorder(), req2)
 
