@@ -11,10 +11,10 @@ func TestCreateUserInput_validate(t *testing.T) {
 		input   CreateUserInput
 		wantErr string
 	}{
-		{CreateUserInput{"", "pass", "admin"}, "username is required"},
+		{CreateUserInput{"", "passW0rd!", "admin"}, "username is required"},
 		{CreateUserInput{"alice", "", "admin"}, "password is required"},
-		{CreateUserInput{"alice", "pass", ""}, "role is required"},
-		{CreateUserInput{"alice", "pass", "superuser"}, "invalid role: must be 'admin' or 'viewer'"},
+		{CreateUserInput{"alice", "passW0rd!", ""}, "role is required"},
+		{CreateUserInput{"alice", "passW0rd!", "superuser"}, "invalid role: must be 'admin' or 'viewer'"},
 	}
 
 	for _, tc := range cases {
@@ -27,7 +27,7 @@ func TestCreateUserInput_validate(t *testing.T) {
 
 func TestCreateUserInput_validInputPasses(t *testing.T) {
 	for _, role := range []string{"admin", "viewer"} {
-		input := CreateUserInput{Username: "alice", Password: "secret", Role: role}
+		input := CreateUserInput{Username: "alice", Password: "Secret1!x", Role: role}
 		if err := input.Validate(); err != nil {
 			t.Errorf("expected valid for role=%q, got %v", role, err)
 		}
@@ -38,7 +38,7 @@ func TestCreateUser_duplicateUsernameReturnsError(t *testing.T) {
 	mock := newMockUserQueries()
 	svc := NewUserService(mock)
 
-	input := &CreateUserInput{Username: "alice", Password: "secret", Role: "admin"}
+	input := &CreateUserInput{Username: "alice", Password: "Secret1!x", Role: "admin"}
 	svc.CreateUser(input)
 
 	_, err := svc.CreateUser(input)
@@ -51,7 +51,7 @@ func TestCreateUser_success(t *testing.T) {
 	mock := newMockUserQueries()
 	svc := NewUserService(mock)
 
-	user, err := svc.CreateUser(&CreateUserInput{Username: "alice", Password: "secret", Role: "viewer"})
+	user, err := svc.CreateUser(&CreateUserInput{Username: "alice", Password: "Secret1!x", Role: "viewer"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestValidateCredentials_wrongPasswordFails(t *testing.T) {
 	mock := newMockUserQueries()
 	svc := NewUserService(mock)
 
-	svc.CreateUser(&CreateUserInput{Username: "alice", Password: "correct", Role: "admin"})
+	svc.CreateUser(&CreateUserInput{Username: "alice", Password: "Correct1!", Role: "admin"})
 
 	_, err := svc.ValidateCredentials("alice", "wrong")
 	if err == nil || err.Error() != "authentication failed" {
@@ -91,9 +91,9 @@ func TestValidateCredentials_success(t *testing.T) {
 	mock := newMockUserQueries()
 	svc := NewUserService(mock)
 
-	svc.CreateUser(&CreateUserInput{Username: "alice", Password: "correct", Role: "admin"})
+	svc.CreateUser(&CreateUserInput{Username: "alice", Password: "Correct1!", Role: "admin"})
 
-	user, err := svc.ValidateCredentials("alice", "correct")
+	user, err := svc.ValidateCredentials("alice", "Correct1!")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -106,9 +106,9 @@ func TestUpdatePassword_wrongOldPasswordFails(t *testing.T) {
 	mock := newMockUserQueries()
 	svc := NewUserService(mock)
 
-	u, _ := svc.CreateUser(&CreateUserInput{Username: "alice", Password: "old", Role: "admin"})
+	u, _ := svc.CreateUser(&CreateUserInput{Username: "alice", Password: "OldPass1!", Role: "admin"})
 
-	err := svc.UpdatePassword(u.ID, "wrong-old", "new-pass")
+	err := svc.UpdatePassword(u.ID, "wrong-old", "NewPass1!")
 	if err == nil || err.Error() != "incorrect password" {
 		t.Errorf("expected 'incorrect password', got %v", err)
 	}
@@ -118,15 +118,15 @@ func TestUpdatePassword_success(t *testing.T) {
 	mock := newMockUserQueries()
 	svc := NewUserService(mock)
 
-	u, _ := svc.CreateUser(&CreateUserInput{Username: "alice", Password: "old", Role: "admin"})
+	u, _ := svc.CreateUser(&CreateUserInput{Username: "alice", Password: "OldPass1!", Role: "admin"})
 
-	if err := svc.UpdatePassword(u.ID, "old", "new-pass"); err != nil {
+	if err := svc.UpdatePassword(u.ID, "OldPass1!", "NewPass1!"); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	// Verify the stored hash now matches new password
 	stored := mock.users["alice"]
-	if err := bcrypt.CompareHashAndPassword([]byte(stored.PasswordHash), []byte("new-pass")); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(stored.PasswordHash), []byte("NewPass1!")); err != nil {
 		t.Error("expected stored hash to match new password")
 	}
 }
@@ -135,7 +135,7 @@ func TestUpdateUserRole_invalidRole(t *testing.T) {
 	mock := newMockUserQueries()
 	svc := NewUserService(mock)
 
-	u, _ := svc.CreateUser(&CreateUserInput{Username: "alice", Password: "pass", Role: "admin"})
+	u, _ := svc.CreateUser(&CreateUserInput{Username: "alice", Password: "passW0rd!", Role: "admin"})
 
 	err := svc.UpdateUserRole(u.ID, "superuser")
 	if err == nil || err.Error() != "invalid role: must be 'admin' or 'viewer'" {
@@ -156,7 +156,7 @@ func TestDeleteUser_success(t *testing.T) {
 	mock := newMockUserQueries()
 	svc := NewUserService(mock)
 
-	u, _ := svc.CreateUser(&CreateUserInput{Username: "alice", Password: "pass", Role: "admin"})
+	u, _ := svc.CreateUser(&CreateUserInput{Username: "alice", Password: "passW0rd!", Role: "admin"})
 
 	if err := svc.DeleteUser(u.ID); err != nil {
 		t.Fatalf("unexpected error: %v", err)

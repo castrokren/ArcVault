@@ -143,6 +143,23 @@ func (d *DB) ValidateToken(token string) (string, error) {
 	return role, nil
 }
 
+// GetAgentIDByToken validates a token and returns the associated agent_id.
+// Returns ("", nil) if the token exists but has no agent_id (e.g., bootstrap tokens).
+func (d *DB) GetAgentIDByToken(token string) (string, error) {
+	var agentID sql.NullString
+	err := d.conn.QueryRow(
+		`SELECT agent_id FROM tokens WHERE token = ? AND (expires_at IS NULL OR expires_at > datetime('now'))`,
+		token,
+	).Scan(&agentID)
+	if err == sql.ErrNoRows {
+		return "", fmt.Errorf("invalid or expired token")
+	}
+	if err != nil {
+		return "", fmt.Errorf("token lookup failed: %w", err)
+	}
+	return agentID.String, nil
+}
+
 // RevokeToken marks a JWT as revoked by its JTI (JWT ID).
 func (d *DB) RevokeToken(jti string, expiresAt time.Time) error {
 	_, err := d.conn.Exec(

@@ -45,6 +45,11 @@ func (input *CreateUserInput) Validate() error {
 	if input.Password == "" {
 		return fmt.Errorf("password is required")
 	}
+	if len(input.Password) < 8 {
+		return fmt.Errorf("password must be 8 or more characters")
+	}
+	// Password complexity validation is handled by the HTTP layer in auth.go
+	// This is a basic sanity check for service-layer callers.
 	if input.Role == "" {
 		return fmt.Errorf("role is required")
 	}

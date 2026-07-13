@@ -1,0 +1,1137 @@
+{
+  "phase": "threat-modeling",
+  "timestamp": "2026-07-13T16:30:00Z",
+  "framework": "STRIDE",
+  "components": [
+    {
+      "name": "API Gateway (REST)",
+      "type": "api_endpoint",
+      "files": [
+        "coordinator/server/server.go",
+        "coordinator/server/auth.go",
+        "coordinator/server/jobs.go",
+        "coordinator/server/credentials.go",
+        "coordinator/server/federation.go",
+        "coordinator/server/agents.go",
+        "coordinator/server/groups.go",
+        "coordinator/server/templates.go"
+      ],
+      "exposure": "high",
+      "trust_boundaries": ["external", "internal"],
+      "threats": {
+        "spoofing": {
+          "applicable": true,
+          "findings": [
+            "Static admin token in config for test/dev only (long-lived, non-rotatable bearer credential)",
+            "Agent tokens embedded in WebSocket URL query string (ws.go:222) — exposed in server logs and Referer headers",
+            "JWT uses HMAC-SHA256 with a shared secret — no public-key signature, secret stored in env var (or config.json for test/dev only)",
+            "Agent tokens created with no expiry by default (db.go:118-125); bootstrap tokens expire in 1 hour but regular tokens are permanent"
+          ],
+          "mitigations": [
+            "Constant-time comparison for admin token (subtle.ConstantTimeCompare)",
+            "JWT revocation on logout (revoked_tokens table)",
+            "Token pruner removes expired revoked tokens every hour",
+            "Agent token validation checks expires_at column"
+          ],
+          "gaps": [
+            "No multi-factor authentication for any user",
+            "No admin token rotation mechanism without restart",
+            "Agent token still passed via URL query parameter in agent WebSocket connection (ws.go:222)"
+          ]
+        },
+        "tampering": {
+          "applicable": true,
+          "findings": [
+            "CORS middleware allows empty-origin requests (non-CORS) unconditionally — no origin check for same-origin requests",
+            "WebSocket message processing has no integrity verification beyond TLS transport",
+            "JWT body is base64-encoded, not encrypted — claims are readable by any intermediary",
+            "No request body size limits enforced globally on API handlers"
+          ],
+          "mitigations": [
+            "securityHeaders middleware sets X-Content-Type-Options: nosniff, X-Frame-Options: DENY",
+            "CSP header restricts script/style sources to 'self'",
+            "TLS available for transport-layer integrity (optional in production)",
+            "All HTTP methods explicitly registered per route (Go 1.22 routing)"
+          ],
+          "gaps": [
+            "No request body size limits on POST/PUT endpoints (potential for large payload attacks)",
+            "No request signing or HMAC for API requests beyond bearer tokens",
+            "CORS allows requests from any origin when Origin header is absent"
+          ]
+        },
+        "repudiation": {
+          "applicable": true,
+          "findings": [
+            "User audit logging exists (user_audit_log table) but agent-side command audit (command_audit_log) is never populated by the executor",
+            "CommandAuditor callback is defined but never wired into RealExecutor"
+          ],
+          "mitigations": [
+            "Comprehensive user audit trail for all auth/user/credential/job operations",
+            "Audit log indexes on action, user_id, created_at, resource_type/resource_id",
+            "HTTP request audit middleware logs method, path, status, latency"
+          ],
+          "gaps": [
+            "CommandAuditor exists (executor_audit.go) but RealExecutor never calls it — zero agent-side command audit",
+            "No cryptographic audit log chaining or immutable log store (SQLite rows can be modified directly)",
+            "No centralized SIEM integration for audit events"
+          ]
+        },
+        "information_disclosure": {
+          "applicable": true,
+          "findings": [
+            "Encrypted credential profiles decrypted and returned to any agent via GET /api/jobs (jobs.go:221-234) — single compromised token leaks all credentials",
+            "Verbose error messages leak internal state (job_results.go:58, scheduler.go various)",
+            "Job runner logs source/dest paths in plaintext (runner.go:211) — may contain sensitive share paths",
+            "Full job output (including potential backup data) stored in DB and returned via API",
+            "Agent token visible in WebSocket URL query parameter (ws.go:222)",
+            "Sensitive paths logged on job output (first 512 bytes logged at runner.go:229)",
+            "Federation tokens stored in plaintext in federation table (db.go:440-441)"
+          ],
+          "mitigations": [
+            "Credential profiles not returned in list endpoint (metadata only)",
+            "AES-256-GCM encryption for stored credential data",
+            "CSP restricts connect-src to self/wss/ws only",
+            "Security headers prevent content-type sniffing and framing",
+            "HSTS when TLS is configured"
+          ],
+          "gaps": [
+            "No credential scoping — any agent token can decrypt all credential profiles referenced by any job",
+            "No output sanitization before log storage",
+            "Federation tokens stored in SQLite without encryption"
+          ]
+        },
+        "denial_of_service": {
+          "applicable": true,
+          "findings": [
+            "No rate limiting on WebSocket message reads (hub.go:190 — unbounded read loop)",
+            "Scheduler runs N+1 queries (scheduler.go:74-139) — 5,500+ queries per minute at 500 jobs",
+            "Agent polling has no jitter (runner.go:95 — fixed 30s interval), causing thundering herd",
+            "No global request rate limiting on API endpoints",
+            "WebSocket Broadcast locks mutex then writes to potentially slow connections (5s write deadline mitigates partially)",
+            "loginRateLimiter map capped at 4096 keys but per-endpoint rate limiting absent"
+          ],
+          "mitigations": [
+            "Login rate limiting (per-IP + per-account, burst 5, lockout at 10 failures, 10-min lockout)",
+            "Password change rate limiting (per-user)",
+            "Write deadline on WebSocket broadcasts (5 seconds)",
+            "HTTP timeouts: Read 60s, Write 60s, Idle 120s",
+            "SQLite WAL mode + busy_timeout=5000 for concurrency"
+          ],
+          "gaps": [
+            "No per-connection rate limiting on WebSocket message consumption",
+            "No global API rate limiting (e.g. token bucket per endpoint)",
+            "Scheduler N+1 query pattern at scale (500+ jobs causes 5.5s+ DB lock)",
+            "Agent polling lacks jitter — coordinated thundering herd at 30s boundaries"
+          ]
+        },
+        "elevation_of_privilege": {
+          "applicable": true,
+          "findings": [
+            "Agent registration (POST /api/agents/register) uses authMiddleware (any agent token) — compromised token registers rogue agents",
+            "No ownership verification on job status updates (PATCH /api/jobs/{id}/status) — any agent can update any job's status",
+            "No ownership verification on job results posting (POST /api/jobs/{id}/results) — any agent can post results for any job",
+            "User management routes use JWTMiddleware instead of adminRoute (server.go:344-347) — defense-in-depth gap",
+            "Job list returns ALL credential profiles decrypted when agent token is used (jobs.go:220-235)"
+          ],
+          "mitigations": [
+            "adminRoute wrapper consistently used on admin endpoints (groups, federation, alert rules, templates, updates)",
+            "Role-based access control with admin/operator/viewer roles",
+            "RequirePasswordChange middleware blocks actions until password changed",
+            "JWTMiddleware no longer accepts admin token as master key",
+            "Audit logging on all sensitive operations"
+          ],
+          "gaps": [
+            "Agent job ownership not verified on status update or results posting (CWE-639)",
+            "Agent registration not scoped to own identity",
+            "User management routes use inconsistent protection (JWT instead of adminRoute)",
+            "Credential profile access not scoped to per-agent jobs"
+          ]
+        }
+      }
+    },
+    {
+      "name": "WebSocket Hub",
+      "type": "network",
+      "files": [
+        "coordinator/server/hub.go",
+        "coordinator/server/federation_hub.go"
+      ],
+      "exposure": "high",
+      "trust_boundaries": ["external", "internal"],
+      "threats": {
+        "spoofing": {
+          "applicable": true,
+          "findings": [
+            "Dashboard WebSocket (/ws) accepts JWT via Sec-WebSocket-Protocol header — browser-origin WS cannot set Authorization header",
+            "Agent WebSocket (/ws/agent) accepts admin token OR agent token — agent token in query parameter is leakable",
+            "Federation WebSocket (/ws/federation) uses token-based auth from config"
+          ],
+          "mitigations": [
+            "WebSocket CheckOrigin validates against AllowedOrigins whitelist",
+            "Kill-switch env var for emergency rollback of origin validation",
+            "Production safety check prevents startup with origin validation disabled",
+            "Agent token via header only (query param removed server-side but agent still sends it in URL)"
+          ],
+          "gaps": [
+            "Agent WebSocket token still sent as query parameter by agent (ws.go:222)",
+            "No per-connection authentication refresh — token validity checked only at connect time",
+            "WebSocket origin validation uses exact string match, not pattern/regex"
+          ]
+        },
+        "tampering": {
+          "applicable": true,
+          "findings": [
+            "WebSocket messages are plain JSON — no message-level integrity beyond TLS",
+            "Agent progress events are relayed to all dashboard clients with no filtering"
+          ],
+          "mitigations": [
+            "TLS transport layer protects WebSocket messages in transit",
+            "Progress events are read-only broadcasts (no command injection through progress)"
+          ],
+          "gaps": [
+            "No WebSocket message-level authentication for individual messages",
+            "Broadcast events include all job metadata (id, status, agent_id, source_path) to all connected clients"
+          ]
+        },
+        "repudiation": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "WebSocket connections are ephemeral — no audit trail for individual WS messages",
+            "Agent actions through WebSocket (update/rollback/cancel) are logged by the handler functions"
+          ],
+          "gaps": [
+            "No message-level audit logging for WebSocket communications"
+          ]
+        },
+        "information_disclosure": {
+          "applicable": true,
+          "findings": [
+            "All dashboard WebSocket clients receive ALL broadcast events — no per-client filtering",
+            "Progress updates from one agent relayed to all dashboard clients (hub.go:248)",
+            "Job metadata broadcast includes agent_id, status, source_path in event payloads"
+          ],
+          "mitigations": [
+            "Only dashboard (authenticated JWT) clients receive broadcasts — agent connections do not receive dashboard broadcasts",
+            "Agent-specific messages sent via SendToAgent (point-to-point)"
+          ],
+          "gaps": [
+            "No per-client access control on WebSocket broadcasts — any authenticated dashboard user sees all events",
+            "No granular event type filtering per client role"
+          ]
+        },
+        "denial_of_service": {
+          "applicable": true,
+          "findings": [
+            "Hub read loop has no per-connection rate limiting (hub.go:190 — unbounded for loop)",
+            "Broadcast mutex held during client snapshot — slow consumers cause write deadlines but mutex contention still possible",
+            "No maximum concurrent connection limit on WebSocket endpoint",
+            "Agent connection map indexed by agent_id — duplicate connections overwrite previous entry silently"
+          ],
+          "mitigations": [
+            "5-second write deadline on broadcast messages",
+            "Dead client removal during broadcast"
+          ],
+          "gaps": [
+            "No per-connection read rate limiting",
+            "No max concurrent WebSocket connections",
+            "No connection admission control"
+          ]
+        },
+        "elevation_of_privilege": {
+          "applicable": true,
+          "findings": [
+            "Agent WebSocket upgrade accepts admin token — admin can impersonate any agent by setting agent_id query param",
+            "No verification that the agent_id in query matches the authenticated token's allowed agents"
+          ],
+          "mitigations": [
+            "Dashboard WS requires JWT (no admin token bypass) per auth.go JWTMiddleware",
+            "Agent connections only receive agent-directed messages"
+          ],
+          "gaps": [
+            "Admin token grants full impersonation of any agent on WebSocket",
+            "No agent identity verification against the token's scoped agent_id"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Auth Module (JWT + Token)",
+      "type": "auth_module",
+      "files": [
+        "coordinator/server/auth.go",
+        "coordinator/server/server.go"
+      ],
+      "exposure": "high",
+      "trust_boundaries": ["external", "internal"],
+      "threats": {
+        "spoofing": {
+          "applicable": true,
+          "findings": [
+            "JWT secret stored in env var (or config.json for test/dev only) — if config file readable, attackers can forge arbitrary tokens",
+            "Admin token is a static, non-rotatable bearer credential with full access (test/dev uses config.json; production uses env var)",
+            "Agent tokens are long-lived (no expiry by default) in tokens table"
+          ],
+          "mitigations": [
+            "JWT includes jti for revocation support",
+            "Token revocation on logout (revoked_tokens table)",
+            "Token pruner GC runs hourly",
+            "Bootstrap tokens expire in 1 hour",
+            "bcrypt password hashing with bcrypt.DefaultCost",
+            "Login rate limiting (per-IP + per-account)"
+          ],
+          "gaps": [
+            "JWT secret rotation requires server restart",
+            "No refresh token rotation or token family tracking",
+            "Agent tokens lack mandatory expiry"
+          ]
+        },
+        "tampering": {
+          "applicable": true,
+          "findings": [
+            "JWT algorithm not pinned to HS256 in middleware (ValidateJWT checks signing method but only after ParseWithClaims)"
+          ],
+          "mitigations": [
+            "ValidateJWT checks token.Method is HMAC before accepting",
+            "JWT claims validated (expiry, issuer not checked but Subject mapped to user_id)",
+            "Constant-time comparison for admin token"
+          ],
+          "gaps": [
+            "JWT 'alg' header is only verified after parsing — theoretical JWT algorithm confusion if library behavior changes"
+          ]
+        },
+        "repudiation": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Auth events (login, logout, password change) are all logged to user_audit_log"
+          ],
+          "gaps": []
+        },
+        "information_disclosure": {
+          "applicable": true,
+          "findings": [
+            "JWT tokens are not encrypted — payload (user_id, username, role) readable by any party with token access",
+            "Login response returns user_id in addition to token"
+          ],
+          "mitigations": [
+            "JWTs are short-lived (4 hours)",
+            "No sensitive data embedded in JWT claims beyond username and role"
+          ],
+          "gaps": [
+            "JWT payload is base64-encoded, not encrypted — should not contain sensitive identifiers"
+          ]
+        },
+        "denial_of_service": {
+          "applicable": true,
+          "findings": [
+            "bcrypt verification on every login is CPU-intensive — high-volume login attempts could CPU-starve the server",
+            "No rate limiting on JWT refresh endpoint"
+          ],
+          "mitigations": [
+            "Login rate limiting (ip + user level) reduces bcrypt exposure",
+            "loginLimiter map capped at 4096 entries"
+          ],
+          "gaps": [
+            "No rate limiting on /api/auth/refresh endpoint",
+            "No account lockout notification/alerting"
+          ]
+        },
+        "elevation_of_privilege": {
+          "applicable": true,
+          "findings": [
+            "Default admin credentials (admin/changeme) with must_change_password flag — if not changed post-deployment, trivial admin access",
+            "User management routes use JWTMiddleware instead of adminRoute (redundant role checks in handler bodies but inconsistent pattern)"
+          ],
+          "mitigations": [
+            "Default admin forced to change password on first login",
+            "EnsureDefaultAdmin only runs if no users exist",
+            "role-based middleware (RequireRole) enforced on all admin/operator/viewer routes",
+            "JWTMiddleware no longer accepts admin token as role bypass",
+            "Prevents deleting own account"
+          ],
+          "gaps": [
+            "Weak password policy (8 chars minimum, no complexity requirements)",
+            "No brute-force protection on user enumeration via login timing side-channel"
+          ]
+        }
+      }
+    },
+    {
+      "name": "SQLite Database",
+      "type": "data_store",
+      "files": [
+        "coordinator/db/db.go",
+        "coordinator/db/users.go",
+        "coordinator/db/credentials.go",
+        "coordinator/db/jobs.go",
+        "coordinator/db/agents.go",
+        "coordinator/db/audit.go"
+      ],
+      "exposure": "low",
+      "trust_boundaries": ["data"],
+      "threats": {
+        "spoofing": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "SQLite is a local file — access controlled by filesystem permissions"
+          ],
+          "gaps": []
+        },
+        "tampering": {
+          "applicable": true,
+          "findings": [
+            "SQLite database file is not encrypted at rest — any filesystem access reads all data including federation tokens, audit logs, job configurations",
+            "Federation tokens stored in plaintext in federation table"
+          ],
+          "mitigations": [
+            "Credential profiles encrypted with AES-256-GCM (encrypted_data BLOB)",
+            "Password hashes stored as bcrypt"
+          ],
+          "gaps": [
+            "No TDE (transparent data encryption) for SQLite",
+            "Federation tokens not encrypted"
+          ]
+        },
+        "repudiation": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Audit tables provide non-repudiation at application level"
+          ],
+          "gaps": [
+            "SQLite rows can be modified directly without audit trail"
+          ]
+        },
+        "information_disclosure": {
+          "applicable": true,
+          "findings": [
+            "SQLite file at rest is unencrypted — contains job configs, agent metadata, federation tokens, audit logs",
+            "Job logs stored in plaintext may contain sensitive backup data",
+            "Federation tokens stored in plaintext"
+          ],
+          "mitigations": [
+            "Credential data encrypted via AEAD (AES-256-GCM)",
+            "Password hashes use bcrypt"
+          ],
+          "gaps": [
+            "Full database at rest is unencrypted",
+            "Job output with potential sensitive data stored in plaintext in job_runs.output"
+          ]
+        },
+        "denial_of_service": {
+          "applicable": true,
+          "findings": [
+            "Single SQLite writer — concurrent requests queue behind busy_timeout",
+            "Scheduler N+1 queries can lock database for 5+ seconds at scale",
+            "No connection pooling limits (unlimited goroutines hitting DB)"
+          ],
+          "mitigations": [
+            "WAL mode for concurrent readers + one writer",
+            "busy_timeout=5000ms prevents SQLITE_BUSY errors",
+            "Batch operations in transactions (UpdateProgressAndLogs)"
+          ],
+          "gaps": [
+            "No read replicas or write scaling — single SQLite file is bottleneck",
+            "Scheduler queries not batched — N+1 pattern under load"
+          ]
+        },
+        "elevation_of_privilege": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Database access is behind the application layer only — no direct user queries"
+          ],
+          "gaps": [
+            "Filesystem access to database file bypasses all application-level access control"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Credential Vault",
+      "type": "data_store",
+      "files": [
+        "coordinator/internal/credcrypto/crypto.go",
+        "coordinator/server/credentials.go"
+      ],
+      "exposure": "medium",
+      "trust_boundaries": ["data"],
+      "threats": {
+        "spoofing": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Credential vault has no separate authentication — governed by API auth middleware"
+          ],
+          "gaps": []
+        },
+        "tampering": {
+          "applicable": true,
+          "findings": [
+            "Encrypted data integrity relies solely on AES-GCM authentication tag — no separate signing"
+          ],
+          "mitigations": [
+            "AES-256-GCM provides authenticated encryption (confidentiality + integrity)",
+            "AEAD construction ensures tampered ciphertext fails decryption",
+            "Random nonce per encryption (12 bytes from crypto/rand)"
+          ],
+          "gaps": [
+            "No key rotation mechanism — same key encrypts all profiles",
+            "No HSM or secure enclave integration for key storage"
+          ]
+        },
+        "repudiation": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Credential create/delete operations logged to user audit"
+          ],
+          "gaps": []
+        },
+        "information_disclosure": {
+          "applicable": true,
+          "findings": [
+            "Encryption key loaded from environment variable or config — process memory dump exposes key",
+            "Decrypted credentials returned inline in job list for agent tokens (jobs.go:220-235)",
+            "Key available in two places (config.CredentialKey or ARCVAULT_CREDENTIAL_KEY env var) — increased attack surface"
+          ],
+          "mitigations": [
+            "AES-256-GCM with 12-byte random nonce — FIPS-compliant AEAD",
+            "Key must be exactly 32 bytes (256 bits)",
+            "Encrypted data stored as BLOB, never decrypted without explicit request"
+          ],
+          "gaps": [
+            "Decrypted credentials returned to any agent token without per-job scoping",
+            "No key rotation support",
+            "No audit of credential decryption events"
+          ]
+        },
+        "denial_of_service": {
+          "applicable": true,
+          "findings": [
+            "Decryption failure causes job listing to fail entirely (jobs.go:229) — single corrupted credential blocks all job listing"
+          ],
+          "mitigations": [
+            "None — decryption error handling is all-or-nothing"
+          ],
+          "gaps": [
+            "Individual credential decryption failures should skip that job, not fail the entire list"
+          ]
+        },
+        "elevation_of_privilege": {
+          "applicable": true,
+          "findings": [
+            "Any valid agent token can decrypt credentials for ALL jobs, not just the agent's own jobs",
+            "No secondary authorization check needed for credential decryption"
+          ],
+          "mitigations": [
+            "Credential profile CRUD restricted to admin role (adminRoute)"
+          ],
+          "gaps": [
+            "Credential decryption should require explicit per-job authorization, not just any agent token"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Job Scheduler",
+      "type": "worker",
+      "files": [
+        "coordinator/server/scheduler.go"
+      ],
+      "exposure": "low",
+      "trust_boundaries": ["internal"],
+      "threats": {
+        "spoofing": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Scheduler runs in-process with the coordinator — no external identity"
+          ],
+          "gaps": []
+        },
+        "tampering": {
+          "applicable": true,
+          "findings": [
+            "Cron expressions stored in user-controlled job/template records — malformed expressions logged but scheduler continues with remaining jobs"
+          ],
+          "mitigations": [
+            "robfig/cron validates expressions before registration",
+            "Invalid cron entries are skipped with error logging, not fatal"
+          ],
+          "gaps": [
+            "No limit on number of cron entries — could register thousands of scheduled jobs"
+          ]
+        },
+        "repudiation": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Scheduler actions logged via Broadcast and job_runs auto-creation"
+          ],
+          "gaps": [
+            "No dedicated scheduler audit log — actions inferred from job state changes"
+          ]
+        },
+        "information_disclosure": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Scheduler only accesses job metadata, not backup data content"
+          ],
+          "gaps": []
+        },
+        "denial_of_service": {
+          "applicable": true,
+          "findings": [
+            "checkMissedSchedules performs N+1 queries (1 query for jobs + N queries for alert rules + M queries for history) — 5,500+ queries for 500 jobs",
+            "triggerScheduledJobs runs every 60s — backlog can compound if previous run is still executing",
+            "No scheduler mutex — concurrent runs possible if scheduler cycle overlaps"
+          ],
+          "mitigations": [
+            "Single UPDATE query for resetting jobs (not per-job)",
+            "Scheduler runs as a single goroutine (no concurrent cron runs by design)"
+          ],
+          "gaps": [
+            "No batching of alert rule queries (N+1 pattern)",
+            "No timeout on scheduler cycle — could hang indefinitely",
+            "No panic recovery in scheduler goroutine"
+          ]
+        },
+        "elevation_of_privilege": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Scheduler uses database connection directly — no privilege boundary"
+          ],
+          "gaps": []
+        }
+      }
+    },
+    {
+      "name": "Job Executor (Agent)",
+      "type": "worker",
+      "files": [
+        "agent/runner/executor.go",
+        "agent/runner/credentials.go",
+        "agent/runner/runner.go",
+        "agent/runner/command_whitelist.go"
+      ],
+      "exposure": "medium",
+      "trust_boundaries": ["process"],
+      "threats": {
+        "spoofing": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Agent authenticates to coordinator via bearer token",
+            "Job instructions received only through authenticated coordinator API"
+          ],
+          "gaps": [
+            "No mutual TLS — agent authenticates to coordinator but not vice versa (unless CA cert configured)"
+          ]
+        },
+        "tampering": {
+          "applicable": true,
+          "findings": [
+            "Template command execution has NO whitelist enforcement (executor.go:102) — command_whitelist.go defines IsWhitelisted() but RealExecutor never calls it",
+            "SMB credential utility (cmdkey) arguments built via string concatenation — value injection possible through host/username/password with special characters (credentials.go:56)",
+            "SSH key written to /tmp with predictable naming pattern (ssh-key-*.pem) — race condition in concurrent jobs"
+          ],
+          "mitigations": [
+            "exec.Command avoids shell interpretation (no shell=True)",
+            "parseCommandArgs handles quoted arguments safely",
+            "SSH key cleanup on job completion"
+          ],
+          "gaps": [
+            "IsWhitelisted() function exists but is NEVER called — any program can be executed via template commands",
+            "cmdkey argument injection possible through credential values with newlines/quotes",
+            "Concurrent SSH key writes overwrite SSH_KEY_PATH env var (race condition)"
+          ]
+        },
+        "repudiation": {
+          "applicable": true,
+          "findings": [
+            "CommandAuditor callback exists (executor.go:16-29) but is never wired into RealExecutor",
+            "Agent-side command execution not sent to coordinator audit log"
+          ],
+          "mitigations": [
+            "Job execution results posted to coordinator (exit code, output)",
+            "Runner logs execution locally"
+          ],
+          "gaps": [
+            "CommandAuditor defined but unused — zero command audit from agent side",
+            "Agent can modify local logs — no tamper-proof audit"
+          ]
+        },
+        "information_disclosure": {
+          "applicable": true,
+          "findings": [
+            "Job output (stdout/stderr) may contain sensitive backup data — stored in DB and returned via API",
+            "SSH key material written to temp file on disk (credentials.go:90) — readable by other processes on same host",
+            "Environment variables (SSH_KEY_PATH, SSHPASS) visible to other processes via /proc or equivalent",
+            "SMB credentials passed as cmdkey arguments — visible in process listing"
+          ],
+          "mitigations": [
+            "Temp files chmod 0600",
+            "Credential cleanup on job completion (deferred cleanup function)"
+          ],
+          "gaps": [
+            "SSH key file on disk readable by root/Administrator",
+            "Environment variables not cleared from process env block after use",
+            "cmdkey arguments visible in process list"
+          ]
+        },
+        "denial_of_service": {
+          "applicable": true,
+          "findings": [
+            "No per-agent job concurrency limit — coordinator could assign unlimited concurrent jobs to one agent",
+            "No job execution timeout — a hung job never terminates"
+          ],
+          "mitigations": [
+            "context.WithCancel allows job cancellation",
+            "Robocopy /R:0 /W:0 prevents infinite retries"
+          ],
+          "gaps": [
+            "No execution timeout on job context",
+            "No max concurrent jobs per agent"
+          ]
+        },
+        "elevation_of_privilege": {
+          "applicable": true,
+          "findings": [
+            "Template commands can execute ANY program on the agent — no whitelist enforcement means RCE via template creation",
+            "cmdkey credential injection could lead to privilege escalation if credential fields contain shell metacharacters"
+          ],
+          "mitigations": [
+            "exec.CommandContext prevents shell injection (no shell interpreter)",
+            "parseCommandArgs prevents argument splitting"
+          ],
+          "gaps": [
+            "Whitelist not enforced — any executable can be run",
+            "cmdkey argument injection possible"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Notification Service",
+      "type": "external_service",
+      "files": [
+        "coordinator/notifications/notifier.go",
+        "coordinator/notifications/webhook.go",
+        "coordinator/notifications/email.go",
+        "coordinator/notifications/slack.go",
+        "coordinator/notifications/teams.go",
+        "coordinator/notifications/retry.go"
+      ],
+      "exposure": "low",
+      "trust_boundaries": ["service"],
+      "threats": {
+        "spoofing": {
+          "applicable": true,
+          "findings": [
+            "No authentication on outbound webhook requests — any endpoint receiving the notification will accept it",
+            "SMTP typically lacks TLS enforcement in notification configuration"
+          ],
+          "mitigations": [
+            "Notification targets loaded from admin-controlled config only"
+          ],
+          "gaps": [
+            "No mTLS or API key for webhook targets",
+            "No DMARC/DKIM signing for email notifications"
+          ]
+        },
+        "tampering": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Outbound-only — no inbound processing"
+          ],
+          "gaps": []
+        },
+        "repudiation": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Notification delivery logged to alert_history table"
+          ],
+          "gaps": []
+        },
+        "information_disclosure": {
+          "applicable": true,
+          "findings": [
+            "Job failure event includes full job metadata (JobID, JobName, AgentID, ErrorMsg, RunID) sent to third-party services",
+            "Error messages may contain internal paths or stack traces"
+          ],
+          "mitigations": [
+            "No credential or backup data included in notifications"
+          ],
+          "gaps": [
+            "Job metadata sharing with external webhook/slack/teams services"
+          ]
+        },
+        "denial_of_service": {
+          "applicable": true,
+          "findings": [
+            "Notification delivery blocks job failure processing — a slow webhook target delays subsequent notifications",
+            "No circuit breaker for failing notification channels",
+            "No queuing — notifications sent synchronously"
+          ],
+          "mitigations": [
+            "Errors logged but never block caller (notifier.go:62-65)",
+            "Retry mechanism for failed deliveries"
+          ],
+          "gaps": [
+            "Synchronous delivery — no message queue or backpressure",
+            "No circuit breaker for persistently failing channels"
+          ]
+        },
+        "elevation_of_privilege": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Notification is read-only outbound — no command execution from notifications"
+          ],
+          "gaps": []
+        }
+      }
+    },
+    {
+      "name": "Updater Module",
+      "type": "worker",
+      "files": [
+        "coordinator/server/update.go",
+        "coordinator/updater/updater.go",
+        "agent/ws/ws.go",
+        "agent/updater/updater.go"
+      ],
+      "exposure": "medium",
+      "trust_boundaries": ["service", "process"],
+      "threats": {
+        "spoofing": {
+          "applicable": true,
+          "findings": [
+            "Update binaries downloaded from GitHub releases without verifying the download source identity beyond TLS"
+          ],
+          "mitigations": [
+            "SHA256 checksum verification (coordinator updater)",
+            "Binary version verification (agent updater runs --version on download)"
+          ],
+          "gaps": [
+            "No GPG signature verification on release assets",
+            "No code signing verification on Windows binaries",
+            "No pinned certificate for GitHub CDN"
+          ]
+        },
+        "tampering": {
+          "applicable": true,
+          "findings": [
+            "Coordinator updater verifies SHA256 checksum, but checksum file itself has no signature verification",
+            "Agent updater has no checksum verification at all (only runs --version)",
+            "Checksum file fetched via plain HTTPS but no pinning or signature on checksum file itself"
+          ],
+          "mitigations": [
+            "SHA256 checksum verification on coordinator side (VerifyChecksum)",
+            "TLS for download from GitHub releases"
+          ],
+          "gaps": [
+            "No GPG signature verification on checksum file",
+            "Agent updater has zero binary integrity verification",
+            "No code signing verification"
+          ]
+        },
+        "repudiation": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Update actions logged to audit log"
+          ],
+          "gaps": []
+        },
+        "information_disclosure": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Update process only downloads public release assets"
+          ],
+          "gaps": []
+        },
+        "denial_of_service": {
+          "applicable": true,
+          "findings": [
+            "Update process downloads potentially large binary — could block if coordinator has constrained bandwidth",
+            "atomic.Bool prevents concurrent updates but multiple update requests queued"
+          ],
+          "mitigations": [
+            "atomic.Bool prevents concurrent update execution",
+            "Download progress tracking (20-55% range)"
+          ],
+          "gaps": [
+            "No download resumption for large binaries",
+            "No rollback on partial download failure (cleanup exists but could leave temp files)"
+          ]
+        },
+        "elevation_of_privilege": {
+          "applicable": true,
+          "findings": [
+            "Update endpoint (POST /api/update/apply, POST /api/agents/{id}/update) is admin-only — properly protected",
+            "Agent updater executes downloaded binary as the service user — if download integrity not verified, arbitrary code execution at service privilege level"
+          ],
+          "mitigations": [
+            "adminRoute protection on update endpoints",
+            "Coordinator checksum verification"
+          ],
+          "gaps": [
+            "Agent updater has no integrity check — MITM or compromised CDN delivers arbitrary code",
+            "Binary runs at service/root privilege level"
+          ]
+        }
+      }
+    },
+    {
+      "name": "Dashboard (Vue UI)",
+      "type": "api_endpoint",
+      "files": [
+        "coordinator/server/server.go (embedded static fs)"
+      ],
+      "exposure": "low",
+      "trust_boundaries": ["external"],
+      "threats": {
+        "spoofing": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Dashboard is embedded — no separate deployment or build pipeline"
+          ],
+          "gaps": []
+        },
+        "tampering": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Files served from embedded fs.FS — read-only at runtime",
+            "CSP restricts script sources to 'self'"
+          ],
+          "gaps": []
+        },
+        "repudiation": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [],
+          "gaps": []
+        },
+        "information_disclosure": {
+          "applicable": true,
+          "findings": [
+            "Dashboard served over same origin as API — no separate cookie domain or origin isolation"
+          ],
+          "mitigations": [
+            "CSP header restricts connect-src to 'self' wss: ws:",
+            "No external script or style sources",
+            "securityHeaders prevents framing (X-Frame-Options: DENY)",
+            "Referrer-Policy: no-referrer"
+          ],
+          "gaps": [
+            "Dashboard and API share origin — XSS in dashboard could access API directly"
+          ]
+        },
+        "denial_of_service": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Static files served by Go's http.FileServer"
+          ],
+          "gaps": []
+        },
+        "elevation_of_privilege": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Dashboard authenticates via JWT — no privileged client-side logic"
+          ],
+          "gaps": []
+        }
+      }
+    },
+    {
+      "name": "Federation Module",
+      "type": "network",
+      "files": [
+        "coordinator/server/federation.go",
+        "coordinator/server/federation_hub.go",
+        "coordinator/server/federation_client.go",
+        "coordinator/server/federation_sync.go"
+      ],
+      "exposure": "medium",
+      "trust_boundaries": ["service", "external"],
+      "threats": {
+        "spoofing": {
+          "applicable": true,
+          "findings": [
+            "Federation connections authenticated by token stored in plaintext in SQLite",
+            "Sub-coordinator identified by hardcoded token (not certificate or mTLS)"
+          ],
+          "mitigations": [
+            "Token-based authentication on /ws/federation endpoint",
+            "Federation records managed by admin only"
+          ],
+          "gaps": [
+            "No mTLS between federated coordinators",
+            "Federation tokens stored unencrypted in database"
+          ]
+        },
+        "tampering": {
+          "applicable": true,
+          "findings": [
+            "Federation sync messages sent over WebSocket — integrity relies on TLS only",
+            "No message-level signatures for federation events"
+          ],
+          "mitigations": [
+            "Delta-based sync (federation_events table tracks sequence numbers)"
+          ],
+          "gaps": [
+            "No message-level authentication or integrity checking beyond TLS"
+          ]
+        },
+        "repudiation": {
+          "applicable": false,
+          "findings": [],
+          "mitigations": [
+            "Federation events logged with coordinator identity and sequence number"
+          ],
+          "gaps": []
+        },
+        "information_disclosure": {
+          "applicable": true,
+          "findings": [
+            "Federation sync shares full agent list, job list, and history with remote coordinator",
+            "Federation tokens stored in plaintext in SQLite database"
+          ],
+          "mitigations": [
+            "Federation data limited to operational metadata (not backup content)"
+          ],
+          "gaps": [
+            "Federation broadcast reveals agent inventory across coordinators"
+          ]
+        },
+        "denial_of_service": {
+          "applicable": true,
+          "findings": [
+            "Federation hub cache grows unboundedly — no cache size limit per federation peer",
+            "No timeout on federation sync operations"
+          ],
+          "mitigations": [
+            "Hub reads from cache, not live queries"
+          ],
+          "gaps": [
+            "No cache eviction policy for federation data"
+          ]
+        },
+        "elevation_of_privilege": {
+          "applicable": true,
+          "findings": [
+            "Federation WebSocket accepts any valid federation token — no origin validation on federation WS endpoint"
+          ],
+          "mitigations": [
+            "Token-based authentication with token from federation table"
+          ],
+          "gaps": [
+            "Single federation token grants read access to all sub-coordinator data"
+          ]
+        }
+      }
+    }
+  ],
+  "trust_boundaries": [
+    {
+      "name": "External: User/Agent/Dashboard ↔ Coordinator",
+      "from": "Internet / User / Agent / Dashboard",
+      "to": "Coordinator HTTP/WS Server",
+      "enforcement": "TLS (optional) + JWT / admin_token / agent_token",
+      "data_crossing": [
+        "HTTP requests with bearer tokens",
+        "WebSocket connections with JWT/token auth",
+        "Job commands, results, progress",
+        "Credential profile metadata (not decrypted data)",
+        "Agent registration, heartbeat, status"
+      ],
+      "risk_level": "high"
+    },
+    {
+      "name": "Service: Coordinator ↔ External Services",
+      "from": "Coordinator",
+      "to": "Webhook, SMTP, Slack, Teams, GitHub Releases",
+      "enforcement": "TLS (standard HTTPS, no mTLS)",
+      "data_crossing": [
+        "Job failure notifications with metadata",
+        "Update binary downloads from GitHub",
+        "Checksum file downloads"
+      ],
+      "risk_level": "medium"
+    },
+    {
+      "name": "Data: Application ↔ SQLite Database",
+      "from": "Coordinator Server",
+      "to": "SQLite file on local filesystem",
+      "enforcement": "Filesystem permissions, in-process access only",
+      "data_crossing": [
+        "Agent records, tokens, credentials (encrypted)",
+        "Job definitions, runs, logs, templates",
+        "Federation records and tokens (plaintext)",
+        "User accounts and password hashes",
+        "Audit logs (user_actions, command_audit)",
+        "Revoked JWT tokens"
+      ],
+      "risk_level": "high"
+    },
+    {
+      "name": "Internal: Public routes ↔ Authenticated ↔ Admin routes",
+      "from": "Unauthenticated HTTP requests",
+      "to": "Authenticated JWT/admin/agent-token-required handlers",
+      "enforcement": "authMiddleware, JWTMiddleware, adminRoute, operatorRoute, viewerRoute",
+      "data_crossing": [
+        "Bearer tokens (JWT, admin, agent)",
+        "HTTP Authorization header"
+      ],
+      "risk_level": "high"
+    },
+    {
+      "name": "Process: Coordinator ↔ Agent processes",
+      "from": "Coordinator Server",
+      "to": "Agent (remote process on backup target)",
+      "enforcement": "Bearer token (agent token), HTTPS, optional CA cert verification",
+      "data_crossing": [
+        "Job instructions (source_path, dest_path, command, credentials)",
+        "Job results (exit_code, stdout/stderr output)",
+        "Heartbeat signals",
+        "Update/rollback commands",
+        "Progress updates via WebSocket"
+      ],
+      "risk_level": "high"
+    }
+  ],
+  "attack_surface": {
+    "public_endpoints": 5,
+    "external_integrations": 7,
+    "input_points": 38,
+    "privileged_operations": 22,
+    "sensitive_data_stores": 4,
+    "total_score": 76
+  },
+  "summary": {
+    "components_analyzed": 11,
+    "threats_identified": 48,
+    "by_stride": {
+      "S": 8,
+      "T": 10,
+      "R": 3,
+      "I": 11,
+      "D": 10,
+      "E": 6
+    },
+    "high_exposure_components": 4
+  }
+}

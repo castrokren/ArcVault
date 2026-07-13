@@ -40,10 +40,11 @@ type Client struct {
 }
 
 type inboundMsg struct {
-	Type    string `json:"type"`
-	Version string `json:"version"`
-	URL     string `json:"url"`
-	JobID   string `json:"job_id"`
+	Type        string `json:"type"`
+	Version     string `json:"version"`
+	URL         string `json:"url"`
+	ChecksumURL string `json:"checksum_url"`
+	JobID       string `json:"job_id"`
 }
 
 type progressMsg struct {
@@ -155,7 +156,7 @@ func (c *Client) handleUpdateCommand(conn *websocket.Conn, msg inboundMsg) {
 		}
 	}
 
-	if err := updater.HandleUpdateCommand(msg.Version, msg.URL, send); err != nil {
+	if err := updater.HandleUpdateCommand(msg.Version, msg.URL, msg.ChecksumURL, send); err != nil {
 		log.Printf("Agent WS: update failed: %v", err)
 		send("error", 0)
 	}

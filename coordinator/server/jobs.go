@@ -202,7 +202,7 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 
 	// Convert service DTOs to response DTOs
 	jobs := make([]Job, len(result.Jobs))
-	isAgentRequest := isAgentTokenRequest(r)
+	requestingAgentID := GetAgentID(r)
 
 	for i, jobDTO := range result.Jobs {
 		jobs[i] = Job{
@@ -217,8 +217,8 @@ func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 			CreatedAt:  jobDTO.CreatedAt,
 		}
 
-		// Inject credentials for agent token requests
-		if isAgentRequest {
+		// Inject credentials only when the requesting agent owns this job.
+		if requestingAgentID != "" && jobDTO.AgentID == requestingAgentID {
 			credProfileID, err := s.db.GetJobCredentialProfileID(jobDTO.ID)
 			if err != nil {
 				http.Error(w, "failed to look up job credentials", http.StatusInternalServerError)
@@ -261,8 +261,8 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:  jobDTO.CreatedAt,
 	}
 
-	// Inject credentials for agent token requests
-	if isAgentTokenRequest(r) {
+	// Inject credentials only when the requesting agent owns this job.
+	if agentID := GetAgentID(r); agentID != "" && jobDTO.AgentID == agentID {
 		credProfileID, err := s.db.GetJobCredentialProfileID(id)
 		if err != nil {
 			http.Error(w, "failed to look up job credentials", http.StatusInternalServerError)

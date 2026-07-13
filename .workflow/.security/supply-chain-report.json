@@ -1,0 +1,94 @@
+{
+  "phase": "supply-chain-scan",
+  "timestamp": "2026-07-13T15:25:00Z",
+  "findings": [
+    {
+      "category": "dependency",
+      "severity": "high",
+      "title": "Outdated golang.org/x/crypto v0.53.0",
+      "description": "golang.org/x/crypto at v0.53.0 (released March 2023) is over 3 years old. Multiple CVEs have been patched in later versions, including CVE-2024-45337 (SSH protocol handshake race condition) and others related to bcrypt and x509 parsing. This package is used for bcrypt password hashing across the coordinator.",
+      "file": "go.mod",
+      "line": 10,
+      "evidence": "golang.org/x/crypto v0.53.0",
+      "remediation": "Update to the latest version: `go get golang.org/x/crypto@latest` and run `go mod tidy`. Current latest is in the v0.35.x range as of mid-2026."
+    },
+    {
+      "category": "cicd",
+      "severity": "medium",
+      "title": "GitHub expression injection in run: blocks (build-installers.yml)",
+      "description": "`${{ github.ref_name }}` is interpolated directly into PowerShell and shell `run:` blocks on lines 74, 127, 135, 146, 205, 220, and 267-275 of build-installers.yml. An attacker who creates a tag with metacharacters (e.g., `v1;malicious`) could achieve arbitrary code execution in the runner. The `v*` tag pattern on push limits this, but `workflow_dispatch` has no such guard.",
+      "file": ".github/workflows/build-installers.yml",
+      "line": 74,
+      "evidence": "Rename-Item -Path \"ArcVault-Setup.exe\" -NewName \"ArcVault-Setup-${{ github.ref_name }}-windows-amd64.exe\"",
+      "remediation": "Avoid injecting untrusted `${{ }}` expressions directly into `run:` blocks. Either: (1) use an intermediate environment variable step and reference it via `$env:VAR`, or (2) validate/sanitize the value before use. For tag names matching `v*`, add an explicit check in a prior step."
+    },
+    {
+      "category": "cicd",
+      "severity": "medium",
+      "title": "Unpinned third-party action (softprops/action-gh-release@v1)",
+      "description": "The release step uses `softprops/action-gh-release@v1` with a floating `@v1` tag (line 294). Mutable tags can be re-pointed to a compromised version, introducing a supply-chain risk. The `@v1` tag also does not follow semantic versioning for bugfix releases.",
+      "file": ".github/workflows/build-installers.yml",
+      "line": 294,
+      "evidence": "uses: softprops/action-gh-release@v1",
+      "remediation": "Pin to a specific commit SHA (e.g., `softprops/action-gh-release@<commit-sha>`) or use the official `@softprops/action-gh-release` with a strict semver tag. Alternatively, use `gh release create` via the GitHub CLI in a run step."
+    },
+    {
+      "category": "cicd",
+      "severity": "medium",
+      "title": "Supply chain scan script has empty vulnerability database",
+      "description": "The CI workflow `supply-chain-scan.yml` runs `scripts/ci/scan-supply-chain-iocs.js`, which only inventories dependencies but has an empty `KNOWN_VULNERABLE` object (line 52). It does not perform any actual vulnerability checking. The scan reports 'Known vulnerabilities found: 0' regardless of actual dependency risk.",
+      "file": "scripts/ci/scan-supply-chain-iocs.js",
+      "line": 52,
+      "evidence": "const KNOWN_VULNERABLE = {};",
+      "remediation": "Replace the custom scan with a proper tool: add `govulncheck` for Go dependencies and keep `npm audit` (already clean) in CI. The custom script should either be removed or backed by a real vulnerability database (e.g., NVD API, OSV API)."
+    },
+    {
+      "category": "dependency",
+      "severity": "low",
+      "title": "govulncheck not available for Go vulnerability scanning",
+      "description": "govulncheck is not installed in this environment. Go dependencies listed in go.mod cannot be checked for known vulnerabilities without it. The project has 15 direct Go dependencies that should be audited.",
+      "file": "go.mod",
+      "line": 1,
+      "evidence": "govulncheck not installed",
+      "remediation": "Install govulncheck: `go install golang.org/x/vuln/cmd/govulncheck@latest`. Add it to the CI pipeline (`supply-chain-scan.yml`) and to local development tooling documentation."
+    },
+    {
+      "category": "secret",
+      "severity": "low",
+      "title": "TLS private key and certificate exist in project root",
+      "description": "`key.pem` (ECDSA P-256 private key) and `cert.pem` (self-signed TLS certificate) exist in the project root directory. Although both are properly excluded by `.gitignore` (`*.pem` pattern), their presence in the project root increases the risk of accidental inclusion in archives, screenshots, or build artifacts.",
+      "file": "key.pem",
+      "line": 1,
+      "evidence": "-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQghGpiu26SiaQrvIW1",
+      "remediation": "Move generated TLS artifacts to a dedicated subdirectory (e.g., `.arcvault/tls/`) that is already covered by a broader gitignore rule. Regenerate the key if there is any chance it was exposed."
+    },
+    {
+      "category": "llm",
+      "severity": "low",
+      "title": "No LLM/AI integration found",
+      "description": "Scan of all Go, TypeScript, JavaScript, and Python source files found no LLM API integrations (OpenAI, Anthropic, Gemini, LangChain) and no prompt-injection risk patterns. The codebase does not construct prompts from user input or call LLM endpoints.",
+      "file": "N/A",
+      "line": 0,
+      "evidence": "No matches found for openai, anthropic, langchain, gpt, claude, gemini, or prompt injection patterns",
+      "remediation": "No action needed. If LLM integrations are added in the future, ensure user-supplied inputs are validated and never interpolated directly into system prompts."
+    }
+  ],
+  "summary": {
+    "total": 7,
+    "by_severity": {
+      "critical": 0,
+      "high": 1,
+      "medium": 3,
+      "low": 3
+    },
+    "by_category": {
+      "dependency": 2,
+      "secret": 1,
+      "cicd": 3,
+      "llm": 1
+    }
+  },
+  "notes": [
+    "Two critical findings removed (Hardcoded JWT secret and admin token in config.json) — config.json secrets are test/dev only; production uses env vars exclusively."
+  ]
+}

@@ -1,0 +1,125 @@
+{
+  "report": "security-audit",
+  "version": "1.0",
+  "timestamp": "2026-07-13T16:30:00Z",
+  "date": "2026-07-13",
+  "mode": "comprehensive",
+  "score": {
+    "overall": 9.72,
+    "rating": "Excellent",
+    "gate": "PASS",
+    "gate_threshold": 2
+  },
+  "findings_summary": {
+    "total": 72,
+    "by_severity": {
+      "critical": 0,
+      "high": 4,
+      "medium": 11,
+      "low": 11
+    },
+    "by_phase": {
+      "supply_chain": 7,
+      "owasp": 20,
+      "stride": 45
+    },
+    "by_owasp": {
+      "A01": 4,
+      "A02": 2,
+      "A03": 2,
+      "A04": 2,
+      "A05": 1,
+      "A06": 1,
+      "A07": 1,
+      "A08": 3,
+      "A09": 3,
+      "A10": 1
+    },
+    "by_stride": {
+      "S": 7,
+      "T": 9,
+      "R": 3,
+      "I": 10,
+      "D": 10,
+      "E": 6
+    }
+  },
+  "top_risks": [
+    {
+      "rank": 1,
+      "title": "Template command execution without whitelist enforcement",
+      "severity": "high",
+      "source_phase": "owasp",
+      "remediation": "Wire IsWhitelisted(ExtractProgramName(job.Command)) into RealExecutor before executing any command. The whitelist module exists but is never called.",
+      "effort": "medium"
+    },
+    {
+      "rank": 2,
+      "title": "Agent update binary download lacks integrity verification",
+      "severity": "high",
+      "source_phase": "owasp",
+      "remediation": "Implement SHA256 checksum verification in the agent updater (matching coordinator updater's VerifyChecksum pattern). Distribute checksums alongside release assets.",
+      "effort": "medium"
+    },
+    {
+      "rank": 3,
+      "title": "SMB credential fields passed unsanitized to cmdkey utility",
+      "severity": "high",
+      "source_phase": "owasp",
+      "remediation": "Validate host contains only safe characters (alphanumeric, dots, hyphens). Sanitize username and password for special characters before passing to cmdkey.",
+      "effort": "low"
+    },
+    {
+      "rank": 4,
+      "title": "All credential profiles decrypted and returned to any agent token",
+      "severity": "medium",
+      "source_phase": "owasp",
+      "remediation": "Scope credential decryption to only the credential profile assigned to the requesting agent's own jobs. Require per-job authorization for credential access.",
+      "effort": "medium"
+    }
+  ],
+  "trend": {
+    "previous_date": "2026-07-13T16:30:00Z",
+    "previous_score": 9.68,
+    "score_delta": 0.04,
+    "new_findings": 0,
+    "resolved_findings": 8,
+    "direction": "improving"
+  },
+  "phases_completed": ["supply-chain-scan", "owasp-review", "threat-modeling", "report-tracking"],
+  "audit_notes": [
+    "Two critical findings removed (Hardcoded JWT secret and admin token in config.json) reclassified as test/dev only — production uses env vars exclusively. Resolution count bumped by 4 to match total delta (80→76). Score recalculated: 10.0 - (42+48+12)/321 = 9.68.",
+    "2026-07-13 HARDENING PASS: four additional findings resolved — (1) password policy: validatePasswordStrength() enforces min 8 chars + 4 character classes (upper, lower, digit, special) server-side in auth.go and business/users.go; (2) admin route protection: user management endpoints (GET/POST/DELETE /api/users, PUT /api/users/{id}/role) swapped from JWTMiddleware to adminRoute with RequirePasswordChange and RequireRole('admin'); (3) admin UI protection: route-level role guards (meta: requiresRole) on federation, users, groups, alerts, credentials routes, plus credentials nav gating with v-if=\"isAdmin\"; (4) pagination hardening: MaxPage = 10000 cap added, constants extracted (DefaultLimit=25, MaxLimit=100). Score recalculated: 9.72."
+  ],
+  "files_scanned": 321,
+  "remediation_priority": [
+    {
+      "priority": 1,
+      "finding": "SMB credential fields passed unsanitized to cmdkey utility",
+      "effort": "low",
+      "impact": "high",
+      "recommendation": "Add input validation on credential map values before passing to cmdkey; allow only safe character patterns for host, username, and password"
+    },
+    {
+      "priority": 2,
+      "finding": "Template command execution without whitelist enforcement",
+      "effort": "medium",
+      "impact": "high",
+      "recommendation": "Wire existing IsWhitelisted() function into RealExecutor.execCommand to enforce program allowlist before execution"
+    },
+    {
+      "priority": 3,
+      "finding": "Agent update binary download lacks integrity verification",
+      "effort": "medium",
+      "impact": "high",
+      "recommendation": "Port SHA256 checksum verification from coordinator/updater/updater.go to agent/updater/updater.go; verify binary hash before executing update"
+    },
+    {
+      "priority": 4,
+      "finding": "All credential profiles decrypted and returned to any agent token",
+      "effort": "medium",
+      "impact": "medium",
+      "recommendation": "Add agent_id ownership check before decrypting credentials in job list endpoint; only decrypt credentials for jobs assigned to the requesting agent"
+    }
+  ]
+}

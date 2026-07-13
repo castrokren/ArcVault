@@ -6,10 +6,17 @@ import (
 	"strconv"
 )
 
+const (
+	DefaultLimit = 25
+	MaxLimit     = 100
+	MaxPage      = 10000
+)
+
 // PaginationParams holds the parsed page and limit values from query params.
+// Defaults: DefaultLimit. Caps: MaxLimit (limit), MaxPage (page).
 type PaginationParams struct {
-	Page  int // 1-indexed, min 1
-	Limit int // default 25, max 100
+	Page  int // 1-indexed, min 1, max MaxPage
+	Limit int // default DefaultLimit, max MaxLimit
 }
 
 // PaginatedResponse is the standard envelope returned by paginated list endpoints.
@@ -24,9 +31,10 @@ type PaginatedResponse struct {
 // ParsePagination reads ?page= and ?limit= from the request query string and
 // applies safe defaults:
 //   - page < 1        → 1
-//   - limit < 1       → 25
-//   - limit > 100     → 100
-//   - non-numeric     → defaults (page=1, limit=25)
+//   - page > MaxPage  → MaxPage
+//   - limit < 1       → DefaultLimit
+//   - limit > MaxLimit → MaxLimit
+//   - non-numeric     → defaults (page=1, limit=DefaultLimit)
 func ParsePagination(r *http.Request) PaginationParams {
 	q := r.URL.Query()
 
@@ -39,18 +47,21 @@ func ParsePagination(r *http.Request) PaginationParams {
 	if page < 1 {
 		page = 1
 	}
+	if page > MaxPage {
+		page = MaxPage
+	}
 
-	limit := 25
+	limit := DefaultLimit
 	if raw := q.Get("limit"); raw != "" {
 		if v, err := strconv.Atoi(raw); err == nil {
 			limit = v
 		}
 	}
 	if limit < 1 {
-		limit = 25
+		limit = DefaultLimit
 	}
-	if limit > 100 {
-		limit = 100
+	if limit > MaxLimit {
+		limit = MaxLimit
 	}
 
 	return PaginationParams{Page: page, Limit: limit}

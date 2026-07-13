@@ -48,6 +48,9 @@ type RefreshTokenResponse struct {
 // UserClaimsCtxKey is the context key for storing user claims
 type UserClaimsCtxKey struct{}
 
+// AgentIDCtxKey is the context key for storing the authenticated agent's ID.
+type AgentIDCtxKey struct{}
+
 // newJTI returns a random JWT ID. Every issued token needs one: logout
 // revocation keys the revoked_tokens table on it, and a token without a jti
 // can never be revoked.
@@ -250,6 +253,16 @@ func GetUserClaims(r *http.Request) *JWTClaims {
 		return nil
 	}
 	return claims
+}
+
+// GetAgentID extracts the agent ID from request context.
+// Returns empty string if not set (e.g., JWT-authenticated requests).
+func GetAgentID(r *http.Request) string {
+	agentID, ok := r.Context().Value(AgentIDCtxKey{}).(string)
+	if !ok {
+		return ""
+	}
+	return agentID
 }
 
 // Login throttling is applied to two independent keys per attempt:
@@ -795,7 +808,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 // handleUpdateUserRole handles PUT /api/users/{id}/role — admin only
 // Body: {"role":"..."}
 func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPatch {
+	if r.Method != http.MethodPut {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -867,6 +880,63 @@ type LoginRequest struct {
 }
 
 // Validate checks if LoginRequest is valid
+// validatePasswordStrength checks common password complexity requirements.
+func validatePasswordStrength(password string) error {
+	if len(password) < 8 {
+		return fmt.Errorf("password must be 8 or more characters")
+	}
+	if !containsUppercase(password) {
+		return fmt.Errorf("password must contain at least one uppercase letter")
+	}
+	if !containsLowercase(password) {
+		return fmt.Errorf("password must contain at least one lowercase letter")
+	}
+	if !containsDigit(password) {
+		return fmt.Errorf("password must contain at least one digit")
+	}
+	if !containsSpecial(password) {
+		return fmt.Errorf("password must contain at least one special character")
+	}
+	return nil
+}
+
+// Helper functions for password validation
+func containsUppercase(s string) bool {
+	for _, r := range s {
+		if r >= 'A' && r <= 'Z' {
+			return true
+		}
+	}
+	return false
+}
+
+func containsLowercase(s string) bool {
+	for _, r := range s {
+		if r >= 'a' && r <= 'z' {
+			return true
+		}
+	}
+	return false
+}
+
+func containsDigit(s string) bool {
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			return true
+		}
+	}
+	return false
+}
+
+func containsSpecial(s string) bool {
+	for _, r := range s {
+		if (r >= 33 && r <= 47) || (r >= 58 && r <= 64) || (r >= 91 && r <= 96) || (r >= 123 && r <= 126) {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *LoginRequest) Validate() error {
 	if r.Username == "" {
 		return fmt.Errorf("username is required")
@@ -874,10 +944,7 @@ func (r *LoginRequest) Validate() error {
 	if r.Password == "" {
 		return fmt.Errorf("password is required")
 	}
-	if len(r.Password) < 8 {
-		return fmt.Errorf("password must be 8 or more characters")
-	}
-	return nil
+	return validatePasswordStrength(r.Password)
 }
 
 // ChangePasswordRequest defines password change request
@@ -894,11 +961,11 @@ func (r *ChangePasswordRequest) Validate() error {
 	if r.NewPassword == "" {
 		return fmt.Errorf("new_password is required")
 	}
-	if len(r.OldPassword) < 8 {
-		return fmt.Errorf("old_password must be 8 or more characters")
+	if err := validatePasswordStrength(r.OldPassword); err != nil {
+		return fmt.Errorf("old_password: %w", err)
 	}
-	if len(r.NewPassword) < 8 {
-		return fmt.Errorf("new_password must be 8 or more characters")
+	if err := validatePasswordStrength(r.NewPassword); err != nil {
+		return fmt.Errorf("new_password: %w", err)
 	}
 	if r.OldPassword == r.NewPassword {
 		return fmt.Errorf("new_password must be different from old_password")
@@ -929,8 +996,8 @@ func (r *CreateUserRequest) Validate() error {
 	if r.Password == "" {
 		return fmt.Errorf("password is required")
 	}
-	if len(r.Password) < 8 {
-		return fmt.Errorf("password must be 8 or more characters")
+	if err := validatePasswordStrength(r.Password); err != nil {
+		return err
 	}
 	if r.Role == "" {
 		return fmt.Errorf("role is required")

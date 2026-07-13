@@ -2,11 +2,15 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"arcvault/coordinator/config"
+	"arcvault/coordinator/internal/credcrypto"
 )
 
 // authHeader returns an admin *JWT* — the credential for user/JWT-guarded routes
@@ -704,5 +708,295 @@ func TestPostJobProgress_unauthenticatedReturns401(t *testing.T) {
 
 	if progressRR.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", progressRR.Code)
+	}
+}
+
+// --- Credential scoping tests ---
+
+// TestListJobs_agentTokenScopesCredentials verifies that when an agent token
+// is used for GET /api/jobs, credentials are only included for jobs owned by
+// that agent. Jobs belonging to other agents have their credentials omitted.
+func TestListJobs_agentTokenScopesCredentials(t *testing.T) {
+	s := newTestServer(t, WithConfig(&config.Config{
+		Port:          8080,
+		AdminToken:    "test-token",
+		JWTSecret:     "test-secret",
+		CredentialKey: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+	}))
+
+	key, err := credcrypto.LoadKeyFromString("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
+	if err != nil {
+		t.Fatalf("load key: %v", err)
+	}
+
+	// Encrypt real credential data
+	plaintextA, _ := json.Marshal(map[string]interface{}{"username": "svc-a", "password": "pass-a"})
+	ctA, err := credcrypto.Encrypt(key, plaintextA)
+	if err != nil {
+		t.Fatalf("encrypt A: %v", err)
+	}
+	plaintextB, _ := json.Marshal(map[string]interface{}{"username": "svc-b", "password": "pass-b"})
+	ctB, err := credcrypto.Encrypt(key, plaintextB)
+	if err != nil {
+		t.Fatalf("encrypt B: %v", err)
+	}
+
+	// Create agent tokens
+	tokenA, err := s.db.CreateAgentToken("agent-a")
+	if err != nil {
+		t.Fatalf("CreateAgentToken: %v", err)
+	}
+	tokenB, err := s.db.CreateAgentToken("agent-b")
+	if err != nil {
+		t.Fatalf("CreateAgentToken: %v", err)
+	}
+
+	// Create credential profiles
+	if err := s.db.CreateCredentialProfile("cred-a", "smb-a", "SMB", ctA); err != nil {
+		t.Fatalf("CreateCredentialProfile: %v", err)
+	}
+	if err := s.db.CreateCredentialProfile("cred-b", "smb-b", "SMB", ctB); err != nil {
+		t.Fatalf("CreateCredentialProfile: %v", err)
+	}
+
+	// Create jobs — one for each agent
+	jobBodyA := `{"agent_id":"agent-a","name":"backup-a","source_path":"C:\\a","dest_path":"D:\\a"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(jobBodyA))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create job A: %d: %s", rr.Code, rr.Body.String())
+	}
+	var jobA Job
+	json.NewDecoder(rr.Body).Decode(&jobA)
+
+	jobBodyB := `{"agent_id":"agent-b","name":"backup-b","source_path":"C:\\b","dest_path":"D:\\b"}`
+	req = httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(jobBodyB))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr = httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create job B: %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Assign credential profiles to jobs
+	if err := s.db.UpdateJobCredentialProfile(jobA.ID, "cred-a"); err != nil {
+		t.Fatalf("UpdateJobCredentialProfile A: %v", err)
+	}
+
+	// Find job B's ID
+	req = httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
+	req.Header.Set("Authorization", authHeader())
+	rr = httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+	var resp PaginatedResponse
+	json.NewDecoder(rr.Body).Decode(&resp)
+	for _, j := range resp.Data.([]interface{}) {
+		jm := j.(map[string]interface{})
+		if jm["agent_id"] == "agent-b" {
+			if err := s.db.UpdateJobCredentialProfile(jm["id"].(string), "cred-b"); err != nil {
+				t.Fatalf("UpdateJobCredentialProfile B: %v", err)
+			}
+		}
+	}
+
+	// --- Agent A requests all jobs: sees both, credentials only on its own ---
+	req = httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenA)
+	rr = httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("agent A list: %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var respA PaginatedResponse
+	if err := json.NewDecoder(rr.Body).Decode(&respA); err != nil {
+		t.Fatalf("decode agent A response: %v", err)
+	}
+	jobsA := respA.Data.([]interface{})
+	if len(jobsA) != 2 {
+		t.Fatalf("expected 2 jobs for agent A, got %d", len(jobsA))
+	}
+	// Find agent A's job and verify it has credentials; agent B's should not
+	var foundOwn, foundOther bool
+	for _, item := range jobsA {
+		jm := item.(map[string]interface{})
+		if jm["agent_id"] == "agent-a" {
+			foundOwn = true
+			if jm["credentials"] == nil {
+				t.Error("expected credentials for agent A's own job, got nil")
+			}
+		} else {
+			foundOther = true
+			if jm["credentials"] != nil {
+				t.Errorf("agent A should NOT see credentials for agent B's job, got %v", jm["credentials"])
+			}
+		}
+	}
+	if !foundOwn || !foundOther {
+		t.Errorf("expected both jobs, found own=%v other=%v", foundOwn, foundOther)
+	}
+
+	// --- Agent B requests all jobs: sees both, credentials only on its own ---
+	req = httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
+	req.Header.Set("Authorization", "Bearer "+tokenB)
+	rr = httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("agent B list: %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var respB PaginatedResponse
+	if err := json.NewDecoder(rr.Body).Decode(&respB); err != nil {
+		t.Fatalf("decode agent B response: %v", err)
+	}
+	jobsB := respB.Data.([]interface{})
+	if len(jobsB) != 2 {
+		t.Fatalf("expected 2 jobs for agent B, got %d", len(jobsB))
+	}
+	foundOwn = false
+	foundOther = false
+	for _, item := range jobsB {
+		jm := item.(map[string]interface{})
+		if jm["agent_id"] == "agent-b" {
+			foundOwn = true
+			if jm["credentials"] == nil {
+				t.Error("expected credentials for agent B's own job, got nil")
+			}
+		} else {
+			foundOther = true
+			if jm["credentials"] != nil {
+				t.Errorf("agent B should NOT see credentials for agent A's job, got %v", jm["credentials"])
+			}
+		}
+	}
+	if !foundOwn || !foundOther {
+		t.Errorf("expected both jobs, found own=%v other=%v", foundOwn, foundOther)
+	}
+
+	// --- Admin token requests jobs: should see all jobs, no credentials ---
+	req = httptest.NewRequest(http.MethodGet, "/api/jobs", nil)
+	req.Header.Set("Authorization", authHeader())
+	rr = httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("admin list: %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var respAdmin PaginatedResponse
+	if err := json.NewDecoder(rr.Body).Decode(&respAdmin); err != nil {
+		t.Fatalf("decode admin response: %v", err)
+	}
+	adminJobs := respAdmin.Data.([]interface{})
+	if len(adminJobs) != 2 {
+		t.Fatalf("expected 2 jobs for admin, got %d", len(adminJobs))
+	}
+	for i, j := range adminJobs {
+		jm := j.(map[string]interface{})
+		if jm["credentials"] != nil {
+			t.Errorf("admin job %d: expected nil credentials, got %v", i, jm["credentials"])
+		}
+	}
+}
+
+// TestGetJob_agentTokenScopesCredentials verifies that when an agent token is
+// used for GET /api/jobs/{id}, credentials are only included if the requesting
+// agent owns the job. Calls handleGetJob directly with AgentIDCtxKey set.
+func TestGetJob_agentTokenScopesCredentials(t *testing.T) {
+	s := newTestServer(t, WithConfig(&config.Config{
+		Port:          8080,
+		AdminToken:    "test-token",
+		JWTSecret:     "test-secret",
+		CredentialKey: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+	}))
+
+	key, err := credcrypto.LoadKeyFromString("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
+	if err != nil {
+		t.Fatalf("load key: %v", err)
+	}
+	plaintext, _ := json.Marshal(map[string]interface{}{"username": "svc", "password": "pass"})
+	ct, err := credcrypto.Encrypt(key, plaintext)
+	if err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	// Create a job for agent-a with a credential profile
+	jobBody := `{"agent_id":"agent-a","name":"backup-a","source_path":"C:\\a","dest_path":"D:\\a"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/jobs", bytes.NewBufferString(jobBody))
+	req.Header.Set("Authorization", authHeader())
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	s.router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("create job: %d: %s", rr.Code, rr.Body.String())
+	}
+	var created Job
+	json.NewDecoder(rr.Body).Decode(&created)
+
+	// Assign a credential profile
+	if err := s.db.CreateCredentialProfile("cred-test", "smb", "SMB", ct); err != nil {
+		t.Fatalf("CreateCredentialProfile: %v", err)
+	}
+	if err := s.db.UpdateJobCredentialProfile(created.ID, "cred-test"); err != nil {
+		t.Fatalf("UpdateJobCredentialProfile: %v", err)
+	}
+
+	// --- Agent B (different agent) requests the job: should NOT see credentials ---
+	reqB := httptest.NewRequest(http.MethodGet, "/api/jobs/"+created.ID, nil)
+	reqB.SetPathValue("id", created.ID)
+	reqB = reqB.WithContext(context.WithValue(reqB.Context(), AgentIDCtxKey{}, "agent-b"))
+	rrB := httptest.NewRecorder()
+	s.handleGetJob(rrB, reqB)
+
+	if rrB.Code != http.StatusOK {
+		t.Fatalf("agent B get job: %d: %s", rrB.Code, rrB.Body.String())
+	}
+	var fetchedB Job
+	if err := json.NewDecoder(rrB.Body).Decode(&fetchedB); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if fetchedB.Credentials != nil {
+		t.Errorf("agent B should NOT see credentials, got %v", fetchedB.Credentials)
+	}
+
+	// --- Agent A (owning agent) requests the job: should see credentials ---
+	reqA := httptest.NewRequest(http.MethodGet, "/api/jobs/"+created.ID, nil)
+	reqA.SetPathValue("id", created.ID)
+	reqA = reqA.WithContext(context.WithValue(reqA.Context(), AgentIDCtxKey{}, "agent-a"))
+	rrA := httptest.NewRecorder()
+	s.handleGetJob(rrA, reqA)
+
+	if rrA.Code != http.StatusOK {
+		t.Fatalf("agent A get job: %d: %s", rrA.Code, rrA.Body.String())
+	}
+	var fetchedA Job
+	if err := json.NewDecoder(rrA.Body).Decode(&fetchedA); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if fetchedA.Credentials == nil {
+		t.Error("expected credentials for owning agent, got nil")
+	}
+
+	// --- No agent ID in context (admin/JWT path): should NOT see credentials ---
+	reqNone := httptest.NewRequest(http.MethodGet, "/api/jobs/"+created.ID, nil)
+	reqNone.SetPathValue("id", created.ID)
+	rrNone := httptest.NewRecorder()
+	s.handleGetJob(rrNone, reqNone)
+
+	if rrNone.Code != http.StatusOK {
+		t.Fatalf("no-agent get job: %d: %s", rrNone.Code, rrNone.Body.String())
+	}
+	var fetchedNone Job
+	if err := json.NewDecoder(rrNone.Body).Decode(&fetchedNone); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if fetchedNone.Credentials != nil {
+		t.Errorf("expected nil credentials for non-agent request, got %v", fetchedNone.Credentials)
 	}
 }

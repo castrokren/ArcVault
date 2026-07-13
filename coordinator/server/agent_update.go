@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 
 	"arcvault/coordinator/business"
@@ -17,9 +18,10 @@ var (
 )
 
 type updateCommandMsg struct {
-	Type    string `json:"type"`
-	Version string `json:"version"`
-	URL     string `json:"url"`
+	Type        string `json:"type"`
+	Version     string `json:"version"`
+	URL         string `json:"url"`
+	ChecksumURL string `json:"checksum_url"`
 }
 
 func (s *Server) handleAgentUpdate(w http.ResponseWriter, r *http.Request) {
@@ -109,6 +111,15 @@ func (s *Server) handleAgentUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Find SHA256SUMS asset URL.
+	checksumURL := ""
+	for _, asset := range assets {
+		if strings.EqualFold(asset.Name, "SHA256SUMS") || strings.EqualFold(asset.Name, "sha256sums.txt") {
+			checksumURL = asset.DownloadURL
+			break
+		}
+	}
+
 	// Determine target version from cached update info (coordinator shares the same release).
 	info := GetUpdateCache()
 	targetVersion := ""
@@ -117,9 +128,10 @@ func (s *Server) handleAgentUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cmd := updateCommandMsg{
-		Type:    "update_command",
-		Version: targetVersion,
-		URL:     assetURL,
+		Type:        "update_command",
+		Version:     targetVersion,
+		URL:         assetURL,
+		ChecksumURL: checksumURL,
 	}
 
 	if err := s.hub.SendToAgent(agentID, cmd); err != nil {

@@ -24,3 +24,10 @@ ArcVault is a hub-and-spoke backup orchestrator:
 - Deploy only via `.\scripts\rebuild-and-restart.ps1` — never hand-build without ldflags.
 - Never commit secrets: `config.json`, `*.pem`, `*.key`, `.env` are gitignored and must stay that way.
 - Docs live in `docs/` (see [docs/RUNBOOK.md](docs/RUNBOOK.md)).
+
+## Security Constraints
+
+- **Password complexity:** min 8 chars, uppercase, lowercase, digit, special character enforced server-side in `validatePasswordStrength()` (`coordinator/server/auth.go`) and business layer (`coordinator/business/users.go`).
+- **Admin UI routes** are guarded by router-level role checks (`beforeEach` guard) using `meta: { requiresRole: 'admin' }`. Applied to federation, users, groups, alerts, credentials routes.
+- **Pagination:** max page 10000 (`MaxPage`), max limit 100 (`MaxLimit`), default limit 25 (`DefaultLimit`). Enforced on all paginated endpoints.
+- **User management** endpoints (GET/POST/DELETE /api/users, PUT /api/users/{id}/role) require `adminRoute` middleware (admin role + password change completed).

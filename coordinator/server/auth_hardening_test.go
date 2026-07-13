@@ -12,7 +12,7 @@ import (
 
 // attemptLogin fires one login at handleLogin from the given source IP.
 func attemptLogin(s *Server, username, srcIP string) int {
-	body := fmt.Sprintf(`{"username":%q,"password":"wrongpassword123"}`, username)
+	body := fmt.Sprintf(`{"username":%q,"password":"Wrongpassword123!"}`, username)
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
 	req.RemoteAddr = srcIP + ":40000"
 	req.Header.Set("Content-Type", "application/json")
@@ -74,7 +74,7 @@ func TestPerIPThrottle_ignoresForgedForwardedFor(t *testing.T) {
 	s := newTestServer(t)
 
 	burn := func(xff string) int {
-		body := `{"username":"u1","password":"wrongpassword123"}`
+		body := `{"username":"u1","password":"Wrongpassword123!"}`
 		req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
 		req.RemoteAddr = "203.0.113.77:40000" // same host every time
 		req.Header.Set("X-Forwarded-For", xff)

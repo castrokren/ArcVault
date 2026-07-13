@@ -1,0 +1,6 @@
+{
+  "sessionId": "WFS-001",
+  "created": "2026-07-13T16:30:00Z",
+  "goal": "Fix credential over-sharing — scope credential decryption to agent's own jobs",
+  "status": "active"
+}

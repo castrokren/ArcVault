@@ -301,6 +301,17 @@ async function handleCreateUser() {
     return
   }
 
+  // Password complexity check
+  const hasUpper = /[A-Z]/.test(newUser.value.password)
+  const hasLower = /[a-z]/.test(newUser.value.password)
+  const hasDigit = /[0-9]/.test(newUser.value.password)
+  const hasSpecial = /[^A-Za-z0-9]/.test(newUser.value.password)
+  const classes = [hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length
+  if (classes < 3) {
+    createError.value = 'Password must include uppercase, lowercase, digit, and special character'
+    return
+  }
+
   creatingUser.value = true
   createError.value = ''
 

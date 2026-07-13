@@ -19,12 +19,12 @@ const routes = [
   { path: '/jobs', component: Jobs },
   { path: '/history', component: History },
   { path: '/templates', component: Templates },
-  { path: '/federation', component: Federation },
-  { path: '/federation/health', component: FederationHealth },
-  { path: '/users', component: Users },
-  { path: '/groups', component: Groups },
-  { path: '/alerts', component: Alerts },
-  { path: '/admin/credentials', component: Credentials },
+  { path: '/federation', component: Federation, meta: { requiresRole: 'admin' } },
+  { path: '/federation/health', component: FederationHealth, meta: { requiresRole: 'admin' } },
+  { path: '/users', component: Users, meta: { requiresRole: 'admin' } },
+  { path: '/groups', component: Groups, meta: { requiresRole: 'admin' } },
+  { path: '/alerts', component: Alerts, meta: { requiresRole: 'admin' } },
+  { path: '/admin/credentials', component: Credentials, meta: { requiresRole: 'admin' } },
 ]
 
 const router = createRouter({
@@ -50,6 +50,12 @@ router.beforeEach((to, from, next) => {
   // Check if user is authenticated
   if (!auth.isAuthenticated.value) {
     next('/login')
+    return
+  }
+
+  // Role-based route guard
+  if (to.meta && to.meta.requiresRole && !auth.hasRole(to.meta.requiresRole)) {
+    next('/agents')
     return
   }
 

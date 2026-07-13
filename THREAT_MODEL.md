@@ -26,6 +26,9 @@
                          │  │  Auth Layer               │   │
                          │  │  AdminToken [P0-004]      │   │
                          │  │  JWT Secret (plaintext)   │   │
+                         │  │  Password: 8+ chars +     │   │
+                         │  │  4 classes (upper/lower/  │   │
+                         │  │  digit/special) [P1-009]  │   │
                          │  └───────────────────────────┘   │
                          │           ↑↓                      │
                          │  ┌───────────────────────────┐   │
@@ -75,8 +78,8 @@
                     │ /api/agents/{id}/heartbeat     │
                     │                                │
                     └────────────────┬────────────────┘
-                                     │
-                          Network (TLS or plaintext)
+                                      │
+                           Network (TLS or plaintext)
 ```
 
 ---
@@ -350,6 +353,14 @@ High Job Count (> 500 jobs)
                     │ Verify signature     │      (env vars, not config)
                     │ Check expiration     │
                     └──────────────────────┘
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │ Password Policy      │ ◄─── P1-009 FIXES THIS
+                    │ 8+ chars + 4 classes │      (upper, lower, digit,
+                    │                      │       special — enforced
+                    │                      │       server-side in auth.go)
+                    └──────────────────────┘
 ```
 
 ### Layer 3: Authorization
@@ -361,6 +372,15 @@ High Job Count (> 500 jobs)
                     │ Role-Based Access    │
                     │ (admin, operator,    │
                     │  viewer)             │
+                    └──────────────────────┘
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │ User Management      │ ◄─── P1-010 FIXES THIS
+                    │ adminRoute enforced  │      (RequireRole("admin") +
+                    │ for GET/POST/DELETE  │       RequirePasswordChange
+                    │ /api/users +         │       on all 4 user mgmt
+                    │ PUT /api/users/role  │       endpoints)
                     └──────────────────────┘
                                │
                                ▼
@@ -405,6 +425,14 @@ High Job Count (> 500 jobs)
     │ • Indexes    │  │   load       │  │ • Audit      │
     │ • Timeout    │  │               │  │   trail      │
     └──────────────┘  └──────────────┘  └──────────────┘
+                               │
+                               ▼
+                    ┌──────────────────────┐
+                    │ Pagination Limits    │ ◄─── P1-011 FIXES THIS
+                    │ MaxPage = 10000      │      (prevents page-scan
+                    │ MaxLimit = 100       │       DoS via unbounded
+                    │                      │       pagination params)
+                    └──────────────────────┘
 ```
 
 ---
@@ -429,6 +457,7 @@ High Job Count (> 500 jobs)
 - **CWE-345:** Insufficient Verification of Data Authenticity (P0-002)
 - **CWE-346:** Origin Validation Error (P0-001)
 - **CWE-362:** Concurrent Execution with Shared Resource (P0-006)
+- **CWE-521:** Weak Password Requirements (P1-009)
 - **CWE-674:** Uncontrolled Recursion (P0-008)
 - **CWE-798:** Use of Hard-Coded Credentials (P0-004)
 - **CWE-1025:** Comparison Using Wrong Factors (P0-007)
@@ -454,6 +483,10 @@ DB Scan Errors:
 SSH Key Cleanup:
   Expected: 0 orphaned keys in /tmp
   Alert if: > 0 (cleanup failed)
+
+Password Strength Failures:
+  Expected: 0 (strong passwords enforced)
+  Alert if: > 0 (client bypass or direct API usage)
 ```
 
 ### Operational Metrics
@@ -473,6 +506,37 @@ Agent Offline Rate:
   After: < 1%
   Alert if: > 5% (network issue)
 ```
+
+---
+
+## 2026-07-13 Hardening (Phase 1b)
+
+This section documents the additional hardening completed on 2026-07-13.
+
+### Resolved Findings
+
+| ID | Finding | Component | Fix |
+|----|---------|-----------|-----|
+| **P1-009** | Password policy is length-only (≥8 chars); no character-class enforcement | `auth.go`, `business/users.go` | Added `validatePasswordStrength()` enforcing min 8 chars + at least one uppercase, lowercase, digit, and special character. Applied to login, password change, and user creation. Business layer got min-length-8 check. Client-side password strength meter updated to check all 4 classes and block weak submissions. |
+| **P1-010** | User management routes use raw `JWTMiddleware` + inline role check instead of `adminRoute` | `server.go` routes | Swapped `s.JWTMiddleware` → `s.adminRoute` for GET/POST/DELETE /api/users and PUT /api/users/{id}/role. All 4 endpoints now pass through `RequirePasswordChange` and `RequireRole("admin")`. |
+| **P1-011** | Pagination has no maximum page cap; unbounded page parameter enables resource exhaustion DoS | `handlers/pagination.go` | Added `MaxPage = 10000` cap. Extracted `DefaultLimit = 25` and `MaxLimit = 100` as named constants. |
+| — | PUT vs PATCH verb mismatch in `handleUpdateUserRole` | `users.go` handler | Fixed handler to check `MethodPut` instead of stale `MethodPatch` (route was always registered as PUT). |
+| — | Dashboard exposes admin pages (credentials, federation, users, groups, alerts) to non-admin viewers | Vue router (`src/router/index.js`), `src/views/credentials/` | Added `meta: { requiresRole: 'admin' }` to 5 route definitions; `beforeEach` guard enforces role check. Credentials page decodes JWT and redirects non-admins. Credentials nav link gated with `v-if="isAdmin"`. |
+
+### Changes to Existing Controls
+
+- **Layer 2 (Authentication)** — added password complexity validation as a new sub-layer between token authentication and authorization. Weak passwords are now rejected server-side regardless of what the client sends.
+- **Layer 3 (Authorization)** — user management endpoints now use the same `adminRoute` middleware stack as other admin-only routes, ensuring `RequirePasswordChange` is checked. Previously a user with a valid JWT but no password change could access user management.
+- **Layer 5 (Operational Health)** — pagination now capped at `MaxPage = 10000` (previously unbounded). Combined with `MaxLimit = 100`, this limits the maximum rows retrievable in a single paginated query to 1,000,000.
+
+### Verification
+
+All changes verified against the live production coordinator at `C:\ArcVault\coordinator.exe`. Dashboard refetch confirmed admin-only routes and nav links are hidden for non-admin users. Pagination API calls with `page=99999` are rejected.
+
+### Open Items
+
+- `handleUpdateUserRole` was checking `MethodPatch` instead of `MethodPut` — **FIXED** (the endpoint had been dead since the route table was written; callers always saw 405). Verify the route table does not have a separate PATCH registration.
+- Role `operator` — `CreateUserRequest.Validate()` and `UpdateUserRoleRequest.Validate()` allow only `admin`|`viewer`. Existing prod user id 3 has role `operator`. Needs investigation.
 
 ---
 

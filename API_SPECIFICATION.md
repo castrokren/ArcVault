@@ -1,8 +1,8 @@
-# ArcVault API Specification v0.5.1
+# ArcVault API Specification v0.6.0
 
-**Version:** v0.5.1  
-**Last Updated:** July 1, 2026  
-**Status:** Active — tracking coordinator v0.5.1 (deprecated progress endpoints excluded)
+**Version:** v0.6.0  
+**Last Updated:** July 13, 2026  
+**Status:** Active — tracking coordinator v0.6.0 (deprecated progress endpoints excluded)
 
 ---
 
@@ -51,7 +51,7 @@ This document defines the complete API contract for ArcVault Coordinator. All en
 }
 ```
 
-Default limit: **25** (max 100). Page default: 1.
+Default limit: **25** (`DefaultLimit`). Max limit: **100** (`MaxLimit`). Max page: **10,000** (`MaxPage`). Page default: 1.
 
 **Note:** Some endpoints (credential profiles, alert rules, alert history) return bare arrays without pagination. These are documented individually in their respective sections.
 
@@ -81,8 +81,8 @@ Default limit: **25** (max 100). Page default: 1.
 **Response:** 200 OK
 ```json
 {
-  "version": "v0.5.1",
-  "build_time": "2026-06-30T12:00:00Z",
+  "version": "v0.6.0",
+  "build_time": "2026-07-13T12:00:00Z",
   "os": "windows",
   "arch": "amd64",
   "go_version": "go1.25.0",
@@ -131,7 +131,7 @@ Default limit: **25** (max 100). Page default: 1.
 ```json
 {
   "username": "string (required, 1-255 chars)",
-  "password": "string (required, 8+ chars)"
+  "password": "string (required, 8+ chars, must include uppercase, lowercase, digit, and special character)"
 }
 ```
 
@@ -148,14 +148,20 @@ Default limit: **25** (max 100). Page default: 1.
 ```
 
 **Errors:**
-- `400` — Missing username or password
+- `400` — Missing username or password, or password fails complexity requirements
 - `401` — Invalid credentials (generic: never reveal which field failed)
+- `429` — Too many login attempts (rate-limited; 5 burst / 1-per-12s steady / 10-min lockout at 10 failures)
 - `500` — Internal server error
 
 **Validation Rules:**
 - Username and password both required
-- Password must be 8+ characters
 - Username must be 1-255 characters
+- Password must be 8+ characters and contain at least one of each:
+  - Uppercase letter (A-Z)
+  - Lowercase letter (a-z)
+  - Digit (0-9)
+  - Special character
+- Rate-limited per IP and per username
 
 ---
 
@@ -219,7 +225,7 @@ Default limit: **25** (max 100). Page default: 1.
 ```json
 {
   "old_password": "string (required, 8+ chars)",
-  "new_password": "string (required, 8+ chars)"
+  "new_password": "string (required, 8+ chars, must include uppercase, lowercase, digit, and special character)"
 }
 ```
 
@@ -234,13 +240,16 @@ Default limit: **25** (max 100). Page default: 1.
 - `400` — Passwords don't match validation rules
 - `401` — Old password incorrect
 - `401` — Unauthenticated
+- `429` — Too many password change attempts (rate-limited per user)
 - `500` — Internal server error
 
 **Validation Rules:**
 - Both passwords required
 - Each must be 8+ characters
 - New password must differ from old password
+- New password must contain at least one uppercase letter, lowercase letter, digit, and special character
 - Clears `must_change_password` flag on success
+- Rate-limited per user (independent of login rate limiter)
 
 ---
 
@@ -250,7 +259,7 @@ Default limit: **25** (max 100). Page default: 1.
 **Purpose:** List all users (admin only)
 
 **Query Params:**
-- `page` — Page number (default: 1, min: 1)
+- `page` — Page number (default: 1, min: 1, max: 10000)
 - `limit` — Items per page (default: 25, min: 1, max: 100)
 
 **Request:** No body
@@ -279,6 +288,8 @@ Default limit: **25** (max 100). Page default: 1.
 - `403` — Not authorized (not admin)
 - `500` — Internal server error
 
+**Auth:** Requires admin role + password change completed (`adminRoute` middleware)
+
 ---
 
 ### POST /api/users
@@ -288,7 +299,7 @@ Default limit: **25** (max 100). Page default: 1.
 ```json
 {
   "username": "string (required, 1-255 chars, unique)",
-  "password": "string (required, 8+ chars)",
+  "password": "string (required, 8+ chars, must include uppercase, lowercase, digit, and special character)",
   "role": "string (required, admin|operator|viewer)"
 }
 ```
@@ -313,7 +324,7 @@ Default limit: **25** (max 100). Page default: 1.
 
 **Validation Rules:**
 - Username: 1-255 characters, unique, alphanumeric + underscore
-- Password: 8+ characters
+- Password: 8+ characters, must contain at least one uppercase letter, lowercase letter, digit, and special character
 - Role: must be "admin", "operator", or "viewer"
 - New users always have `must_change_password = true`
 
@@ -332,6 +343,8 @@ Default limit: **25** (max 100). Page default: 1.
 - `403` — Not authorized (not admin)
 - `404` — User not found
 - `500` — Internal server error
+
+**Auth:** Requires admin role + password change completed (`adminRoute` middleware)
 
 ---
 
@@ -365,6 +378,8 @@ Default limit: **25** (max 100). Page default: 1.
 **Validation Rules:**
 - Role must be "admin", "operator", or "viewer"
 
+**Auth:** Requires admin role + password change completed (`adminRoute` middleware)
+
 ---
 
 ## Group Management API
@@ -373,7 +388,7 @@ Default limit: **25** (max 100). Page default: 1.
 **Purpose:** List all agent groups with member counts (viewer+)
 
 **Query Params:**
-- `page` — Page number (default: 1, min: 1)
+- `page` — Page number (default: 1, min: 1, max: 10000)
 - `limit` — Items per page (default: 25, min: 1, max: 100)
 
 **Request:** No body
@@ -547,7 +562,7 @@ Default limit: **25** (max 100). Page default: 1.
 **Purpose:** List all agents in group (viewer+)
 
 **Query Params:**
-- `page` — Page number (default: 1, min: 1)
+- `page` — Page number (default: 1, min: 1, max: 10000)
 - `limit` — Items per page (default: 25, min: 1, max: 100)
 
 **Request:** No body
@@ -650,7 +665,7 @@ Default limit: **25** (max 100). Page default: 1.
 **Purpose:** List all agents with pagination and filters (viewer+)
 
 **Query Params:**
-- `page` — Page number (default: 1, min: 1)
+- `page` — Page number (default: 1, min: 1, max: 10000)
 - `limit` — Items per page (default: 25, min: 1, max: 100)
 - `search` — Search hostname (optional, substring match)
 - `status` — Filter by status (optional, online|offline)
@@ -818,7 +833,7 @@ Default limit: **25** (max 100). Page default: 1.
 **Purpose:** List all backup templates with pagination and search (viewer+)
 
 **Query Params:**
-- `page` — Page number (default: 1, min: 1)
+- `page` — Page number (default: 1, min: 1, max: 10000)
 - `limit` — Items per page (default: 25, min: 1, max: 100)
 - `search` — Search name or agent_id (optional, substring match)
 
@@ -1063,7 +1078,7 @@ Default limit: **25** (max 100). Page default: 1.
 **Purpose:** List all jobs with pagination and filters (agent or viewer+)
 
 **Query Params:**
-- `page` — Page number (default: 1, min: 1)
+- `page` — Page number (default: 1, min: 1, max: 10000)
 - `limit` — Items per page (default: 25, min: 1, max: 100)
 - `search` — Search job name (optional, substring match)
 - `status` — Filter by status (optional, pending|scheduled|running|completed|failed|cancelled)
@@ -1211,7 +1226,7 @@ Default limit: **25** (max 100). Page default: 1.
 **Purpose:** List job execution history (viewer+)
 
 **Query Params:**
-- `page` — Page number (default: 1, min: 1)
+- `page` — Page number (default: 1, min: 1, max: 10000)
 - `limit` — Items per page (default: 25, min: 1, max: 100)
 
 **Request:** No body
@@ -1248,7 +1263,7 @@ Default limit: **25** (max 100). Page default: 1.
 **Purpose:** List all job runs across all jobs with filters (viewer+)
 
 **Query Params:**
-- `page` — Page number (default: 1, min: 1)
+- `page` — Page number (default: 1, min: 1, max: 10000)
 - `limit` — Items per page (default: 25, min: 1, max: 100)
 - `job_id` — Filter by job (optional)
 - `agent_id` — Filter by agent (optional)
@@ -1330,7 +1345,7 @@ Default limit: **25** (max 100). Page default: 1.
 **Purpose:** Get all job logs with pagination (viewer+)
 
 **Query Params:**
-- `page` — Page number (default: 1, min: 1)
+- `page` — Page number (default: 1, min: 1, max: 10000)
 - `limit` — Items per page (default: 25, min: 1, max: 100)
 
 **Request:** No body

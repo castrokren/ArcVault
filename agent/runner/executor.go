@@ -98,6 +98,11 @@ func RealExecutor(ctx context.Context, job Job, report ProgressFunc) (exitCode i
 			return 1, "command is empty after parsing"
 		}
 
+		programName := ExtractProgramName(job.Command)
+		if !IsWhitelisted(programName) {
+			return 1, fmt.Sprintf("command not allowed: %s", programName)
+		}
+
 		// Execute the program with parsed arguments, avoiding shell interpretation
 		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 		out, err := cmd.CombinedOutput()

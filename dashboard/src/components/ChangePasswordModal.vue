@@ -107,20 +107,24 @@ const canSubmit = computed(() => {
 
 function updateStrength() {
   const pwd = newPassword.value
+  const hasUpper = /[A-Z]/.test(pwd)
+  const hasLower = /[a-z]/.test(pwd)
+  const hasDigit = /[0-9]/.test(pwd)
+  const hasSpecial = /[^A-Za-z0-9]/.test(pwd)
+  const classes = [hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length
 
-  // Check password strength
   if (pwd.length < 8) {
     passwordStrength.value = 'weak'
-    strengthLabel.value = 'Weak (min 8 characters)'
-  } else if (/[A-Z]/.test(pwd) && /[0-9]/.test(pwd)) {
+    strengthLabel.value = 'Weak — too short'
+  } else if (classes <= 2) {
+    passwordStrength.value = 'weak'
+    strengthLabel.value = 'Weak — need uppercase, lowercase, digit & special character'
+  } else if (classes >= 3 && pwd.length >= 10) {
     passwordStrength.value = 'strong'
     strengthLabel.value = 'Strong'
-  } else if (/[A-Z]/.test(pwd) || /[0-9]/.test(pwd)) {
+  } else {
     passwordStrength.value = 'medium'
     strengthLabel.value = 'Medium'
-  } else {
-    passwordStrength.value = 'weak'
-    strengthLabel.value = 'Weak'
   }
 }
 
@@ -141,6 +145,11 @@ async function handleChangePassword() {
 
   if (newPassword.value.length < 8) {
     error.value = 'Password must be at least 8 characters'
+    return
+  }
+
+  if (passwordStrength.value === 'weak') {
+    error.value = 'Password is too weak. Include uppercase, lowercase, digit, and special character.'
     return
   }
 

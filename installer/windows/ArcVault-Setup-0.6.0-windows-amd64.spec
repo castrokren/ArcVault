@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='ArcVault-Setup-0.5.1-windows-amd64',
+    name='ArcVault-Setup-0.6.0-windows-amd64',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

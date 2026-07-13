@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/subtle"
 	"fmt"
 	"io/fs"
@@ -341,10 +342,10 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /api/auth/refresh", s.JWTMiddleware(s.handleRefreshToken))
 
 	// User management endpoints (admin only)
-	s.router.HandleFunc("GET /api/users", s.JWTMiddleware(s.handleListUsers))
-	s.router.HandleFunc("POST /api/users", s.JWTMiddleware(s.handleCreateUser))
-	s.router.HandleFunc("DELETE /api/users/{id}", s.JWTMiddleware(s.handleDeleteUser))
-	s.router.HandleFunc("PUT /api/users/{id}/role", s.JWTMiddleware(s.handleUpdateUserRole))
+	s.router.HandleFunc("GET /api/users", s.adminRoute(s.handleListUsers))
+	s.router.HandleFunc("POST /api/users", s.adminRoute(s.handleCreateUser))
+	s.router.HandleFunc("DELETE /api/users/{id}", s.adminRoute(s.handleDeleteUser))
+	s.router.HandleFunc("PUT /api/users/{id}/role", s.adminRoute(s.handleUpdateUserRole))
 
 	// Groups endpoints
 	s.router.HandleFunc("GET /api/groups", s.viewerRoute(s.handleListGroups))
@@ -522,6 +523,11 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		if s.isAdminToken(token) || s.isAgentToken(token) {
+			if s.isAgentToken(token) {
+				if agentID, err := s.db.GetAgentIDByToken(token); err == nil && agentID != "" {
+					r = r.WithContext(context.WithValue(r.Context(), AgentIDCtxKey{}, agentID))
+				}
+			}
 			next(w, r)
 			return
 		}
@@ -536,6 +542,11 @@ func (s *Server) agentOrViewerRoute(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := bearerToken(r)
 		if s.isAdminToken(token) || s.isAgentToken(token) {
+			if s.isAgentToken(token) {
+				if agentID, err := s.db.GetAgentIDByToken(token); err == nil && agentID != "" {
+					r = r.WithContext(context.WithValue(r.Context(), AgentIDCtxKey{}, agentID))
+				}
+			}
 			next(w, r)
 			return
 		}
@@ -549,6 +560,11 @@ func (s *Server) agentOrOperatorRoute(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := bearerToken(r)
 		if s.isAdminToken(token) || s.isAgentToken(token) {
+			if s.isAgentToken(token) {
+				if agentID, err := s.db.GetAgentIDByToken(token); err == nil && agentID != "" {
+					r = r.WithContext(context.WithValue(r.Context(), AgentIDCtxKey{}, agentID))
+				}
+			}
 			next(w, r)
 			return
 		}
@@ -562,6 +578,11 @@ func (s *Server) agentOrAdminRoute(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := bearerToken(r)
 		if s.isAdminToken(token) || s.isAgentToken(token) {
+			if s.isAgentToken(token) {
+				if agentID, err := s.db.GetAgentIDByToken(token); err == nil && agentID != "" {
+					r = r.WithContext(context.WithValue(r.Context(), AgentIDCtxKey{}, agentID))
+				}
+			}
 			next(w, r)
 			return
 		}

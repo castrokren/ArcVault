@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"runtime"
 )
 
@@ -51,6 +52,17 @@ func applySMBCredentials(data map[string]interface{}) (func(), error) {
 		return func() {}, fmt.Errorf("SMB credentials missing or invalid host")
 	}
 
+	// Validate all credential fields to prevent argument injection
+	if err := validateCredField(host, "host"); err != nil {
+		return func() {}, err
+	}
+	if err := validateCredField(username, "username"); err != nil {
+		return func() {}, err
+	}
+	if err := validateCredField(password, "password"); err != nil {
+		return func() {}, err
+	}
+
 	// Use cmdkey to store credentials
 	// Format: cmdkey /add:hostname /user:username /pass:password
 	cmd := exec.Command("cmdkey", "/add:"+host, "/user:"+username, "/pass:"+password)
@@ -65,6 +77,26 @@ func applySMBCredentials(data map[string]interface{}) (func(), error) {
 	}
 
 	return cleanup, nil
+}
+
+// validateCredField checks that a credential field contains only safe characters.
+// Rejects newlines, quotes, semicolons, null bytes, pipes, and ampersands.
+// For "host", additionally enforces a hostname/IP pattern (alphanumeric, dots, hyphens only).
+func validateCredField(field, name string) error {
+	if field == "" {
+		return fmt.Errorf("SMB %s must not be empty", name)
+	}
+	unsafeChars := regexp.MustCompile(`[\n\r"' ;\x00|&]`)
+	if unsafeChars.MatchString(field) {
+		return fmt.Errorf("SMB %s contains unsafe characters", name)
+	}
+	if name == "host" {
+		hostPattern := regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+		if !hostPattern.MatchString(field) {
+			return fmt.Errorf("SMB host must contain only alphanumeric characters, dots, hyphens, and underscores")
+		}
+	}
+	return nil
 }
 
 // applySSHCredentials sets up SSH credentials (either key-based or password-based).

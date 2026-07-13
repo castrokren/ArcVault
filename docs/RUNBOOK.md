@@ -2,8 +2,8 @@
 
 **Comprehensive guide to understanding, installing, operating, and troubleshooting ArcVault.**
 
-**Version:** v0.5.1  
-**Last updated:** July 1, 2026
+**Version:** v0.6.0  
+**Last updated:** July 13, 2026
 
 ---
 
@@ -184,7 +184,7 @@ go build -o agent -ldflags "-X main.Version=$(cat VERSION)" ./agent
 
 # Verify version matches VERSION file
 ./coordinator --version
-# Expected: v0.5.1
+# Expected: v0.6.0
 ```
 
 **Note:** Go 1.25.0+ is required. The dashboard is embedded in the coordinator binary at build time. If you modify the dashboard, rebuild via `scripts/rebuild-and-restart.ps1` (Windows) or the equivalent build steps.
@@ -344,6 +344,47 @@ Backup credentials (passwords, SSH keys) are encrypted at rest using:
 - **Key source:** `credential_key` in `config.json` (64-char hex string)
 - **Fallback:** Environment variable `ARCVAULT_CREDENTIAL_KEY`
 
+### Password Policy
+
+ArcVault enforces password complexity server-side via `validatePasswordStrength()` in `auth.go`:
+
+| Requirement | Detail |
+|-------------|--------|
+| Minimum length | 8 characters |
+| Uppercase | At least one uppercase letter (A-Z) |
+| Lowercase | At least one lowercase letter (a-z) |
+| Digit | At least one digit (0-9) |
+| Special character | At least one special character (`!@#$%^&*()_+-=[]{}|;':\",./<>?~`) |
+
+This validation runs on:
+- **Login** (`POST /api/auth/login`): weak passwords are rejected even if the user exists
+- **Password change** (`PUT /api/auth/change-password`): new password must meet all requirements
+- **User creation** (`POST /api/users`): new user passwords must meet all requirements
+- **Business layer** (`business/users.go`): minimum 8-char check as a secondary guard
+
+The dashboard password strength meter checks all four character classes and blocks form submission on weak passwords. The meter is purely UX — the server enforces the policy regardless of what the client sends.
+
+### Route-Level Role Guards (Admin Pages)
+
+The dashboard enforces role-based access at the router level. Routes with `meta: { requiresRole: 'admin' }` are guarded by a `beforeEach` navigation guard that checks the JWT payload. The following pages are admin-only:
+
+- Federation (`/federation`)
+- Users (`/users`)
+- Groups (`/groups`)
+- Alerts (`/alerts`)
+- Credentials (`/credentials`)
+
+The credentials nav link is also conditionally rendered with `v-if="isAdmin"`. The credentials page itself performs an additional JWT decode + admin role check and redirects non-admins.
+
+### Pagination Limits
+
+All paginated endpoints enforce:
+- **Max page:** 10,000 (`MaxPage` constant)
+- **Max limit per page:** 100 (`MaxLimit` constant)
+- **Default limit:** 25 (`DefaultLimit` constant)
+
+These caps prevent resource exhaustion through unbounded pagination parameters. Combined, the maximum rows retrievable in a single paginated request is 1,000,000 (10000 pages × 100 per page).
+
 ### Production Security Checklist
 
 ```
@@ -357,6 +398,8 @@ Backup credentials (passwords, SSH keys) are encrypted at rest using:
 [ ] TLS cert rotation planned before expiry
 [ ] Regular backups of config.json
 [ ] Audit logging enabled and monitored
+[ ] Password complexity policy enforced for all users
+[ ] Admin route middleware confirmed active on user management
 ```
 
 ### Development Mode

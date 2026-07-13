@@ -22,7 +22,7 @@
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 4h10M2 7h6M2 10h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
           Jobs
         </router-link>
-        <router-link to="/admin/credentials">
+        <router-link v-if="isAdmin" to="/admin/credentials">
           <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><rect x="2" y="6" width="10" height="6" rx="1" stroke="currentColor" stroke-width="1.3"/><path d="M4 6V4.5a3 3 0 0 1 6 0V6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><circle cx="7" cy="9" r="0.75" fill="currentColor"/></svg>
           Credentials
         </router-link>
