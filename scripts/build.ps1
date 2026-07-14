@@ -83,6 +83,7 @@ exe = EXE(
     runtime_tmpdir=None,
     console=False,
     uac_admin=True,
+    icon='installer/windows/icon.ico',
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,

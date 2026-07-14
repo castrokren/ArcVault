@@ -517,7 +517,7 @@ This section documents the additional hardening completed on 2026-07-13.
 
 | ID | Finding | Component | Fix |
 |----|---------|-----------|-----|
-| **P1-009** | Password policy is length-only (≥8 chars); no character-class enforcement | `auth.go`, `business/users.go` | Added `validatePasswordStrength()` enforcing min 8 chars + at least one uppercase, lowercase, digit, and special character. Applied to login, password change, and user creation. Business layer got min-length-8 check. Client-side password strength meter updated to check all 4 classes and block weak submissions. |
+| **P1-009** | Password policy is length-only (≥8 chars); no character-class enforcement | `auth.go`, `business/users.go` | Added `validatePasswordStrength()` enforcing min 8 chars + at least one uppercase, lowercase, digit, and special character. Applied to password change and user creation. Business layer got min-length-8 check. Client-side password strength meter updated to check all 4 classes and block weak submissions. |
 | **P1-010** | User management routes use raw `JWTMiddleware` + inline role check instead of `adminRoute` | `server.go` routes | Swapped `s.JWTMiddleware` → `s.adminRoute` for GET/POST/DELETE /api/users and PUT /api/users/{id}/role. All 4 endpoints now pass through `RequirePasswordChange` and `RequireRole("admin")`. |
 | **P1-011** | Pagination has no maximum page cap; unbounded page parameter enables resource exhaustion DoS | `handlers/pagination.go` | Added `MaxPage = 10000` cap. Extracted `DefaultLimit = 25` and `MaxLimit = 100` as named constants. |
 | — | PUT vs PATCH verb mismatch in `handleUpdateUserRole` | `users.go` handler | Fixed handler to check `MethodPut` instead of stale `MethodPatch` (route was always registered as PUT). |
@@ -525,7 +525,7 @@ This section documents the additional hardening completed on 2026-07-13.
 
 ### Changes to Existing Controls
 
-- **Layer 2 (Authentication)** — added password complexity validation as a new sub-layer between token authentication and authorization. Weak passwords are now rejected server-side regardless of what the client sends.
+- **Layer 2 (Authentication)** — added password complexity validation as a new sub-layer between token authentication and authorization. Weak passwords are now rejected server-side on password change and user creation regardless of what the client sends. Login was excluded from validation to prevent user-enumeration via timing/response differences (relaxed 2026-07-14).
 - **Layer 3 (Authorization)** — user management endpoints now use the same `adminRoute` middleware stack as other admin-only routes, ensuring `RequirePasswordChange` is checked. Previously a user with a valid JWT but no password change could access user management.
 - **Layer 5 (Operational Health)** — pagination now capped at `MaxPage = 10000` (previously unbounded). Combined with `MaxLimit = 100`, this limits the maximum rows retrievable in a single paginated query to 1,000,000.
 

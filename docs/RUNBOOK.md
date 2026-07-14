@@ -363,12 +363,13 @@ ArcVault enforces password complexity server-side via `validatePasswordStrength(
 | Special character | At least one special character (`!@#$%^&*()_+-=[]{}|;':\",./<>?~`) |
 
 This validation runs on:
-- **Login** (`POST /api/auth/login`): weak passwords are rejected even if the user exists
 - **Password change** (`PUT /api/auth/change-password`): new password must meet all requirements
 - **User creation** (`POST /api/users`): new user passwords must meet all requirements
 - **Business layer** (`business/users.go`): minimum 8-char check as a secondary guard
 
-The dashboard password strength meter checks all four character classes and blocks form submission on weak passwords. The meter is purely UX — the server enforces the policy regardless of what the client sends.
+The dashboard password strength meter checks all four character classes and blocks form submission on weak passwords on the user creation and password change screens. The meter is purely UX — the server enforces the policy regardless of what the client sends.
+
+> **Note:** Login no longer validates password strength. This was relaxed to avoid user-enumeration via timing/response differences on login for legacy users. Validation still applies on password change and user creation.
 
 ### Route-Level Role Guards (Admin Pages)
 
