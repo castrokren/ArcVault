@@ -119,7 +119,7 @@ class ArcVaultInstaller:
     AGENT_DIR = Path("C:/ArcVault-Agent")
 
     def __init__(self):
-        self.version = "0.5.1"
+        self.version = "0.6.0"
         self.components = set()
         self.coordinator_port = 8080
         self.admin_token = ""
