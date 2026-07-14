@@ -288,24 +288,7 @@ export default {
       },
     };
   },
-  mounted() {
-    if (!this.hasAdminAccess()) {
-      window.location.hash = '/agents'
-      return
-    }
-    this.fetchCredentials();
-  },
   methods: {
-    hasAdminAccess() {
-      const token = getToken()
-      if (!token) return false
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]))
-        return payload.role === 'admin'
-      } catch {
-        return false
-      }
-    },
     async fetchCredentials() {
       this.loading = true;
       this.error = null;
