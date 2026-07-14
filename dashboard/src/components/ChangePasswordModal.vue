@@ -116,7 +116,7 @@ function updateStrength() {
   if (pwd.length < 8) {
     passwordStrength.value = 'weak'
     strengthLabel.value = 'Weak — too short'
-  } else if (classes <= 2) {
+  } else if (classes < 4) {
     passwordStrength.value = 'weak'
     strengthLabel.value = 'Weak — need uppercase, lowercase, digit & special character'
   } else if (classes >= 3 && pwd.length >= 10) {

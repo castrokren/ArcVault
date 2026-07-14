@@ -307,7 +307,7 @@ async function handleCreateUser() {
   const hasDigit = /[0-9]/.test(newUser.value.password)
   const hasSpecial = /[^A-Za-z0-9]/.test(newUser.value.password)
   const classes = [hasUpper, hasLower, hasDigit, hasSpecial].filter(Boolean).length
-  if (classes < 3) {
+  if (classes < 4) {
     createError.value = 'Password must include uppercase, lowercase, digit, and special character'
     return
   }
