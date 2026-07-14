@@ -183,13 +183,6 @@ func (s *Server) validateCredentialTypeForAgent(credType, agentOS string) bool {
 	return true
 }
 
-// isAgentTokenRequest checks if the request was authenticated with an agent token
-// (as opposed to JWT). This is detected by the absence of UserClaims in context.
-func isAgentTokenRequest(r *http.Request) bool {
-	_, hasUserClaims := r.Context().Value(UserClaimsCtxKey{}).(*JWTClaims)
-	return !hasUserClaims
-}
-
 // decryptCredentials decrypts a credential profile's encrypted data.
 // A non-nil error means the caller must NOT proceed without credentials: a job
 // that binds a profile whose key is unavailable or whose ciphertext won't

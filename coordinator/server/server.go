@@ -524,9 +524,7 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 		if s.isAdminToken(token) || s.isAgentToken(token) {
 			if s.isAgentToken(token) {
-				if agentID, err := s.db.GetAgentIDByToken(token); err == nil && agentID != "" {
-					r = r.WithContext(context.WithValue(r.Context(), AgentIDCtxKey{}, agentID))
-				}
+				r = s.withAgentID(r, token)
 			}
 			next(w, r)
 			return
@@ -543,9 +541,7 @@ func (s *Server) agentOrViewerRoute(next http.HandlerFunc) http.HandlerFunc {
 		token := bearerToken(r)
 		if s.isAdminToken(token) || s.isAgentToken(token) {
 			if s.isAgentToken(token) {
-				if agentID, err := s.db.GetAgentIDByToken(token); err == nil && agentID != "" {
-					r = r.WithContext(context.WithValue(r.Context(), AgentIDCtxKey{}, agentID))
-				}
+				r = s.withAgentID(r, token)
 			}
 			next(w, r)
 			return
@@ -561,9 +557,7 @@ func (s *Server) agentOrOperatorRoute(next http.HandlerFunc) http.HandlerFunc {
 		token := bearerToken(r)
 		if s.isAdminToken(token) || s.isAgentToken(token) {
 			if s.isAgentToken(token) {
-				if agentID, err := s.db.GetAgentIDByToken(token); err == nil && agentID != "" {
-					r = r.WithContext(context.WithValue(r.Context(), AgentIDCtxKey{}, agentID))
-				}
+				r = s.withAgentID(r, token)
 			}
 			next(w, r)
 			return
@@ -579,15 +573,23 @@ func (s *Server) agentOrAdminRoute(next http.HandlerFunc) http.HandlerFunc {
 		token := bearerToken(r)
 		if s.isAdminToken(token) || s.isAgentToken(token) {
 			if s.isAgentToken(token) {
-				if agentID, err := s.db.GetAgentIDByToken(token); err == nil && agentID != "" {
-					r = r.WithContext(context.WithValue(r.Context(), AgentIDCtxKey{}, agentID))
-				}
+				r = s.withAgentID(r, token)
 			}
 			next(w, r)
 			return
 		}
 		s.adminRoute(next)(w, r)
 	}
+}
+
+// withAgentID injects the agent ID into the request context if the token
+// belongs to a registered agent. This is called by middleware after confirming
+// the token is an agent token.
+func (s *Server) withAgentID(r *http.Request, token string) *http.Request {
+	if agentID, err := s.db.GetAgentIDByToken(token); err == nil && agentID != "" {
+		return r.WithContext(context.WithValue(r.Context(), AgentIDCtxKey{}, agentID))
+	}
+	return r
 }
 
 // adminMiddleware accepts only the admin token from config.
