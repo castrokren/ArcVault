@@ -45,7 +45,7 @@ Set-Location $SourcePath
 $env:GOOS   = "windows"
 $env:GOARCH = "amd64"
 
-Write-Host "[1/3]  Building binaries..." -ForegroundColor Yellow
+Write-Host "[1/4]  Building binaries..." -ForegroundColor Yellow
 
 Write-Host "   Building coordinator..." -ForegroundColor DarkGray
 & go build -ldflags="-s -w" -o "$DistDir\coordinator-windows-amd64.exe" .\coordinator
@@ -65,12 +65,23 @@ Write-Host "   OK  agent-windows-amd64.exe" -ForegroundColor Green
 
 Remove-Item Env:\GOOS, Env:\GOARCH -ErrorAction SilentlyContinue
 
+# -- Generate checksums --------------------------------------------------
+Write-Host ""
+Write-Host "[2/4]  Generating SHA256SUMS..." -ForegroundColor Yellow
+
+$checksumFile = Join-Path $DistDir "SHA256SUMS"
+Get-ChildItem $DistDir -Filter "*.exe" | ForEach-Object {
+    $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+    "$hash  $($_.Name)" | Out-File -FilePath $checksumFile -Append -Encoding ascii
+}
+Write-Host "   OK  SHA256SUMS generated" -ForegroundColor Green
+
 # -- Upload --------------------------------------------------------------------
 
 Write-Host ""
-Write-Host "[2/3]  Uploading to GitHub Release $Tag..." -ForegroundColor Yellow
+Write-Host "[3/4]  Uploading to GitHub Release $Tag..." -ForegroundColor Yellow
 
-$files = Get-ChildItem $DistDir -Filter "*.exe" | Select-Object -ExpandProperty FullName
+$files = Get-ChildItem $DistDir -Filter "*" | Select-Object -ExpandProperty FullName
 
 foreach ($f in $files) {
     Write-Host "   Uploading $(Split-Path $f -Leaf)..." -ForegroundColor DarkGray
@@ -86,7 +97,7 @@ Remove-Item -Recurse -Force $DistDir
 # -- Done ----------------------------------------------------------------------
 
 Write-Host ""
-Write-Host "[3/3]  Done!" -ForegroundColor Green
+Write-Host "[4/4]  Done!" -ForegroundColor Green
 Write-Host ""
 Write-Host "  https://github.com/castrokren/ArcVault/releases/tag/$Tag" -ForegroundColor Cyan
 Write-Host "  The installer will now download successfully." -ForegroundColor White

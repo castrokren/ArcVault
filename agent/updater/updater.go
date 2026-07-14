@@ -145,11 +145,11 @@ func verifyBinary(path string) error {
 
 // VerifyChecksum downloads the SHA256SUMS file from checksumURL and verifies
 // that the file at localPath matches the expected hash for assetName.
-// Returns nil if the checksum matches or if checksumURL is empty (skips check).
+// Returns an error if checksumURL is empty, HTTP status is not 200,
+// the asset is missing from the checksum file, or the hash does not match.
 func VerifyChecksum(checksumURL, assetName, localPath string) error {
 	if checksumURL == "" {
-		log.Printf("Updater: no checksum URL available, skipping integrity check")
-		return nil
+		return fmt.Errorf("checksum URL is empty — cannot verify download integrity")
 	}
 
 	resp, err := http.Get(checksumURL)
@@ -157,6 +157,10 @@ func VerifyChecksum(checksumURL, assetName, localPath string) error {
 		return fmt.Errorf("failed to download checksums: %w", err)
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("checksum server returned %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

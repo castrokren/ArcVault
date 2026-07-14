@@ -551,6 +551,15 @@ The eight P0 vulnerabilities span all layers (auth, execution, operations). Whil
 
 **Critical Path:** Phase 1 (auth fixes) → Phase 2 (execution hardening) → Phase 3 (operational stability)
 
+### Out of Scope (2026-07-14)
+
+- **Checksum-in-transit only:** The SHA256SUMS file and its corresponding
+  binary are downloaded from the same origin (GitHub Releases). Verification
+  protects against transit corruption and passive MITM, but not against a
+  compromised GitHub account, release infrastructure, or malicious release
+  author. Full release signing (e.g., Sigstore/GPG) is the upgrade path if
+  compromised-release is added to the threat model.
+
 ---
 
 **Document:** THREAT_MODEL.md  

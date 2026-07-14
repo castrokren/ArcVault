@@ -189,6 +189,12 @@ go build -o agent -ldflags "-X main.Version=$(cat VERSION)" ./agent
 
 **Note:** Go 1.25.0+ is required. The dashboard is embedded in the coordinator binary at build time. If you modify the dashboard, rebuild via `scripts/rebuild-and-restart.ps1` (Windows) or the equivalent build steps.
 
+**Release integrity:** Every release ships a `SHA256SUMS` file alongside the
+binaries. The agent's self-updater verifies the downloaded binary against this
+checksum before applying the update. The checksum and binary share the same
+download origin (GitHub Releases), so this protects against transit corruption
+or MITM — it does NOT protect against a compromised GitHub account or release.
+
 #### Start the Coordinator
 
 ```bash

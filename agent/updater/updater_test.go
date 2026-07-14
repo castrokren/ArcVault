@@ -1,6 +1,8 @@
 package updater
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -284,5 +286,75 @@ func TestRollbackNoBackupError(t *testing.T) {
 	}
 	if err.Error() != "no backup available for rollback" {
 		t.Errorf("Wrong error message: %v", err)
+	}
+}
+
+// TestVerifyChecksum_emptyURL_errors ensures that VerifyChecksum returns
+// an error when checksumURL is empty (fail closed), rather than silently
+// skipping verification.
+func TestVerifyChecksum_emptyURL_errors(t *testing.T) {
+	err := VerifyChecksum("", "agent.exe", "/tmp/dummy")
+	if err == nil {
+		t.Fatal("VerifyChecksum('', ...) must return error — empty checksum URL must not be silently accepted")
+	}
+}
+
+// TestVerifyChecksum_non200_errors ensures that VerifyChecksum returns
+// an error when the checksum server returns a non-200 status code.
+func TestVerifyChecksum_non200_errors(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	err := VerifyChecksum(srv.URL, "agent.exe", "/tmp/dummy")
+	if err == nil {
+		t.Fatal("VerifyChecksum(non-200 URL) must return error")
+	}
+}
+
+// TestVerifyChecksum_match verifies that a valid SHA256SUMS file with a
+// matching hash returns nil. This ensures the existing match logic still works.
+func TestVerifyChecksum_match(t *testing.T) {
+	// Create a temp file with known content
+	tmpFile := filepath.Join(t.TempDir(), "agent.bin")
+	content := []byte("hello world\n")
+	if err := os.WriteFile(tmpFile, content, 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	// Compute expected hash
+	h := sha256.New()
+	h.Write(content)
+	expectedHash := hex.EncodeToString(h.Sum(nil))
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := expectedHash + "  agent.bin\n"
+		w.Write([]byte(response))
+	}))
+	defer srv.Close()
+
+	if err := VerifyChecksum(srv.URL, "agent.bin", tmpFile); err != nil {
+		t.Fatalf("VerifyChecksum with matching hash: expected nil, got %v", err)
+	}
+}
+
+// TestVerifyChecksum_mismatch verifies that a hash mismatch returns an error.
+func TestVerifyChecksum_mismatch(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "agent.bin")
+	content := []byte("actual content\n")
+	if err := os.WriteFile(tmpFile, content, 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		response := "0000000000000000000000000000000000000000000000000000000000000000  agent.bin\n"
+		w.Write([]byte(response))
+	}))
+	defer srv.Close()
+
+	err := VerifyChecksum(srv.URL, "agent.bin", tmpFile)
+	if err == nil {
+		t.Fatal("VerifyChecksum with mismatching hash: expected error, got nil")
 	}
 }
