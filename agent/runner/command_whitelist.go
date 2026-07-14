@@ -6,6 +6,7 @@ import (
 
 // AllowedPrograms is a whitelist of programs that are permitted to execute in Phase 2B.
 // In Phase 2A (audit mode), all commands execute but are logged as allowed/disallowed.
+// ponytail: basename-only allowlist; full-path pinning or binary hashes if job sources are ever untrusted.
 var AllowedPrograms = map[string]bool{
 	"rsync":    true,
 	"robocopy": true,
