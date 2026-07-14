@@ -198,3 +198,80 @@ func TestEmptyAdminTokenDoesNotAuthenticate(t *testing.T) {
 		})
 	}
 }
+
+// TestLogin_weakPasswordReturns401 ensures legacy users whose passwords don't
+// meet current complexity rules can still log in. Before the fix they got a
+// 400 (validation error); after the fix the login reaches bcrypt and fails
+// with 401 (wrong password path).
+func TestLogin_weakPasswordReturns401(t *testing.T) {
+	s := newTestServer(t)
+
+	// "Password123" has uppercase + lowercase + digit, but NO special character.
+	// It fails validatePasswordStrength, but LoginRequest.Validate() should
+	// now accept it (non-empty checks only) and let bcrypt decide.
+	body := `{"username":"admin","password":"Password123"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	s.handleLogin(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("legacy-format password: expected 401 (bad credentials), got %d — "+
+			"login should fail on bcrypt, not validation", rr.Code)
+	}
+}
+
+// TestChangePassword_weakOldAllowed verifies that a user with a legacy weak
+// password can change it to a strong one. OldPassword is only checked for
+// non-empty, not complexity.
+func TestChangePassword_weakOldAllowed(t *testing.T) {
+	s := newTestServer(t)
+
+	// Generate a JWT for the admin user (user_id=1) — the actual password in
+	// the test DB is "changeme", which itself is weak (no uppercase, no digit,
+	// no special).
+	token, err := GenerateJWT(1, "admin", "admin", true, s.cfg.JWTSecret)
+	if err != nil {
+		t.Fatalf("GenerateJWT: %v", err)
+	}
+
+	changePassword := s.JWTMiddleware(s.handleChangePassword)
+
+	// Old password "changeme" is weak but should be accepted (non-empty).
+	// New password "StrongPass123!" passes all complexity rules.
+	body := `{"old_password":"changeme","new_password":"StrongPass123!"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/auth/change-password", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	changePassword(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("weak old → strong new: expected 200, got %d", rr.Code)
+	}
+}
+
+// TestChangePassword_weakNewReturns400 verifies that NewPassword still
+// requires full complexity — a weak new password is rejected with 400.
+func TestChangePassword_weakNewReturns400(t *testing.T) {
+	s := newTestServer(t)
+
+	token, err := GenerateJWT(1, "admin", "admin", true, s.cfg.JWTSecret)
+	if err != nil {
+		t.Fatalf("GenerateJWT: %v", err)
+	}
+
+	changePassword := s.JWTMiddleware(s.handleChangePassword)
+
+	// New password "weak" is too short and lacks required character classes.
+	body := `{"old_password":"changeme","new_password":"weak"}`
+	req := httptest.NewRequest(http.MethodPut, "/api/auth/change-password", strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	changePassword(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("weak new password: expected 400, got %d", rr.Code)
+	}
+}

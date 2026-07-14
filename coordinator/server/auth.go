@@ -944,7 +944,7 @@ func (r *LoginRequest) Validate() error {
 	if r.Password == "" {
 		return fmt.Errorf("password is required")
 	}
-	return validatePasswordStrength(r.Password)
+	return nil
 }
 
 // ChangePasswordRequest defines password change request
@@ -960,9 +960,6 @@ func (r *ChangePasswordRequest) Validate() error {
 	}
 	if r.NewPassword == "" {
 		return fmt.Errorf("new_password is required")
-	}
-	if err := validatePasswordStrength(r.OldPassword); err != nil {
-		return fmt.Errorf("old_password: %w", err)
 	}
 	if err := validatePasswordStrength(r.NewPassword); err != nil {
 		return fmt.Errorf("new_password: %w", err)
