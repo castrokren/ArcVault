@@ -80,21 +80,24 @@ func applySMBCredentials(data map[string]interface{}) (func(), error) {
 }
 
 // validateCredField checks that a credential field contains only safe characters.
-// Rejects newlines, quotes, semicolons, null bytes, pipes, and ampersands.
-// For "host", additionally enforces a hostname/IP pattern (alphanumeric, dots, hyphens only).
+// For "host", enforces a hostname/IP pattern (alphanumeric, dots, hyphens only).
+// For username/password, rejects only control characters — exec.Command passes
+// argv without a shell, so spaces, quotes, semicolons, pipes, etc. are not injectable.
 func validateCredField(field, name string) error {
 	if field == "" {
 		return fmt.Errorf("SMB %s must not be empty", name)
-	}
-	unsafeChars := regexp.MustCompile(`[\n\r"' ;\x00|&]`)
-	if unsafeChars.MatchString(field) {
-		return fmt.Errorf("SMB %s contains unsafe characters", name)
 	}
 	if name == "host" {
 		hostPattern := regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
 		if !hostPattern.MatchString(field) {
 			return fmt.Errorf("SMB host must contain only alphanumeric characters, dots, hyphens, and underscores")
 		}
+		return nil
+	}
+	// Username/password: reject only control characters.
+	controlChars := regexp.MustCompile(`[\x00-\x1f\x7f]`)
+	if controlChars.MatchString(field) {
+		return fmt.Errorf("SMB %s contains control characters", name)
 	}
 	return nil
 }

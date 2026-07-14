@@ -184,6 +184,55 @@ func TestApplyCredentials_SMBMissingFields(t *testing.T) {
 	}
 }
 
+// TestValidateCredField_hostRejectsBadChars ensures the host field strictly
+// rejects anything outside alphanumeric, dots, hyphens, underscores.
+func TestValidateCredField_hostRejectsBadChars(t *testing.T) {
+	err := validateCredField("evil;host", "host")
+	if err == nil {
+		t.Fatal("host with semicolon must be rejected")
+	}
+	err2 := validateCredField("host with spaces", "host")
+	if err2 == nil {
+		t.Fatal("host with spaces must be rejected")
+	}
+	// Valid host must still pass
+	if err := validateCredField("valid-host.local", "host"); err != nil {
+		t.Fatalf("valid host rejected: %v", err)
+	}
+}
+
+// TestValidateCredField_passwordAcceptsSpecialChars ensures the password field
+// accepts spaces, quotes, semicolons, pipes, and ampersands — all of which
+// are valid in passwords and not injectable via exec.Command without a shell.
+func TestValidateCredField_passwordAcceptsSpecialChars(t *testing.T) {
+	password := `P@ss w0rd; "x" & |y`
+	if err := validateCredField(password, "password"); err != nil {
+		t.Fatalf("password with spaces, quotes, semicolons, pipes, ampersands must be accepted: %v", err)
+	}
+}
+
+// TestValidateCredField_rejectsControlChars ensures all fields reject control
+// characters that could corrupt argv boundaries.
+func TestValidateCredField_rejectsControlChars(t *testing.T) {
+	tests := []struct {
+		name  string
+		field string
+	}{
+		{"password with newline", "pass\nword"},
+		{"password with NUL", "pass\x00word"},
+		{"username with newline", "user\nname"},
+		{"username with NUL", "user\x00name"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateCredField(tc.field, "password")
+			if err == nil {
+				t.Errorf("expected error for control char in %q", tc.field)
+			}
+		})
+	}
+}
+
 func TestApplyCredentials_CredentialsContextRestored(t *testing.T) {
 	// Set original SSH_KEY_PATH
 	originalPath := "/original/path/to/key"
