@@ -112,11 +112,11 @@ const props = defineProps({
   lastEvent: Object
 })
 
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'updated'])
 
 const updateStore = inject('updateStore', {
-  current: 'v0.2.0',
-  latest: 'v0.2.0',
+  current: '',
+  latest: '',
   available: false,
   releaseUrl: ''
 })
@@ -140,6 +140,12 @@ const steps = [
 let reconnectTimer = null
 let countdownTimer = null
 
+function succeed(newState) {
+  state.value = newState
+  clearTimers()
+  emit('updated')
+}
+
 // Watch for WebSocket events
 watch(() => props.lastEvent, (evt) => {
   if (!evt || evt.type !== 'update_progress') return
@@ -149,11 +155,9 @@ watch(() => props.lastEvent, (evt) => {
   progressPercent.value = payload.pct
 
   if (payload.step === 'done') {
-    state.value = 'success'
-    clearTimers()
+    succeed('success')
   } else if (payload.step === 'done_manual') {
-    state.value = 'success_manual'
-    clearTimers()
+    succeed('success_manual')
   } else if (payload.step === 'error') {
     state.value = 'error'
     errorMessage.value = payload.message

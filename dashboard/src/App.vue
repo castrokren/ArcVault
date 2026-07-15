@@ -98,7 +98,7 @@
       </router-view>
     </main>
 
-    <UpdateModal :isOpen="updateModalOpen" :lastEvent="lastEvent" @close="updateModalOpen = false" />
+    <UpdateModal :isOpen="updateModalOpen" :lastEvent="lastEvent" @close="updateModalOpen = false" @updated="handleUpdated" />
 
     <ChangePasswordModal
       :isOpen="showChangePasswordModal"
@@ -113,7 +113,7 @@
 <script setup>
 import { ref, onMounted, provide, reactive, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { checkUpdate } from './api'
+import { checkUpdate, getVersion } from './api'
 import { useAuth } from './composables/useAuth.js'
 import { useWebSocket } from './composables/useWebSocket.js'
 import UpdateBanner from './components/UpdateBanner.vue'
@@ -143,8 +143,8 @@ const userInitials = computed(() => {
 
 // Reactive update info store
 const updateStore = reactive({
-  current: 'v0.5.1',
-  latest: 'v0.5.1',
+  current: '',
+  latest: '',
   available: false,
   releaseUrl: '',
   assetUrl: ''
@@ -158,9 +158,16 @@ onMounted(() => {
   if (auth.isAuthenticated.value) {
     console.log('App mounted: connecting websocket and checking coordinator updates')
     connect()
+    loadVersion()
     checkForUpdates()
   }
 })
+
+function loadVersion() {
+  getVersion()
+    .then(data => { updateStore.current = data.version })
+    .catch(err => console.error('Failed to load version:', err))
+}
 
 function applyTheme(val) {
   document.documentElement.setAttribute('data-theme', val)
@@ -197,6 +204,11 @@ function checkForUpdates() {
 
 function showUpdateModal() {
   updateModalOpen.value = true
+}
+
+function handleUpdated() {
+  checkForUpdates()
+  loadVersion()
 }
 
 async function handleLogout() {
