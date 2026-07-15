@@ -180,7 +180,7 @@ export const getJobRuns = ({ page = 1, limit = 25, jobID = '', agentID = '', sta
 export const checkUpdate = () =>
   request('GET', '/api/update/check')
 
-const getVersion = async (): Promise<Types.VersionResponse> => {
+export const getVersion = async (): Promise<Types.VersionResponse> => {
   const res = await request('GET', '/api/version')
   return validateResponse('/api/version', VersionResponseSchema, res)
 }

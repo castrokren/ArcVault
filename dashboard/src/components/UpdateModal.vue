@@ -104,7 +104,7 @@
 
 <script setup>
 import { ref, inject, watch, onUnmounted } from 'vue'
-import { getToken, applyCoordinatorUpdate, saveToken } from '../api'
+import { getToken, applyCoordinatorUpdate, saveToken, getVersion } from '../api'
 import { useAuth } from '../composables/useAuth.js'
 
 const props = defineProps({
@@ -218,11 +218,23 @@ function startReconnectPolling() {
     }
   }, 1000)
 
-  // Poll for WebSocket reconnection
-  reconnectTimer = setInterval(() => {
-    // The useWebSocket composable automatically reconnects
-    // We can check if it's connected by looking at the ws state
-    // For now, we'll rely on the 'success' event from the server
+  // Poll the restarted coordinator until it reports the target version.
+  // The old process dies before it can send a 'done' event, so this poll
+  // is the only success signal in service mode.
+  let polling = false
+  const normalize = v => String(v).replace(/^v/, '')
+  reconnectTimer = setInterval(async () => {
+    if (polling) return
+    polling = true
+    try {
+      const data = await getVersion()
+      if (normalize(data.version) === normalize(updateStore.latest)) {
+        succeed('success')
+      }
+    } catch {
+      // Coordinator still restarting — keep polling until the 60s timeout.
+    }
+    polling = false
   }, 2000)
 
   // Timeout after 60 seconds

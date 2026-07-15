@@ -6,7 +6,8 @@ import UpdateModal from './UpdateModal.vue'
 vi.mock('../api', () => ({
   getToken: vi.fn(() => 'fake-token'),
   saveToken: vi.fn(),
-  applyCoordinatorUpdate: vi.fn().mockResolvedValue({})
+  applyCoordinatorUpdate: vi.fn().mockResolvedValue({}),
+  getVersion: vi.fn()
 }))
 
 vi.mock('../composables/useAuth.js', () => ({
@@ -50,4 +51,29 @@ it('does not emit updated on error step', async () => {
     lastEvent: { type: 'update_progress', payload: { step: 'error', message: 'boom' } }
   })
   expect(wrapper.emitted('updated')).toBeUndefined()
+})
+
+it('reconnect polling succeeds once the restarted coordinator reports the new version', async () => {
+  vi.useFakeTimers()
+  const { getVersion } = await import('../api')
+  // First poll: still restarting. Second: old binary answers. Third: new version.
+  getVersion
+    .mockRejectedValueOnce(new Error('connection refused'))
+    .mockResolvedValueOnce({ version: 'v1.0.0' })
+    .mockResolvedValue({ version: 'v2.0.0' })
+
+  const wrapper = mountModal()
+  await wrapper.setProps({
+    lastEvent: { type: 'update_progress', payload: { step: 'restarting', pct: 90, message: '' } }
+  })
+  expect(wrapper.text()).toContain('Waiting for Coordinator')
+
+  await vi.advanceTimersByTimeAsync(2000) // rejects — keeps polling
+  expect(wrapper.emitted('updated')).toBeUndefined()
+  await vi.advanceTimersByTimeAsync(2000) // old version — keeps polling
+  expect(wrapper.emitted('updated')).toBeUndefined()
+  await vi.advanceTimersByTimeAsync(2000) // new version — success
+  expect(wrapper.emitted('updated')).toHaveLength(1)
+  expect(wrapper.text()).toContain('Update Complete')
+  vi.useRealTimers()
 })

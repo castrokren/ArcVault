@@ -20,8 +20,8 @@ const dismissed = ref(false)
 
 // Get the update store from context
 const updateStore = inject('updateStore', {
-  current: 'v0.2.0',
-  latest: 'v0.2.0',
+  current: '',
+  latest: '',
   available: false,
   releaseUrl: ''
 })
