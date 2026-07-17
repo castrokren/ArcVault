@@ -251,7 +251,17 @@ sc.exe start arcvault-agent
 Start-Sleep -Seconds 4
 
 $token  = (Get-Content $coordConfigPath -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue).admin_token
-$agents = Invoke-RestMethod -Uri "$coordBase/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -SkipCertificateCheck -ErrorAction SilentlyContinue
+
+# -SkipCertificateCheck is PS 7+ only; on Windows PowerShell 5.1 use the
+# ServicePointManager callback so the self-signed cert doesn't fail this probe.
+$httpTls = @{}
+if ($PSVersionTable.PSVersion.Major -ge 6) {
+    $httpTls['SkipCertificateCheck'] = $true
+} else {
+    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
+    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+}
+$agents = Invoke-RestMethod -Uri "$coordBase/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 @httpTls -ErrorAction SilentlyContinue
 
 if ($agents -and $agents.data.Count -gt 0) {
     $agentCount = $agents.data.Count

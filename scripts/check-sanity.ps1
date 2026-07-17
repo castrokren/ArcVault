@@ -188,54 +188,54 @@ if ($SkipLive) {
     }
     $base = "${scheme}://localhost:${port}"
 
+    # HTTP probes go through curl.exe (bundled with Windows), not Invoke-RestMethod:
+    # the coordinator's self-signed cert + TLS negotiation fails under Windows
+    # PowerShell 5.1's .NET Framework stack, and -SkipCertificateCheck is PS 7+ only.
+    # curl -k handles both across every shell we deploy from.
+    $curl = "$env:SystemRoot\System32\curl.exe"
+
     # Health check
+    $healthRaw = (& $curl -sk --max-time 5 "$base/health" 2>$null) -join "`n"
     try {
-        $health = Invoke-RestMethod -Uri "$base/health" -TimeoutSec 5 -SkipCertificateCheck -ErrorAction Stop
+        $health = $healthRaw | ConvertFrom-Json -ErrorAction Stop
         if ($health.status -eq "ok") { Pass "Health endpoint: ok" }
-        else { Fail "Health endpoint returned unexpected: $($health | ConvertTo-Json -Compress)" }
+        else { Fail "Health endpoint returned unexpected: $healthRaw" }
     } catch {
-        Fail "Health endpoint unreachable at $base/health — is coordinator running? Error: $_"
+        Fail "Health endpoint unreachable at $base/health — is coordinator running? Raw: $healthRaw"
     }
 
     # ── THE KEY REGRESSION: /downloads/installer must serve .exe, not .ps1 ──
-    try {
-        $headers = @{ Authorization = "Bearer $AdminToken" }
-        # Use WebRequest so we can inspect headers without downloading the whole file
-        $resp = Invoke-WebRequest -Uri "$base/downloads/installer" `
-            -Headers $headers -Method Get -TimeoutSec 10 -SkipCertificateCheck `
-            -MaximumRedirection 0 -ErrorAction Stop
+    # curl -D - dumps response headers to stdout; -o NUL discards the body so we
+    # don't download the whole installer just to read Content-Disposition.
+    $hdrRaw = (& $curl -sk --max-time 10 -D - -o NUL -H "Authorization: Bearer $AdminToken" "$base/downloads/installer" 2>$null) -join "`n"
+    $status = 0
+    if ($hdrRaw -match 'HTTP/[\d.]+\s+(\d{3})') { $status = [int]$Matches[1] }
+    $cd = ''; if ($hdrRaw -match '(?im)^Content-Disposition:\s*(.+?)\s*$') { $cd = $Matches[1] }
+    $ct = ''; if ($hdrRaw -match '(?im)^Content-Type:\s*(.+?)\s*$')        { $ct = $Matches[1] }
 
-        $cd   = $resp.Headers["Content-Disposition"]
-        $ct   = $resp.Headers["Content-Type"]
-
+    if ($status -eq 404) {
+        Warn "/downloads/installer returned 404 — installer .exe not built yet. Run scripts\build.ps1"
+    } elseif ($status -eq 401 -or $status -eq 403) {
+        Warn "/downloads/installer returned $status — admin token may be wrong"
+    } elseif ($status -eq 0) {
+        Warn "Could not reach /downloads/installer (no response)"
+    } else {
         if ($cd -match "bootstrap\.ps1") {
             Fail "[REGRESSION] /downloads/installer is serving bootstrap.ps1!`n       Fix: in server/server.go registerRoutes(), change:`n         GET /downloads/installer → handleDownloadInstaller  (NOT handleBootstrapScript)`n       Current Content-Disposition: $cd"
         } elseif ($cd -match "\.exe") {
             Pass "/downloads/installer serves .exe: $cd"
-        } elseif ($resp.StatusCode -eq 404) {
-            Warn "/downloads/installer returned 404 — run scripts\build.ps1 to build the installer .exe"
         } else {
             Warn "/downloads/installer Content-Disposition: '$cd' — verify this is correct"
         }
-
-        if ($ct -eq "text/plain") {
+        if ($ct -match "text/plain") {
             Fail "[REGRESSION] /downloads/installer Content-Type is text/plain — route is wired to the wrong handler (should be application/octet-stream)"
-        }
-    } catch {
-        $statusCode = $_.Exception.Response.StatusCode.value__
-        if ($statusCode -eq 404) {
-            Warn "/downloads/installer returned 404 — installer .exe not built yet. Run scripts\build.ps1"
-        } elseif ($statusCode -eq 401 -or $statusCode -eq 403) {
-            Warn "/downloads/installer returned $statusCode — admin token may be wrong"
-        } else {
-            Warn "Could not check /downloads/installer: $_"
         }
     }
 
     # /api/version — make sure version matches
     try {
-        $versionResp = Invoke-RestMethod -Uri "$base/api/version" `
-            -Headers $headers -TimeoutSec 5 -SkipCertificateCheck -ErrorAction SilentlyContinue
+        $verRaw = (& $curl -sk --max-time 5 -H "Authorization: Bearer $AdminToken" "$base/api/version" 2>$null) -join "`n"
+        $versionResp = $verRaw | ConvertFrom-Json -ErrorAction Stop
         if ($versionResp.version) {
             if ($canonical -and $versionResp.version -ne $canonical) {
                 Fail "Running coordinator reports version '$($versionResp.version)' but VERSION file has '$canonical' — needs rebuild"
