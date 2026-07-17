@@ -393,6 +393,9 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("POST /api/rollback", s.adminRoute(s.handleRollback))
 	s.router.HandleFunc("POST /api/agents/{id}/rollback", s.adminRoute(s.handleAgentRollback))
 
+	// Agent token generation (admin only)
+	s.router.HandleFunc("POST /api/agents/{id}/token", s.adminRoute(s.handleCreateAgentToken))
+
 	// Templates endpoints
 	s.router.HandleFunc("GET /api/templates", s.viewerRoute(s.handleListTemplates))
 	s.router.HandleFunc("POST /api/templates", s.adminRoute(s.handleCreateTemplate))

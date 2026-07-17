@@ -123,6 +123,13 @@
                 >
                   Update
                 </button>
+                <button
+                  class="btn btn-sm btn-secondary"
+                  @click="openTokenModal(agent)"
+                  title="Generate a token for installing this agent on a new machine"
+                >
+                  Get Token
+                </button>
               </td>
             </tr>
           </tbody>
@@ -166,6 +173,12 @@
       :lastEvent="lastEvent"
       @close="modalOpen = false"
     />
+
+    <AgentTokenModal
+      :isOpen="tokenModalOpen"
+      :agentId="selectedAgentForToken?.id"
+      @close="tokenModalOpen = false"
+    />
   </div>
 </template>
 
@@ -174,6 +187,7 @@ import { ref, computed, onMounted, watch, inject } from 'vue'
 import { getAgents, getFederationAgents } from '../api'
 import { formatDate, fmtStaleTime } from '../utils/format.js'
 import AgentUpdateModal from '../components/AgentUpdateModal.vue'
+import AgentTokenModal from '../components/AgentTokenModal.vue'
 import Pagination from '../components/Pagination.vue'
 import { useFederationLag } from '../composables/useFederationLag.js'
 
@@ -199,6 +213,8 @@ const searchQuery = ref('')
 const statusFilter = ref('all')
 const modalOpen = ref(false)
 const selectedAgent = ref(null)
+const tokenModalOpen = ref(false)
+const selectedAgentForToken = ref(null)
 
 const updateStore = inject('updateStore', { available: false, latest: '', current: '' })
 
@@ -212,6 +228,11 @@ function updateAvailable(agent) {
 function openUpdateModal(agent) {
   selectedAgent.value = agent
   modalOpen.value = true
+}
+
+function openTokenModal(agent) {
+  selectedAgentForToken.value = agent
+  tokenModalOpen.value = true
 }
 
 /* ── Fleet-band derived values (read straight off loaded data) ── */

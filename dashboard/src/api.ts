@@ -191,6 +191,9 @@ export const applyCoordinatorUpdate = () =>
 export const applyAgentUpdate = (agentId: string) =>
   request('POST', `/api/agents/${agentId}/update`)
 
+export const createAgentToken = (agentId: string) =>
+  request('POST', `/api/agents/${agentId}/token`)
+
 // --- Templates ---
 export const getTemplates = ({ page = 1, limit = 25, search = '' } = {}) =>
   request('GET', `/api/templates${buildQuery({ page, limit, search })}`)
