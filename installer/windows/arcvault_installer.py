@@ -19,26 +19,27 @@ from tkinter import ttk, messagebox
 import threading
 
 
-# ── Design tokens — mirrors coordinator dashboard (theme-royal-purple.css) ────
-_BG_BASE      = "#0b0716"
-_BG_SURFACE   = "#100a1f"
-_BG_CARD      = "#18112e"
-_BG_ELEVATED  = "#1f1638"
-_BG_INPUT     = "#0f0920"
+# ── Design tokens — mirrors coordinator dashboard "Kiln" (src/style.css) ──────
+# Warm charcoal + copper. Hex converted from the dashboard's OKLCH dark tokens.
+_BG_BASE      = "#13100d"
+_BG_SURFACE   = "#181411"
+_BG_CARD      = "#1d1815"
+_BG_ELEVATED  = "#27221d"
+_BG_INPUT     = "#15120f"
 
-_BORDER_SUBTLE  = "#1c1430"
-_BORDER_DEFAULT = "#261c40"
-_BORDER_STRONG  = "#34274f"
+_BORDER_SUBTLE  = "#28231f"
+_BORDER_DEFAULT = "#352f2a"
+_BORDER_STRONG  = "#4c433d"
 
-_TEXT_PRIMARY   = "#ece8f7"
-_TEXT_SECONDARY = "#9b8fb8"
-_TEXT_MUTED     = "#7a6f9c"
+_TEXT_PRIMARY   = "#ebe7e1"
+_TEXT_SECONDARY = "#a0978b"
+_TEXT_MUTED     = "#69625a"
 
-_ACCENT       = "#8b5cf6"
-_ACCENT_HOVER = "#7c3aed"
+_ACCENT       = "#e69b4c"  # copper
+_ACCENT_HOVER = "#cf8634"
 
-_COLOR_WARNING = "#fbbf24"
-_COLOR_ERROR   = "#ff5c7a"
+_COLOR_WARNING = "#e4b750"
+_COLOR_ERROR   = "#ef6661"
 
 # ── ArcVault icon — favicon.svg rendered to 64x64 PNG, base64 ─────────────────
 _ICON_B64 = (
