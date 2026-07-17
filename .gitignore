@@ -30,3 +30,10 @@ coordinator/cmd/arcvault-test/reports/
 # Local tooling output
 .understand-anything/
 start-ua-dashboard.ps1
+
+# Editor/backup + Python cache — not source
+*.bak
+__pycache__/
+
+# Personal Obsidian vault accidentally created in-tree (not code)
+/ArcVault/

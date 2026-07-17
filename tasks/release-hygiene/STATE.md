@@ -26,14 +26,35 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
     target version (was a stub that always timed out in service mode).
 - Tests 76/76 green (`cd dashboard; npx vitest run`), `npm run build` clean.
 
+## Done (2026-07-17 session) — all committed on security/hardening-v0.6.0
+- Kiln dashboard retheme (Phase 1 app + Phase 2 login) — commit d6c63ef.
+- Agents view redesigned to "Fleet Console" (Workbench, inside Kiln) — commit ec07a86.
+  Command bar + integrated fleet band + left status rail + table-as-surface + live WS
+  activity rail. Honest-data: online-rate spark is placeholder (TODO real endpoint);
+  no per-row heartbeat sparkline (no per-agent telemetry). Approved mockup:
+  claude.ai/code/artifact/2ab07fac-d440-4338-9af4-986db6b2dd25
+- Installer reskinned to Kiln (arcvault_installer.py) + root arcvault.spec — commit 3ec8ea1.
+- Deploy TLS probes fixed for Windows PowerShell 5.1 (curl.exe instead of PS7-only
+  -SkipCertificateCheck) in check-sanity.ps1 + rebuild-and-restart.ps1 — commit d6e7774.
+- DEPLOYED via rebuild-and-restart.ps1 (kren, admin). Redesign LIVE on the HTTPS
+  coordinator (verified: /health ok, serving index-CLXBuUXP.js). Sanity check now
+  11/0/2. Installer .exe rebuilt (36MB, bundles the redesigned coordinator.exe).
+- Resolved STATE open question: untracked `ArcVault/` was a personal Obsidian vault
+  accidentally in-tree — now gitignored (with *.bak, __pycache__/).
+
 ## In-progress
-- (nothing)
+- BLOCKED (needs kren): `gh release upload v0.6.0 installer/windows/dist/ArcVault-Setup-0.6.0-windows-amd64.exe --clobber`
+  — new Kiln installer built locally; permission classifier blocked the outward upload.
+  Run it via `!` in the prompt. (Installer isn't fetched by the auto-updater — safe to clobber.)
+- Left uncommitted (kren's call): `.agents/` + `skills-lock.json` (hallmark skill toolchain),
+  `tasks/security-hardening/PLAN-review-fixes.md` (unrelated prior task).
 
 ## Next
 - Update local agents to v0.6.0 (per-agent update button on Agents page — they never
   auto-update).
-- Ship the dashboard fixes: rebuild + either `gh release upload v0.6.0 --clobber` or
-  cut v0.6.1 (fixes only reach users inside a coordinator binary).
+- Ship the dashboard fixes to users: the coordinator self-update pulls the binary from
+  the GitHub release, so the redesign only reaches other installs via `gh release upload
+  v0.6.0 --clobber` of a fresh coordinator, or a v0.6.1 cut.
 - `tasks/release-hygiene/PLAN.md` steps 2–5: merge branch to main, re-point v0.6.0
   tag (currently on orphaned commit 637c33b), delete poison tags (`v5.01`!) and stale
   v1.x releases, add `scripts/publish-release.ps1`.
