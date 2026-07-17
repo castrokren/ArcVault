@@ -64,12 +64,15 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
     and update_progress completes without timeout.
 
 ## Next
-- KREN ASK (2026-07-17) #1 — FIX THE "DOWNLOAD INSTALLER" BUTTON. Dashboard button hits
-  `/downloads/installer`, which returns 404. Root cause: `config.json` lacks `installer_dir`,
-  so handler looks in `C:\ArcVault\` by default and finds no installer .exe there. Fix applied:
-  set `installer_dir` to `C:\Projects\ArcVault2.0\dist` in config.json (where the built
-  ArcVault-Setup-0.6.0-windows-amd64.exe lives). Verify after coordinator restart that
-  the button works.
+- KREN ASK (2026-07-17) #1 — DOWNLOAD INSTALLER BUTTON. Fixed in config.json:
+  set `installer_dir` to `C:\Projects\ArcVault2.0\dist` (where the built
+  ArcVault-Setup-0.6.0-windows-amd64.exe lives). Verify after coordinator restart.
+- KREN ASK (2026-07-17) #3 — AGENT TOKEN GENERATOR (restoration from pre-5.0).
+  Missing UI feature: 'Get Token' button in Agents view was removed. Operators
+  need to generate tokens for new machine installations. Skeleton code done
+  (commit 46ffa2f): POST /api/agents/{id}/token endpoint + AgentTokenModal.vue +
+  button in Agents.vue. Both builds clean (coordinator, dashboard). Plan at
+  ~/.claude/plans/agent-token-generator.md. Next: write tests, then manual e2e.
 - Update local agents to v0.6.0 (per-agent update button on Agents page — they never
   auto-update).
 - Ship the dashboard fixes to users: the coordinator self-update pulls the binary from
