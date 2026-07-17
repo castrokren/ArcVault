@@ -50,6 +50,20 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
   `tasks/security-hardening/PLAN-review-fixes.md` (unrelated prior task).
 
 ## Next
+- KREN ASK (2026-07-17) #1 — FIX THE "DOWNLOAD INSTALLER" BUTTON. Dashboard button hits
+  `/downloads/installer`, which returns 404. Lead from today's sanity check: `config.json`
+  has no `installer_dir`, so the coordinator looks in `C:\ArcVault\` by default and finds
+  no installer .exe there. Likely fix = set installer_dir (or drop the built
+  ArcVault-Setup-*.exe where the route serves from) + verify handler is handleDownload-
+  Installer (NOT handleBootstrapScript — that regression serves bootstrap.ps1). Route
+  wired in coordinator/server/server.go registerRoutes(); check-sanity.ps1 §5 guards it.
+- KREN ASK (2026-07-17) #2 — PLAN: enable pushing agent updates FROM the coordinator to
+  nodes (agents never auto-update; today the only path is reinstall). Design a
+  coordinator-triggered agent self-update: agent already self-updates + has a WS channel
+  (see agent/ runner + AgentUpdateModal.vue which calls an update endpoint). Scope: how
+  the coordinator signals target version, agent pulls/verifies (SHA256) the new agent.exe,
+  swaps the running Windows service, reports back. Deliverable next session = a written
+  plan, not code.
 - Update local agents to v0.6.0 (per-agent update button on Agents page — they never
   auto-update).
 - Ship the dashboard fixes to users: the coordinator self-update pulls the binary from
