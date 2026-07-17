@@ -97,3 +97,6 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
 - tasks/dashboard-version-bugs/PLAN-2-recheck-after-update.md — done (4890577 + e715ac0)
 - coordinator/updater/updater.go — release check/download/checksum logic
 - dashboard/src/components/UpdateModal.vue — update flow incl. reconnect poller
+- **docs/FEATURES.md** — user-visible features inventory (prevents accidental deletion)
+- **docs/FUNCTIONS.md** — HTTP endpoints + handlers inventory (route checklist)
+- ~/.claude/plans/agent-token-generator.md — implementation plan for token generator feature
