@@ -88,8 +88,6 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
 ## Open questions
 - Should the stale v1.x releases be deleted or archived somewhere first? (destructive —
   needs kren's explicit go-ahead)
-- What is the untracked `ArcVault/` dir and the `arcvault.spec` working-tree edit?
-  Resolve before merging the branch.
 
 ## File map
 - tasks/release-hygiene/PLAN.md — 5-step release cleanup plan (step 1 done)
