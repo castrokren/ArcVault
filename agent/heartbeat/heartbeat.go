@@ -36,7 +36,10 @@ func Start(cfg Config) {
 	if cfg.Client == nil {
 		tlsConfig, err := config.BuildTLSConfig(cfg.CACertFile)
 		if err != nil {
-			log.Fatalf("failed to build TLS config: %v", err)
+			// Runs in a goroutine — a Fatalf here would take down the whole
+			// service (surfacing as Windows error 1067). Disable heartbeat instead.
+			log.Printf("heartbeat disabled: failed to build TLS config: %v", err)
+			return
 		}
 
 		transport := &http.Transport{

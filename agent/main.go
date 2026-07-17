@@ -97,10 +97,23 @@ func runAgent() {
 	}
 
 	hostname, _ := os.Hostname()
-	if err := heartbeat.Register(hbCfg, hostname, runtime.GOOS, runtime.GOARCH, Version); err != nil {
-		log.Fatalf("registration failed: %v", err)
-	}
-	go heartbeat.Start(hbCfg)
+	// Registration must NOT be fatal. On a remote machine the coordinator is
+	// often unreachable at service-boot (firewall, boot order, coordinator still
+	// starting, TLS pin). A log.Fatalf here exits during StartPending and the SCM
+	// reports the opaque "Error 1067: process terminated unexpectedly". Retry in
+	// the background until it lands, THEN start heartbeating — heartbeating an
+	// agent the coordinator hasn't registered yet just 404s until it catches up.
+	go func() {
+		for {
+			if err := heartbeat.Register(hbCfg, hostname, runtime.GOOS, runtime.GOARCH, Version); err != nil {
+				log.Printf("registration failed, retrying in 30s: %v", err)
+				time.Sleep(30 * time.Second)
+				continue
+			}
+			break
+		}
+		heartbeat.Start(hbCfg)
+	}()
 
 	r, err := runner.New(runner.Config{
 		AgentID:        cfg.AgentID,

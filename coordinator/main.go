@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"arcvault/coordinator/cmd"
 	"arcvault/coordinator/config"
@@ -109,6 +110,7 @@ func main() {
 	case "run-service":
 		// Called by Windows SCM — wraps StartCommand inside svc.Run() so the
 		// Service Control Manager gets the handshake it requires.
+		redirectServiceLog("coordinator-service.log")
 		cfg, err := config.Load()
 		if err != nil {
 			log.Fatalf("failed to load config: %v", err)
@@ -132,6 +134,23 @@ func main() {
 		printUsage()
 		os.Exit(1)
 	}
+}
+
+// redirectServiceLog points the standard logger at a file beside the exe.
+// Under the Windows SCM there is no console, so a startup failure (missing
+// config, port 443 in use, TLS error) otherwise dies as an opaque
+// "Error 1067: process terminated unexpectedly" with no trace.
+func redirectServiceLog(name string) {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(filepath.Dir(exe), name),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0600)
+	if err != nil {
+		return
+	}
+	log.SetOutput(f)
 }
 
 func printUsage() {

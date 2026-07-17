@@ -229,11 +229,12 @@ if ((Test-Path $agentConfigPath) -and (Test-Path $coordConfigPath)) {
         # endpoint for this (the old POST /api/agent-tokens never existed and
         # failed silently every deploy). The exe resolves config.json — and thus
         # the DB — next to itself, so no working-directory assumption is needed.
-        $newToken = (& "C:\ArcVault\coordinator.exe" create-agent-token $agentId --token-only)
+        $newToken = (& "C:\ArcVault\coordinator.exe" create-agent-token $agentId --token-only).Trim()
         if (-not $newToken) { throw "create-agent-token returned empty output" }
-        # Update auth_token in agent-config.yaml in-place.
-        # [^\r\n]+ avoids consuming the \r in \r\n line endings
-        $agentConfig = $agentConfig -replace '(?m)^(\s*auth_token:\s*)[^\r\n]+', ('$1' + $newToken)
+        # Update auth_token in agent-config.yaml in-place. No capture-group in the
+        # replacement: a hex token starting with a digit right after '$1' reads as
+        # backreference $1<digit> and drops the key, corrupting the YAML (1067).
+        $agentConfig = $agentConfig -replace '(?m)^\s*auth_token:.*$', "auth_token: $newToken"
         [System.IO.File]::WriteAllText($agentConfigPath, $agentConfig)
         Write-Host "  Token regenerated and saved to agent-config.yaml." -ForegroundColor Green
     } catch {
