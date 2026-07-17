@@ -110,7 +110,11 @@ func (c *Client) run(url string) error {
 		TLSClientConfig:  tlsConfig,
 	}
 
-	conn, _, err := dialer.Dial(url, nil)
+	// Build authorization header for the WebSocket upgrade request.
+	header := make(map[string][]string)
+	header["Authorization"] = []string{fmt.Sprintf("Bearer %s", c.AuthToken)}
+
+	conn, _, err := dialer.Dial(url, header)
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
 	}
@@ -216,9 +220,11 @@ func getAgentBinaryPath() (string, error) {
 }
 
 // buildWSURL converts an http(s):// coordinator URL to a ws(s):// URL
-// for the /ws/agent endpoint with agent_id and token query params.
+// for the /ws/agent endpoint with agent_id query param.
+// Token is passed via Authorization header in the dial request, not as a query param.
 func buildWSURL(coordinatorURL, agentID, token string) string {
+	_ = token // token is passed via Authorization header, not used in URL
 	wsBase := strings.Replace(coordinatorURL, "http://", "ws://", 1)
 	wsBase = strings.Replace(wsBase, "https://", "wss://", 1)
-	return fmt.Sprintf("%s/ws/agent?agent_id=%s&token=%s", wsBase, agentID, token)
+	return fmt.Sprintf("%s/ws/agent?agent_id=%s", wsBase, agentID)
 }
