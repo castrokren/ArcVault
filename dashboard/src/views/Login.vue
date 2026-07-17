@@ -1,10 +1,8 @@
 ﻿<template>
   <div class="login-page">
-    <!-- Layer 0: Atmosphere effects -->
+    <!-- Layer 0: Ember glow atmosphere -->
     <div class="login-aurora login-aurora-1"></div>
     <div class="login-aurora login-aurora-2"></div>
-    <div class="login-aurora login-aurora-3"></div>
-    <div class="login-aurora login-aurora-4"></div>
 
     <div class="login-watermark">
       <svg width="560" height="560" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -13,17 +11,7 @@
       </svg>
     </div>
 
-    <div v-if="!prefersReducedMotion" class="login-stars">
-      <div
-        v-for="s in stars"
-        :key="s.id"
-        class="login-star"
-        :class="{ lg: s.lg }"
-        :style="`left:${s.x}%;top:${s.y}%;animation-delay:${s.delay}s`"
-      ></div>
-    </div>
-
-    <!-- Decorative arc rings -->
+    <!-- Vault dial — counter-rotating machined tick rings -->
     <div v-if="!prefersReducedMotion" class="arc-rings">
       <div class="arc arc-1"></div>
       <div class="arc arc-2"></div>
@@ -88,14 +76,6 @@ const showChangePw = ref(false)
 const prefersReducedMotion = ref(false)
 let mql = null
 
-const stars = Array.from({ length: 25 }, (_, i) => ({
-  id: i,
-  x: Math.random() * 100,
-  y: Math.random() * 100,
-  delay: Math.random() * 12,
-  lg: Math.random() > 0.7,
-}))
-
 onMounted(() => {
   mql = window.matchMedia('(prefers-reduced-motion: reduce)')
   prefersReducedMotion.value = mql.matches
@@ -141,7 +121,7 @@ async function handleSubmit() {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(120% 90% at 50% 8%, #0a1322 0%, #05070d 55%, #03040a 100%);
+  background: radial-gradient(120% 90% at 50% 8%, #1c1610 0%, #0d0a07 55%, #080605 100%);
   overflow: hidden;
   padding: 2rem;
 }
@@ -153,10 +133,10 @@ async function handleSubmit() {
   max-width: 380px;
   padding: 2rem;
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 1.5rem;
-  background: rgba(15, 23, 42, 0.4);
+  border-radius: var(--radius-card, 6px);
+  background: rgba(30, 25, 18, 0.45);
   backdrop-filter: blur(8px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
 }
 
 .card-title {
@@ -168,8 +148,11 @@ async function handleSubmit() {
 }
 
 .card-sub {
-  font-size: 0.875rem;
-  color: rgba(255, 255, 255, 0.6);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
   margin: 0 0 1.5rem 0;
   font-weight: 400;
 }
@@ -196,7 +179,7 @@ async function handleSubmit() {
 .field input {
   padding: 0.75rem;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 0.5rem;
+  border-radius: var(--radius-ctrl, 4px);
   background: rgba(255, 255, 255, 0.05);
   color: #fff;
   font-size: 1rem;
@@ -205,7 +188,7 @@ async function handleSubmit() {
 
 .field input:focus {
   outline: none;
-  border-color: rgba(157, 114, 255, 0.5);
+  border-color: rgba(224, 160, 92, 0.55);
   background: rgba(255, 255, 255, 0.08);
 }
 
@@ -223,18 +206,19 @@ async function handleSubmit() {
 
 .remember-me input[type="checkbox"] {
   width: 1rem; height: 1rem; cursor: pointer;
-  accent-color: #9d72ff;
+  accent-color: #e0a05c;
 }
 
 .btn {
-  padding: 0.75rem; border: none; border-radius: 0.5rem;
+  padding: 0.75rem; border: none; border-radius: var(--radius-ctrl, 4px);
   font-size: 1rem; font-weight: 500; cursor: pointer;
   transition: background-color 0.2s;
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #9d72ff 0%, #7c5cdb 100%);
-  color: #fff;
+  background: #e0a05c;
+  color: #1c1610;
+  font-weight: 600;
 }
 
 .btn-primary:hover:not(:disabled) { opacity: 0.9; }
@@ -251,31 +235,37 @@ async function handleSubmit() {
 
 .arc { position: absolute; border-radius: 50%; will-change: transform; }
 
+/* Vault dial. Three machined rings, no glow:
+   outer tick ring · copper sweep hairline · inner verdigris dial marks */
 .arc-1 {
-  width: 580px; height: 580px;
-  background: conic-gradient(from 0deg, transparent 0deg, #9d72ff 50deg, transparent 90deg);
-  -webkit-mask: radial-gradient(circle, transparent 48%, #000 49%, #000 52%, transparent 53%);
-  mask: radial-gradient(circle, transparent 48%, #000 49%, #000 52%, transparent 53%);
-  animation: av-arc-spin 22s linear infinite;
-  filter: drop-shadow(0 0 10px rgba(157, 114, 255, 0.5));
+  width: 660px; height: 660px;
+  background: repeating-conic-gradient(
+    rgba(224, 160, 92, 0.22) 0deg 0.6deg,
+    transparent 0.6deg 6deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 48.5%, #000 49%, #000 51.5%, transparent 52%);
+  mask: radial-gradient(circle, transparent 48.5%, #000 49%, #000 51.5%, transparent 52%);
+  animation: av-arc-spin 90s linear infinite;
 }
 
 .arc-2 {
-  width: 420px; height: 420px;
-  background: conic-gradient(from 120deg, transparent 0deg, #6ee7ff 60deg, transparent 130deg);
-  -webkit-mask: radial-gradient(circle, transparent 47%, #000 48%, #000 53%, transparent 54%);
-  mask: radial-gradient(circle, transparent 47%, #000 48%, #000 53%, transparent 54%);
-  animation: av-arc-spin 16s linear infinite reverse;
-  filter: drop-shadow(0 0 8px rgba(110, 231, 255, 0.45));
+  width: 480px; height: 480px;
+  background-image: conic-gradient(from 120deg, transparent 0deg, rgba(224, 160, 92, 0.65) 45deg, transparent 80deg);
+  background-color: rgba(224, 160, 92, 0.08);
+  -webkit-mask: radial-gradient(circle, transparent 49%, #000 49.5%, #000 50.5%, transparent 51%);
+  mask: radial-gradient(circle, transparent 49%, #000 49.5%, #000 50.5%, transparent 51%);
+  animation: av-arc-spin 60s linear infinite reverse;
 }
 
 .arc-3 {
-  width: 280px; height: 280px;
-  background: conic-gradient(from 240deg, transparent 0deg, #ff6eb4 35deg, transparent 75deg);
-  -webkit-mask: radial-gradient(circle, transparent 45%, #000 46%, #000 55%, transparent 56%);
-  mask: radial-gradient(circle, transparent 45%, #000 46%, #000 55%, transparent 56%);
-  animation: av-arc-spin 12s linear infinite;
-  filter: drop-shadow(0 0 8px rgba(255, 110, 180, 0.4));
+  width: 320px; height: 320px;
+  background: repeating-conic-gradient(
+    rgba(127, 212, 178, 0.22) 0deg 1.2deg,
+    transparent 1.2deg 15deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 46%, #000 46.5%, #000 53%, transparent 53.5%);
+  mask: radial-gradient(circle, transparent 46%, #000 46.5%, #000 53%, transparent 53.5%);
+  animation: av-arc-spin 45s linear infinite;
 }
 
 @keyframes av-arc-spin { to { transform: rotate(360deg); } }

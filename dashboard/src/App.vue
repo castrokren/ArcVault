@@ -271,7 +271,7 @@ async function handleLogout() {
   color: var(--text-muted);
   background: var(--bg-elevated);
   border: 1px solid var(--border-subtle);
-  border-radius: 999px;
+  border-radius: 3px;
   padding: 0.05rem 0.45rem;
   margin-left: 0.3rem;
 }
@@ -455,7 +455,7 @@ async function handleLogout() {
   align-items: center;
   gap: 0.35rem;
   padding: 0.25rem 0.6rem;
-  border-radius: 999px;
+  border-radius: 4px;
   border: 1px solid var(--border-default);
   cursor: default;
   user-select: none;
@@ -480,9 +480,11 @@ async function handleLogout() {
 }
 
 .ws-label {
-  font-family: var(--font-body);
-  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
   font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--text-secondary);
 }
 

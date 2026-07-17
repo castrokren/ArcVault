@@ -1,0 +1,3 @@
+[
+  { "date": "2026-07-16", "scope": "app", "macrostructure": "app-shell (unchanged)", "theme": "custom", "theme_axes": "dark-warm / grotesk-sans / warm-copper", "vibe": "vault materials: charcoal, copper, verdigris", "enrichment": "none", "brief": "ArcVault dashboard retheme — replace generic navy/cyan glow with Kiln system" }
+]

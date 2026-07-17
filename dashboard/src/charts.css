@@ -43,7 +43,7 @@
   flex: 1 1 0;
   min-width: 5px;
   border-radius: 2px 2px 0 0;
-  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  background: var(--accent);
 }
 
 /* ── Area / line sparkline ──────────────────────────────── */
@@ -97,20 +97,21 @@
   display: inline-block;
   margin-left: 0.45rem;
   padding: 0.08rem 0.45rem;
-  border-radius: 5px;
+  border-radius: 3px;
   background: var(--bg-warning);
-  border: 1px solid rgba(251, 191, 36, 0.3);
+  border: 1px solid color-mix(in oklab, var(--color-warning) 30%, transparent);
   color: var(--color-warning);
-  font-size: 0.66rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-family: var(--font-mono);
+  font-size: 0.64rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
 }
 
 .btn-update-agent {
   padding: 0.32rem 0.85rem;
   border-radius: var(--radius-ctrl);
   background: var(--bg-warning);
-  border: 1px solid rgba(251, 191, 36, 0.4);
+  border: 1px solid color-mix(in oklab, var(--color-warning) 40%, transparent);
   color: var(--color-warning);
   font-family: var(--font-body);
   font-size: 0.8rem;
