@@ -251,6 +251,23 @@ if ($SkipLive) {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+Section "6. DOC DRIFT (backend + service contracts)"
+# ─────────────────────────────────────────────────────────────────────────────
+# Fast + offline: docs/backend.md + docs/service.md must match the code. The
+# frontend contract (docs/frontend.md) is enforced by the pre-commit hook + vitest.
+Push-Location $Root
+try {
+    $docOut = & go test ./internal/docs/ -run Doc 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Pass "backend.md + service.md contracts match the code"
+    } else {
+        Fail "Doc drift — run: go test ./internal/docs/ -run Doc -v`n$($docOut -join "`n")"
+    }
+} finally {
+    Pop-Location
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "══════════════════════════════════════════════" -ForegroundColor Cyan
 $total = $Passed + $Failed + $Warnings

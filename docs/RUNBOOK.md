@@ -53,6 +53,11 @@ ArcVault is a **self-hosted, cross-platform backup orchestrator** with a real-ti
 
 ## 2. Architecture Overview
 
+> Authoritative, **test-enforced** architecture references live in
+> [backend.md](backend.md), [frontend.md](frontend.md), and [service.md](service.md) — their route,
+> view, and command inventories are checked against the code (see [itworks.md](itworks.md)).
+> The diagrams below are illustrative and may lag; the contract blocks in those docs cannot.
+
 ### High-Level Architecture
 
 ```

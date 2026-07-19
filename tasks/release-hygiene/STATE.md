@@ -63,7 +63,36 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
   - Next: manual end-to-end test against real agent service to confirm /ws/agent connects
     and update_progress completes without timeout.
 
+## Done (2026-07-17 session, cont'd) — service error 1067 on other machines
+- KREN ASK: agent/coordinator services fail with Windows error 1067 after install.
+  Root causes (agent = the "other machines" service):
+  - Agent `runAgent()` called `log.Fatalf` on `heartbeat.Register` failure. On a remote
+    box the coordinator is often unreachable at service-boot (firewall/boot-order/TLS pin;
+    real log: `dial tcp [::1]:443 refused`) → process dies during StartPending → SCM 1067.
+    Fix (agent/main.go): registration now retries in a background goroutine, never fatal.
+  - `heartbeat.Start` had a Fatalf-from-goroutine on TLS-config failure → also nuked the
+    process. Fix (agent/heartbeat/heartbeat.go): log + return (disable heartbeat), don't exit.
+  - Deploy-script bug: `rebuild-and-restart.ps1` Step 8 used `-replace '...(auth_token:...)' ('$1'+$token)`;
+    a hex token starting with a digit reads as backreference `$1<digit>`, dropping the key and
+    writing `$12be8...` → invalid YAML → agent 1067 on config-load. Fixed: no capture group,
+    `-replace '^\s*auth_token:.*$', "auth_token: $token"` + `.Trim()`.
+  - Coordinator visibility: `run-service` now redirects the logger to
+    `coordinator-service.log` beside the exe (agent already had `logs/arcvault-agent.log`).
+    Under SCM there's no console, so 1067 previously died with zero trace.
+  - Boot-order fix: heartbeat.Start now runs INSIDE the registration goroutine, AFTER the
+    first successful Register — you can't heartbeat an agent the coordinator hasn't registered
+    yet (it 404s), and racing the token read 401s. Ordering register→heartbeat removes the blip.
+  - DUG the transient: the "~2min 400-register window" seen on the first deploy does NOT
+    reproduce — it was a one-time artifact of TWO create-agent-token mints seconds apart (manual
+    + Step 8) while the coordinator was mid-restart. Confirmed by clean restart. The remaining
+    per-boot blip was one 404/401 cycle from heartbeat firing before registration; the boot-order
+    fix eliminated it.
+  - VERIFIED via rebuild-and-restart.ps1: both services RUNNING, sanity 13/0/0, CLEAN agent boot
+    (WS connected → Registered → Heartbeat OK, no 404/401). Agent online in /api/agents. NOT committed.
+
 ## Next
+- Commit the 1067 fixes (agent/main.go, agent/heartbeat/heartbeat.go, coordinator/main.go,
+  scripts/rebuild-and-restart.ps1).
 - KREN ASK (2026-07-17) #1 — DOWNLOAD INSTALLER BUTTON. Fixed in config.json:
   set `installer_dir` to `C:\Projects\ArcVault2.0\dist` (where the built
   ArcVault-Setup-0.6.0-windows-amd64.exe lives). Verify after coordinator restart.
@@ -95,6 +124,9 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
 - tasks/dashboard-version-bugs/PLAN-2-recheck-after-update.md — done (4890577 + e715ac0)
 - coordinator/updater/updater.go — release check/download/checksum logic
 - dashboard/src/components/UpdateModal.vue — update flow incl. reconnect poller
-- **docs/FEATURES.md** — user-visible features inventory (prevents accidental deletion)
-- **docs/FUNCTIONS.md** — HTTP endpoints + handlers inventory (route checklist)
+- **docs/backend.md** — Go backend architecture + test-enforced route inventory (was FUNCTIONS.md)
+- **docs/frontend.md** — Vue dashboard architecture + test-enforced route/view inventory (was FEATURES.md)
+- **docs/service.md** — Windows service behaviour (install, run-service, error 1067, logs)
+- **internal/docs/doc_test.go** + **dashboard/src/docs/frontend.doc.test.js** — doc-drift tests
+- **scripts/git-hooks/pre-commit** + **scripts/install-hooks.ps1** — block commits that drift the docs
 - ~/.claude/plans/agent-token-generator.md — implementation plan for token generator feature

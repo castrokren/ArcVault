@@ -24,6 +24,11 @@ ArcVault is a hub-and-spoke backup orchestrator:
 - Deploy only via `.\scripts\rebuild-and-restart.ps1` — never hand-build without ldflags.
 - Never commit secrets: `config.json`, `*.pem`, `*.key`, `.env` are gitignored and must stay that way.
 - Docs live in `docs/` (see [docs/RUNBOOK.md](docs/RUNBOOK.md)).
+- **Contract-tested docs (workflow, not optional):** `docs/backend.md`, `docs/frontend.md`,
+  `docs/service.md` carry CONTRACT blocks checked against the code by `internal/docs` (Go) and
+  `dashboard/src/docs` (vitest). Change a route/view/subcommand → update the matching block in the
+  same commit (a failing test prints the corrected block to paste). Run `.\scripts\install-hooks.ps1`
+  once per clone; the pre-commit hook then blocks drifting commits. Full procedure: **docs/itworks.md**.
 
 ## Security Constraints
 

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Doc-drift guard: docs/backend.md, docs/service.md, docs/frontend.md must match
+# the code they describe. A drifting change is blocked here. Enable once per clone:
+#   .\scripts\install-hooks.ps1   (sets core.hooksPath -> scripts/git-hooks)
+#
+# Runs only the doc tests (fast). Full suites stay in scripts/rebuild-and-restart.ps1.
+set -e
+
+echo "[pre-commit] doc-drift (backend + service)..."
+go test ./internal/docs/ -run Doc
+
+echo "[pre-commit] doc-drift (frontend)..."
+( cd dashboard && npx vitest run src/docs )
+
+echo "[pre-commit] docs in sync."
