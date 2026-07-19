@@ -42,9 +42,21 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
 - Resolved STATE open question: untracked `ArcVault/` was a personal Obsidian vault
   accidentally in-tree — now gitignored (with *.bak, __pycache__/).
 
+## Done (2026-07-19 session) — installer build-dir fix + fresh installer
+- BUG: `scripts/build.ps1` wrote the installer to root `dist\`, but `config.json`
+  `installer_dir` serves from `installer\windows\dist`. A build never reached the served
+  dir; two `dist\` dirs existed (root empty, served one held a stale 7/17 installer).
+- FIX (build.ps1 + regenerated arcvault.spec): build Go binaries + PyInstaller output all
+  into `installer\windows\dist`; clean step now also nukes legacy root `dist\`. One dist dir,
+  matches config.json. Changed: clean/New-Item paths, both `go build -o`, spec `binaries=`,
+  guardrail path, `--distpath`, `$outExe`.
+- Built fresh installer via build.ps1: `installer\windows\dist\ArcVault-Setup-0.6.0-windows-amd64.exe`
+  (26.7MB, 7/19), binary version guardrail verified v0.6.0. Root `dist\` confirmed gone.
+- NOT committed: build.ps1 + arcvault.spec (kren's call).
+
 ## In-progress
 - BLOCKED (needs kren): `gh release upload v0.6.0 installer/windows/dist/ArcVault-Setup-0.6.0-windows-amd64.exe --clobber`
-  — new Kiln installer built locally; permission classifier blocked the outward upload.
+  — fresh installer built locally (7/19); permission classifier blocks the outward upload.
   Run it via `!` in the prompt. (Installer isn't fetched by the auto-updater — safe to clobber.)
 - Left uncommitted (kren's call): `.agents/` + `skills-lock.json` (hallmark skill toolchain),
   `tasks/security-hardening/PLAN-review-fixes.md` (unrelated prior task).

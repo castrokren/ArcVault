@@ -5,12 +5,14 @@ a = Analysis(
     ['installer/windows/arcvault_installer.py'],
     pathex=[],
     binaries=[
-        ('dist/coordinator.exe', '.'),
-        ('dist/agent.exe', '.'),
+        ('installer/windows/dist/coordinator.exe', '.'),
+        ('installer/windows/dist/agent.exe', '.'),
     ],
-    datas=[
-        ('installer/windows/', 'installer/windows'),
-    ],
+    # No datas: the installer reads nothing from installer/windows at runtime
+    # (icon is base64-embedded; coordinator.exe/agent.exe come from binaries=
+    # above). Bundling the whole folder swept in stale dist/build artifacts and
+    # loose exe copies, bloating the installer ~150MB. See git log.
+    datas=[],
     hiddenimports=['tkinter'],
     hookspath=[],
     runtime_hooks=[],

@@ -5,12 +5,13 @@ Write-Host ""
 Write-Host "=== ArcVault Installer Build ===" -ForegroundColor Cyan
 Write-Host ""
 
-# Clean
+# Clean — build into installer\windows\dist (the dir config.json's installer_dir
+# serves from). Also nuke any legacy root-level dist\ so it stops confusing people.
 Write-Host "Cleaning..." -ForegroundColor Yellow
-Remove-Item -Recurse -Force "build", "dist", "arcvault.spec" -ErrorAction SilentlyContinue
+Remove-Item -Recurse -Force "build", "dist", "installer\windows\dist", "arcvault.spec" -ErrorAction SilentlyContinue
 
 # Create dist
-New-Item -ItemType Directory -Path "dist" -Force | Out-Null
+New-Item -ItemType Directory -Path "installer\windows\dist" -Force | Out-Null
 
 # Version — read from VERSION file (single source of truth).
 # NEVER hardcode a version string here; it will drift.
@@ -20,13 +21,13 @@ if (-not $Version) { Write-Host "ERROR: VERSION file is empty" -ForegroundColor 
 if ($LASTEXITCODE -ne 0) { exit 1 }
 Write-Host "Building Go binaries at $Version..." -ForegroundColor Cyan
 
-go build -ldflags "-X main.Version=$Version -X arcvault/coordinator/server.Version=$Version" -o dist\coordinator.exe .\coordinator
+go build -ldflags "-X main.Version=$Version -X arcvault/coordinator/server.Version=$Version" -o installer\windows\dist\coordinator.exe .\coordinator
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: coordinator build failed" -ForegroundColor Red; exit 1 }
-go build -ldflags "-X main.Version=$Version" -o dist\agent.exe .\agent
+go build -ldflags "-X main.Version=$Version" -o installer\windows\dist\agent.exe .\agent
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: agent build failed" -ForegroundColor Red; exit 1 }
 
 # ── GUARDRAIL: verify binary reports the correct version ─────────────────────
-$binVer = & "dist\coordinator.exe" --version 2>&1
+$binVer = & "installer\windows\dist\coordinator.exe" --version 2>&1
 $binVer = ($binVer -join "").Trim()
 if ($binVer -ne $Version) {
     Write-Host "ERROR: coordinator.exe reports '$binVer' but expected '$Version'" -ForegroundColor Red
@@ -49,12 +50,14 @@ a = Analysis(
     ['installer/windows/arcvault_installer.py'],
     pathex=[],
     binaries=[
-        ('dist/coordinator.exe', '.'),
-        ('dist/agent.exe', '.'),
+        ('installer/windows/dist/coordinator.exe', '.'),
+        ('installer/windows/dist/agent.exe', '.'),
     ],
-    datas=[
-        ('installer/windows/', 'installer/windows'),
-    ],
+    # No datas: the installer reads nothing from installer/windows at runtime
+    # (icon is base64-embedded; coordinator.exe/agent.exe come from binaries=
+    # above). Bundling the whole folder swept in stale dist/build artifacts and
+    # loose exe copies, bloating the installer ~150MB. See git log.
+    datas=[],
     hiddenimports=['tkinter'],
     hookspath=[],
     runtime_hooks=[],
@@ -100,7 +103,7 @@ Write-Host "Compiling with PyInstaller..." -ForegroundColor Cyan
 Write-Host "(This may take 2-3 minutes)" -ForegroundColor Gray
 Write-Host ""
 
-pyinstaller arcvault.spec --distpath dist
+pyinstaller arcvault.spec --distpath installer\windows\dist
 if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: PyInstaller failed" -ForegroundColor Red; exit 1 }
 
 Write-Host ""
@@ -109,7 +112,7 @@ Write-Host ""
 
 # Verify — name is derived from $Version (no hardcoded strings)
 $versionTrimmed = $Version.TrimStart("v")
-$outExe = "dist\ArcVault-Setup-$versionTrimmed-windows-amd64.exe"
+$outExe = "installer\windows\dist\ArcVault-Setup-$versionTrimmed-windows-amd64.exe"
 if (Test-Path $outExe) {
     $size = [math]::Round((Get-Item $outExe).Length / 1MB, 1)
     Write-Host "====================================" -ForegroundColor Green
