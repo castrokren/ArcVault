@@ -2,7 +2,7 @@
 
 The features inventory has been folded into the tested architecture docs:
 
-- Dashboard views (user-visible features) → **[frontend.md](frontend.md)** — the route list is a
+- Dashboard views (user-visible features) → **[frontend.md](../dashboard/docs/frontend.md)** — the route list is a
   test-enforced contract.
 - Backend routes and agent features → **[backend.md](backend.md)**.
 - Windows service behaviour (install, `run-service`, error 1067, logs) → **[service.md](service.md)**.

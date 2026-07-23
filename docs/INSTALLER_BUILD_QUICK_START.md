@@ -35,7 +35,7 @@ ren ArcVault-Setup.exe ArcVault-Setup-1.1.0-windows-amd64.exe
 # Result: ArcVault-Setup-1.1.0-windows-amd64.exe (5-10 MB)
 ```
 
-**Detailed Guide:** See **BUILD_WINDOWS_INSTALLER.md**
+**Detailed Guide:** See **[build-guides/BUILD_WINDOWS_INSTALLER.md](build-guides/BUILD_WINDOWS_INSTALLER.md)**
 
 ---
 
@@ -90,7 +90,7 @@ GOARCH=arm64 go build -o cmd/setup/arcvault-setup ./cmd/setup
 # Rest is same, produces ArcVault-Setup-1.1.0-macos-arm64.pkg
 ```
 
-**Detailed Guide:** See **BUILD_MACOS_INSTALLER.md**
+**Detailed Guide:** See **[build-guides/BUILD_MACOS_INSTALLER.md](build-guides/BUILD_MACOS_INSTALLER.md)**
 
 ---
 
@@ -152,7 +152,7 @@ fpm -s dir -t rpm -n arcvault -v 1.1.0 \
 # arcvault-1.1.0-1.x86_64.rpm (20-50 MB)
 ```
 
-**Detailed Guide:** See **BUILD_LINUX_INSTALLERS.md**
+**Detailed Guide:** See **[build-guides/BUILD_LINUX_INSTALLERS.md](build-guides/BUILD_LINUX_INSTALLERS.md)**
 
 ---
 

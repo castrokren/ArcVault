@@ -114,7 +114,10 @@ if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-go build -ldflags "-X main.Version=$Version -X arcvault/coordinator/server.Version=$Version" -o coordinator.exe .\coordinator
+# Build into build\ so the repo root stays free of binaries between runs.
+New-Item -ItemType Directory -Force -Path "$ProjectRoot\build" | Out-Null
+
+go build -ldflags "-X main.Version=$Version -X arcvault/coordinator/server.Version=$Version" -o build\coordinator.exe .\coordinator
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  coordinator.exe build FAILED." -ForegroundColor Red
     exit 1
@@ -122,7 +125,7 @@ if ($LASTEXITCODE -ne 0) {
 
 # GUARDRAIL: verify built binary reports the correct version.
 # This catches missing ldflags, wrong version string, or wrong binary being copied.
-$binVer = & ".\coordinator.exe" --version 2>&1
+$binVer = & ".\build\coordinator.exe" --version 2>&1
 $binVer = ($binVer -join "").Trim()
 if ($binVer -ne $Version) {
     Write-Host "  ERROR: coordinator.exe reports version '$binVer' but expected '$Version'" -ForegroundColor Red
@@ -136,7 +139,7 @@ Write-Host "  coordinator.exe built successfully (version: $binVer)" -Foreground
 Write-Host ""
 Write-Host "Step 5: Building agent.exe..." -ForegroundColor Yellow
 
-go build -ldflags "-X main.Version=$Version" -o agent.exe .\agent
+go build -ldflags "-X main.Version=$Version" -o build\agent.exe .\agent
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  agent.exe build FAILED." -ForegroundColor Red
     exit 1
@@ -152,7 +155,7 @@ Write-Host "Step 6: Deploying to service locations..." -ForegroundColor Yellow
 # it open) is a hard failure here, not a silently-false "Copied" message.
 if (Test-Path "C:\ArcVault") {
     try {
-        Copy-Item "coordinator.exe" "C:\ArcVault\coordinator.exe" -Force -ErrorAction Stop
+        Copy-Item "build\coordinator.exe" "C:\ArcVault\coordinator.exe" -Force -ErrorAction Stop
         Write-Host "  Copied coordinator.exe -> C:\ArcVault\" -ForegroundColor Green
     } catch {
         Write-Host "  ERROR: Could not copy coordinator.exe to C:\ArcVault\ - $_" -ForegroundColor Red
@@ -165,7 +168,7 @@ if (Test-Path "C:\ArcVault") {
 
 if (Test-Path "C:\ArcVault-Agent") {
     try {
-        Copy-Item "agent.exe" "C:\ArcVault-Agent\agent.exe" -Force -ErrorAction Stop
+        Copy-Item "build\agent.exe" "C:\ArcVault-Agent\agent.exe" -Force -ErrorAction Stop
         Write-Host "  Copied agent.exe -> C:\ArcVault-Agent\" -ForegroundColor Green
     } catch {
         Write-Host "  ERROR: Could not copy agent.exe to C:\ArcVault-Agent\ - $_" -ForegroundColor Red
@@ -177,8 +180,8 @@ if (Test-Path "C:\ArcVault-Agent") {
 }
 
 # Also keep installer\windows\ in sync for building the installer
-Copy-Item "coordinator.exe" "$ProjectRoot\installer\windows\coordinator.exe" -Force
-Copy-Item "agent.exe" "$ProjectRoot\installer\windows\agent.exe" -Force
+Copy-Item "build\coordinator.exe" "$ProjectRoot\installer\windows\coordinator.exe" -Force
+Copy-Item "build\agent.exe" "$ProjectRoot\installer\windows\agent.exe" -Force
 Write-Host "  Copied binaries -> installer\windows\" -ForegroundColor Green
 
 # Step 7: Start services

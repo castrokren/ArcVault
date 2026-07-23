@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Drift test: docs/frontend.md CONTRACT:routes must equal the routes actually
+// Drift test: dashboard/docs/frontend.md CONTRACT:routes must equal the routes actually
 // registered in src/router/index.js. Add/remove a route and the doc must change
 // with it — the pre-commit hook (scripts/git-hooks/pre-commit) blocks otherwise.
 import { describe, it, expect } from 'vitest'
@@ -10,7 +10,7 @@ import router from '../router/index.js'
 // jsdom rewrites import.meta.url to a non-file URL, so resolve from cwd instead.
 // Covers vitest run from dashboard/ (the hook's cwd) or from the repo root.
 function findDoc() {
-  for (const rel of ['../docs/frontend.md', 'docs/frontend.md']) {
+  for (const rel of ['docs/frontend.md', 'dashboard/docs/frontend.md']) {
     const abs = resolve(process.cwd(), rel)
     if (existsSync(abs)) return abs
   }

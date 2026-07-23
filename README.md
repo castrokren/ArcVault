@@ -186,7 +186,7 @@ npm run build
 
 ### Docs that can't lie
 
-`docs/backend.md`, `docs/frontend.md`, and `docs/service.md` are **contract-tested** — their route,
+`docs/backend.md`, `dashboard/docs/frontend.md`, and `docs/service.md` are **contract-tested** — their route,
 view, and command inventories are checked against the code, and a pre-commit hook blocks any commit
 that drifts. Run `.\scripts\install-hooks.ps1` once per clone. Full workflow: **[docs/itworks.md](docs/itworks.md)**.
 

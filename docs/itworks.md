@@ -14,7 +14,7 @@ CLI subcommand, you update its doc in the same change.
 |-----|-------------------------|------------|
 | [`backend.md`](backend.md)  | every `METHOD /path` registered in `coordinator/server/server.go` | `internal/docs` (Go) |
 | [`service.md`](service.md)  | the two service names + each `main.go` subcommand | `internal/docs` (Go) |
-| [`frontend.md`](frontend.md) | every Vue router route + its role guard | `dashboard/src/docs` (vitest) |
+| [`frontend.md`](../dashboard/docs/frontend.md) | every Vue router route + its role guard | `dashboard/src/docs` (vitest) |
 
 `docs/FUNCTIONS.md` and `docs/FEATURES.md` are retired redirects — their inventories moved into the
 docs above precisely because, untested, they had already drifted.
@@ -52,7 +52,7 @@ of sync.
 
 **Add / change / remove a dashboard view or route** (`dashboard/src/`):
 1. Add the component + route (with `meta.requiresRole` if admin-only) in `router/index.js`.
-2. Update the `CONTRACT:routes` block in `frontend.md`.
+2. Update the `CONTRACT:routes` block in `dashboard/docs/frontend.md`.
 3. `cd dashboard && npx vitest run src/docs`.
 
 **Add / change / remove a CLI subcommand or rename a service** (`coordinator/main.go`,
