@@ -614,6 +614,28 @@ class ArcVaultInstaller:
             pass
         return self.generate_credential_key(), False
 
+    def get_or_create_jwt_secret(self, service_name="arcvault-coordinator"):
+        # The coordinator clears jwt_secret from config.json and regenerates a
+        # random one on every start unless ARCVAULT_JWT_SECRET is set — which
+        # silently logs out every session on each service restart. Persist it in
+        # the service Environment (like the credential key), preserving any
+        # existing value so upgrades don't invalidate live sessions.
+        try:
+            reg_path = f'HKLM\\SYSTEM\\CurrentControlSet\\Services\\{service_name}\\Environment'
+            out = subprocess.run(
+                ['reg', 'query', reg_path, '/v', 'ARCVAULT_JWT_SECRET'],
+                capture_output=True, text=True, shell=True,
+            )
+            if out.returncode == 0:
+                for line in out.stdout.splitlines():
+                    if 'ARCVAULT_JWT_SECRET' in line:
+                        existing = line.split()[-1]
+                        if len(existing) == 64:
+                            return existing
+        except Exception:
+            pass
+        return secrets.token_hex(32)
+
     def set_service_environment_variable(self, service_name, var_name, var_value):
         try:
             reg_path = f'HKLM\\SYSTEM\\CurrentControlSet\\Services\\{service_name}\\Environment'
@@ -739,6 +761,9 @@ class ArcVaultInstaller:
                 self.set_service_environment_variable("arcvault-coordinator",
                                                       "ARCVAULT_CREDENTIAL_KEY",
                                                       self.credential_key)
+                self.set_service_environment_variable("arcvault-coordinator",
+                                                      "ARCVAULT_JWT_SECRET",
+                                                      self.get_or_create_jwt_secret())
 
             start = subprocess.run(["sc", "start", service_name],
                                    capture_output=True, text=True, shell=True)

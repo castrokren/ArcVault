@@ -54,6 +54,85 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
   (26.7MB, 7/19), binary version guardrail verified v0.6.0. Root `dist\` confirmed gone.
 - NOT committed: build.ps1 + arcvault.spec (kren's call).
 
+## Done (2026-07-19 session) — dashboard "fast timeout / relog on tab click" ROOT CAUSE
+- SYMPTOM (kren): coordinator dashboard logs you out almost immediately; clicking a nav
+  tab forces a relog.
+- FALSE LEAD (real bug, not the cause): installer never set `ARCVAULT_JWT_SECRET`, so
+  `config.go` regenerated a random JWT secret each start → restarts invalidated tokens.
+  Fixed anyway: installer now persists `ARCVAULT_JWT_SECRET` like the credential key
+  (arcvault_installer.py: get_or_create_jwt_secret + set_service_environment_variable),
+  set it on the live service, rebuilt the .exe. But coordinator was NOT crash-looping
+  (PID stable), so this wasn't the symptom.
+- REAL ROOT CAUSE (from `C:\ArcVault\coordinator-service.log`):
+  `JWTMiddleware: revocation check failed: database is locked (5) (SQLITE_BUSY)` — bursts
+  of 3 on tab click. The token-revocation check (auth.go:164) is fail-closed: ANY error,
+  incl. a transient SQLITE_BUSY, returns 401 → dashboard handle401() wipes session → relog.
+  Concurrent API calls on tab nav contended on the DB and got instant BUSY.
+- WHY BUSY despite a busy_timeout in the DSN: driver is `modernc.org/sqlite`, whose DSN
+  pragma syntax is `_pragma=name(value)`. The old DSN used mattn/go-sqlite3's
+  `_busy_timeout=5000&_journal_mode=WAL` keys, which modernc SILENTLY IGNORES. So WAL was
+  never on and busy_timeout was 0 — every concurrent touch could BUSY.
+- ORIGIN (git-traced): NOT a regression. Driver has been modernc.org/sqlite since the
+  initial commit (d7c115c); mattn/go-sqlite3 was never a dependency. The mattn-style DSN
+  dates to that same commit → WAL + busy_timeout were NEVER in effect in the project's
+  whole history. The code comment claiming they "handle all concurrency" was wrong from
+  day one. This is why the fast-logout has been chronic, not new.
+- FIX (coordinator/db/db.go): DSN → `?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)`.
+  DIFFERENTIAL PROOF (throwaway test, both DSNs side by side): OLD → journal_mode=`delete`,
+  busy_timeout=`0`, and a writer-vs-writer contention reproduces the exact
+  `database is locked (5) (SQLITE_BUSY)`; NEW → `wal`/`5000`, contention waits & succeeds.
+  PERMANENT GUARD: coordinator/db/dsn_test.go (TestInit_appliesWALandBusyTimeout) fails if
+  the DSN param syntax ever regresses. `go build ./...`, `go test ./db/` + `./server/` green.
+- DEPLOYED via rebuild-and-restart.ps1 (sanity 12/0/2, health ok, coordinator v0.6.0
+  RUNNING). VERIFIED live: `C:\ArcVault\arcvault.db-wal` + `-shm` sidecars now exist
+  (stamped at deploy) — the running binary is in WAL mode at last; no new SQLITE_BUSY
+  since restart.
+- USER-CONFIRMED (2026-07-19): kren logged in on the live dashboard and it stays up while
+  navigating — the fast relog is resolved. (Did NOT run the planned 50-request concurrency
+  burst; kren's own click-through was enough.) Regression guard: coordinator/db/dsn_test.go.
+- NOT committed yet (kren's call): coordinator/db/db.go, coordinator/db/dsn_test.go,
+  installer/windows/arcvault_installer.py, and this STATE.md.
+- SEPARATE ISSUE spotted in the log (not the relog bug): a steady flood of
+  `http: TLS handshake error from 192.168.68.64:*: remote error: tls: bad certificate`
+  every ~10-30s — a LAN client/agent that doesn't trust the self-signed cert. Noise for now.
+
+## Done (2026-07-19 session, cont'd) — remote agent version-staleness detection
+- KREN ASK: coordinator can't detect when (esp. remote) agents are out of date. Worked the 3
+  queued steps end to end; "actually test the full stack, no fake tests."
+- STEP 1 (version transmission) — CONFIRMED WORKING, no code change. Agent POSTs os/arch/version
+  on register (`agent/heartbeat/heartbeat.go:90`); coordinator upserts it (`db/agents.go:17`,
+  `version=excluded.version`). Heartbeat carries no version by design; self-update restarts →
+  re-register refreshes it. Live proof: `/api/agents` returned 3 real agents at v0.4.0 / v0.5.0 /
+  v0.6.0.
+- STEP 2 (comparison logic) — FOUND + FIXED 2 real bugs:
+  - Frontend (dashboard/src/views/Agents.vue + utils/format.js): `updateAvailable` compared
+    `agent.version !== updateStore.current` (coordinator running version, `!=` not semver-behind),
+    and ALL drift UI was gated behind `!selectedSite` so federated/remote agents showed NO drift.
+    Fixed: new `versionBehind(a,b)` semver helper (strictly-older, fail-safe on missing); baseline =
+    `updateStore.latest || updateStore.current` (latest release = what a push-update installs; falls
+    back to /api/version for non-admins who can't hit admin-only /api/update/check); read-only drift
+    badge now shows for remote agents too (labeled "stale"); Update button + modal stay local-only
+    (can't push-update another coordinator's agents). Unit test: utils/format.test.js (3 cases).
+  - Backend (coordinator/server, THE remote-staleness root cause): `FedAgentHeartbeat` had a
+    `Version` field and `federation_hub.go:159` wrote it into the root's SubCache every heartbeat —
+    but `handleHeartbeat` never populated it, so each sub-agent heartbeat (30s) BLANKED the remote
+    agent's version. Fixed: dropped the field + the clobber; version now comes only from
+    register/snapshot deltas. Regression guard: `TestFedHub_ApplyDelta_AgentHeartbeat` now asserts
+    version is PRESERVED across a heartbeat.
+- STEP 3 (192.168.68.64 TLS flood) — INVESTIGATED, operational not code. `tls: bad certificate`
+  every ~15-30s = a 4th remote host's agent whose CA bundle doesn't trust this coordinator's cert;
+  it never completes TLS → never registers → has no version at all. Fix is cert distribution
+  (`CACertFile` on that agent), not a version bug. (`[::1]` cert errors are just local browser/curl.)
+- DOCS: docs/backend.md gained an "Agent version / out-of-date detection" prose section (version
+  source of truth, latest-release baseline, federated caveat, never-connected case). Contract test
+  `internal/docs` green.
+- TESTED (not faked): vitest 80/80; `go test ./coordinator/server ./coordinator/db ./internal/docs`
+  all green; full-stack rebuild-and-restart deployed (coordinator v0.6.0 RUNNING, sanity 12/0/2);
+  live `/api/agents` verified real versions. REMAINING: visual browser confirm of the drift badges
+  needs kren to log in (no creds on file; login screen reached, can't proceed further).
+- NOT committed yet (kren's call): Agents.vue, utils/format.js, utils/format.test.js, backend.md,
+  federation_messages.go, federation_hub.go, federation_test.go, this STATE.md.
+
 ## In-progress
 - BLOCKED (needs kren): `gh release upload v0.6.0 installer/windows/dist/ArcVault-Setup-0.6.0-windows-amd64.exe --clobber`
   — fresh installer built locally (7/19); permission classifier blocks the outward upload.
@@ -101,6 +180,21 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
     fix eliminated it.
   - VERIFIED via rebuild-and-restart.ps1: both services RUNNING, sanity 13/0/0, CLEAN agent boot
     (WS connected → Registered → Heartbeat OK, no 404/401). Agent online in /api/agents. NOT committed.
+
+## Next chat — NEW ISSUE (kren, 2026-07-19): agent "out of date" detection for other machines
+- SYMPTOM: dashboard/coordinator cannot detect that agents on OTHER machines are out of
+  date. The local agent shows fine; remote agents' version-staleness isn't surfaced.
+- NOT yet investigated. Starting points to check next session:
+  - Agents report `version` on register/heartbeat (business/agents.go, agent/heartbeat).
+    Confirm remote agents actually send a version and it's stored/updated per heartbeat.
+  - How the UI decides "update available" per agent (Agents.vue + /api/agents payload):
+    does it compare agent.version against the latest release / coordinator version, or
+    only against the local agent? Likely compares wrong baseline or version is empty/stale.
+  - The TLS "bad certificate" flood from 192.168.68.64 (below) may be the SAME remote agent
+    failing to connect at all — if it can't reach the coordinator, its version never updates,
+    so it can't be flagged out-of-date. Check if that IP is the "other" agent first.
+  - Agents never auto-update (per-agent update button only); staleness detection is what
+    tells the operator to click it.
 
 ## Next
 - Commit the 1067 fixes (agent/main.go, agent/heartbeat/heartbeat.go, coordinator/main.go,
