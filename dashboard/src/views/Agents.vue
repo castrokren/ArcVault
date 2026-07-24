@@ -17,7 +17,40 @@
       <button class="btn btn-secondary" @click="load" :disabled="loading">
         {{ loading ? 'Loading…' : 'Refresh' }}
       </button>
+      <button
+        v-if="hasRole('admin') && !selectedSite"
+        class="btn btn-secondary"
+        @click="enrollOpen = !enrollOpen"
+        title="Generate an install script for a new machine"
+      >
+        Enroll Agent
+      </button>
     </div>
+
+    <!-- Enroll a new machine: mints a 1-hour bootstrap token inside an install script -->
+    <form v-if="enrollOpen" class="enroll-box" @submit.prevent="downloadBootstrap">
+      <label class="enroll-label" for="enroll-hostname">Hostname of the new machine</label>
+      <div class="enroll-row">
+        <input
+          id="enroll-hostname"
+          v-model.trim="enrollHostname"
+          type="text"
+          placeholder="WORKSTATION01"
+          pattern="[A-Za-z0-9.\-]+"
+          maxlength="253"
+          title="Letters, digits, dot and hyphen only"
+          :disabled="enrollLoading"
+        />
+        <button class="btn btn-primary" type="submit" :disabled="enrollLoading">
+          {{ enrollLoading ? 'Generating…' : 'Download Script' }}
+        </button>
+      </div>
+      <p class="enroll-note">
+        Optional — tags the token so it can be traced and revoked per machine. The script
+        embeds a token that expires in 1 hour; run it on the new machine before then.
+      </p>
+      <p v-if="enrollError" class="enroll-error">{{ enrollError }}</p>
+    </form>
 
     <!-- Stale banners -->
     <div v-if="stale" class="stale-banner">
@@ -184,12 +217,34 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, inject } from 'vue'
-import { getAgents, getFederationAgents } from '../api'
+import { useAuth } from '../composables/useAuth.js'
+import { getAgents, getFederationAgents, downloadBootstrapScript } from '../api'
 import { formatDate, fmtStaleTime, versionBehind } from '../utils/format.js'
 import AgentUpdateModal from '../components/AgentUpdateModal.vue'
 import AgentTokenModal from '../components/AgentTokenModal.vue'
 import Pagination from '../components/Pagination.vue'
 import { useFederationLag } from '../composables/useFederationLag.js'
+
+const { hasRole } = useAuth()
+
+const enrollOpen = ref(false)
+const enrollHostname = ref('')
+const enrollLoading = ref(false)
+const enrollError = ref(null)
+
+async function downloadBootstrap() {
+  enrollLoading.value = true
+  enrollError.value = null
+  try {
+    await downloadBootstrapScript(enrollHostname.value)
+    enrollOpen.value = false
+    enrollHostname.value = ''
+  } catch (err) {
+    enrollError.value = err.message || 'Failed to generate install script'
+  } finally {
+    enrollLoading.value = false
+  }
+}
 
 const props = defineProps(['lastEvent'])
 
@@ -510,5 +565,47 @@ onMounted(load)
 }
 @media (max-width: 620px) {
   .cmd-search { min-width: 0; flex: 1 1 100%; order: 3; }
+}
+
+/* ── Enroll agent ─────────────────────────────────────────── */
+.enroll-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+}
+.enroll-label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  margin-bottom: 0.4rem;
+}
+.enroll-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.enroll-row input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+.enroll-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.enroll-error {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--color-error);
 }
 </style>

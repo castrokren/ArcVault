@@ -321,14 +321,17 @@ export async function downloadInstaller() {
 }
 
 // --- Agent Bootstrap ---
-// fallow-ignore-next-line unused-export
-export async function downloadBootstrapScript() {
+// Mints a fresh, 1-hour agent token and serves it inside an install script.
+// `hostname` is optional and only tags the token so it can be traced/revoked
+// per machine; the coordinator rejects anything outside [A-Za-z0-9.-].
+export async function downloadBootstrapScript(hostname = '') {
   const token = getToken()
   if (!token) {
     throw new Error('No authentication token')
   }
 
-  const res = await fetch(`${BASE_URL}/api/admin/bootstrap.ps1`, {
+  const query = hostname ? `?hostname=${encodeURIComponent(hostname)}` : ''
+  const res = await fetch(`${BASE_URL}/api/admin/bootstrap.ps1${query}`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -349,7 +352,7 @@ export async function downloadBootstrapScript() {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = 'bootstrap.ps1'
+  a.download = hostname ? `bootstrap-${hostname}.ps1` : 'bootstrap.ps1'
   document.body.appendChild(a)
   a.click()
   document.body.removeChild(a)

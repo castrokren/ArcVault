@@ -9,7 +9,25 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 )
+
+// hostnameHintPattern matches DNS-label characters only. The hint is not
+// interpolated into the generated script, but it is persisted as the token's
+// agent_id, so it stays bounded and free of separator characters.
+var hostnameHintPattern = regexp.MustCompile(`^[A-Za-z0-9.-]+$`)
+
+// validHostnameHint reports whether the ?hostname= query value is safe to tag a
+// bootstrap token with. Empty is valid — the hint is optional.
+func validHostnameHint(h string) bool {
+	if h == "" {
+		return true
+	}
+	if len(h) > 253 {
+		return false
+	}
+	return hostnameHintPattern.MatchString(h)
+}
 
 // handleBootstrapScript generates and serves the PowerShell bootstrap script.
 // Admin-only endpoint. Mints a fresh agent token and embeds it in the script.
@@ -17,6 +35,10 @@ func (s *Server) handleBootstrapScript(w http.ResponseWriter, r *http.Request) {
 	// Optional: caller passes ?hostname=WORKSTATION01 to get a per-machine token.
 	// Falls back to "bootstrap" role tag if not provided.
 	hostnameHint := r.URL.Query().Get("hostname")
+	if !validHostnameHint(hostnameHint) {
+		http.Error(w, "invalid hostname: letters, digits, dot and hyphen only, max 253 chars", http.StatusBadRequest)
+		return
+	}
 	tokenRole := "bootstrap"
 	if hostnameHint != "" {
 		tokenRole = "bootstrap:" + hostnameHint
