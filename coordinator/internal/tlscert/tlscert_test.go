@@ -3,6 +3,7 @@ package tlscert
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/pem"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,38 @@ import (
 	"testing"
 	"time"
 )
+
+// parseCertFile reads a cert file and returns the parsed certificates.
+//
+// ReadCertPEM returns PEM, not DER — these tests used to hand its output
+// straight to x509.ParseCertificates, which wants DER, and failed with
+// "x509: malformed certificate" against perfectly valid certificates. The
+// pem.Decode step is the part that was missing.
+func parseCertFile(t *testing.T, certPath string) []*x509.Certificate {
+	t.Helper()
+
+	pemBytes, err := ReadCertPEM(certPath)
+	if err != nil {
+		t.Fatalf("ReadCertPEM failed: %v", err)
+	}
+
+	block, rest := pem.Decode(pemBytes)
+	if block == nil {
+		t.Fatalf("no PEM block in %s", certPath)
+	}
+	if len(rest) != 0 {
+		t.Errorf("unexpected trailing data after the certificate PEM block (%d bytes)", len(rest))
+	}
+
+	certs, err := x509.ParseCertificates(block.Bytes)
+	if err != nil {
+		t.Fatalf("Failed to parse certificate: %v", err)
+	}
+	if len(certs) == 0 {
+		t.Fatal("no certificates in PEM block")
+	}
+	return certs
+}
 
 // A1: TestGenerate_filesAndParse
 func TestGenerate_filesAndParse(t *testing.T) {
@@ -32,15 +65,7 @@ func TestGenerate_filesAndParse(t *testing.T) {
 	}
 
 	// Cert should parse
-	certPEM, err := ReadCertPEM(certPath)
-	if err != nil {
-		t.Fatalf("ReadCertPEM failed: %v", err)
-	}
-
-	certs, err := x509.ParseCertificates(certPEM)
-	if err != nil || len(certs) == 0 {
-		t.Fatalf("Failed to parse certificate: %v", err)
-	}
+	parseCertFile(t, certPath)
 }
 
 // A2: TestGenerate_SANs
@@ -55,15 +80,7 @@ func TestGenerate_SANs(t *testing.T) {
 		t.Fatalf("Generate failed: %v", err)
 	}
 
-	certPEM, err := ReadCertPEM(certPath)
-	if err != nil {
-		t.Fatalf("ReadCertPEM failed: %v", err)
-	}
-
-	certs, err := x509.ParseCertificates(certPEM)
-	if err != nil || len(certs) == 0 {
-		t.Fatalf("Failed to parse certificate: %v", err)
-	}
+	certs := parseCertFile(t, certPath)
 
 	cert := certs[0]
 
@@ -107,15 +124,7 @@ func TestGenerate_leafEKU(t *testing.T) {
 		t.Fatalf("Generate failed: %v", err)
 	}
 
-	certPEM, err := ReadCertPEM(certPath)
-	if err != nil {
-		t.Fatalf("ReadCertPEM failed: %v", err)
-	}
-
-	certs, err := x509.ParseCertificates(certPEM)
-	if err != nil || len(certs) == 0 {
-		t.Fatalf("Failed to parse certificate: %v", err)
-	}
+	certs := parseCertFile(t, certPath)
 
 	cert := certs[0]
 
@@ -175,15 +184,7 @@ func TestTLSHandshake(t *testing.T) {
 	defer srv.Close()
 
 	// Create a client with the generated cert in its CA pool
-	certPEM, err := ReadCertPEM(certPath)
-	if err != nil {
-		t.Fatalf("ReadCertPEM failed: %v", err)
-	}
-
-	certs, err := x509.ParseCertificates(certPEM)
-	if err != nil || len(certs) == 0 {
-		t.Fatalf("Failed to parse certificate: %v", err)
-	}
+	certs := parseCertFile(t, certPath)
 
 	caCertPool := x509.NewCertPool()
 	caCertPool.AddCert(certs[0])
@@ -241,15 +242,7 @@ func TestTLSHandshake_wrongHost(t *testing.T) {
 	defer srv.Close()
 
 	// Create a client with the generated cert
-	certPEM, err := ReadCertPEM(certPath)
-	if err != nil {
-		t.Fatalf("ReadCertPEM failed: %v", err)
-	}
-
-	certs, err := x509.ParseCertificates(certPEM)
-	if err != nil || len(certs) == 0 {
-		t.Fatalf("Failed to parse certificate: %v", err)
-	}
+	certs := parseCertFile(t, certPath)
 
 	caCertPool := x509.NewCertPool()
 	caCertPool.AddCert(certs[0])

@@ -11,7 +11,6 @@ func TestGenerateScript_containsURL(t *testing.T) {
 		CoordinatorURL: "https://192.168.1.10",
 		AgentToken:     "token123",
 		CertPEM:        "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
-		CertThumbprint: "ABCDEF0123456789",
 		AgentExeSHA256: "0123456789ABCDEF",
 	}
 
@@ -28,7 +27,6 @@ func TestGenerateScript_containsToken(t *testing.T) {
 		CoordinatorURL: "https://192.168.1.10",
 		AgentToken:     "mytoken123abc",
 		CertPEM:        "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
-		CertThumbprint: "ABCDEF0123456789",
 		AgentExeSHA256: "0123456789ABCDEF",
 	}
 
@@ -45,7 +43,6 @@ func TestGenerateScript_containsComputername(t *testing.T) {
 		CoordinatorURL: "https://192.168.1.10",
 		AgentToken:     "token123",
 		CertPEM:        "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
-		CertThumbprint: "ABCDEF0123456789",
 		AgentExeSHA256: "0123456789ABCDEF",
 	}
 
@@ -63,7 +60,6 @@ func TestGenerateScript_certInSingleQuotedHeredoc(t *testing.T) {
 		CoordinatorURL: "https://192.168.1.10",
 		AgentToken:     "token123",
 		CertPEM:        certPEM,
-		CertThumbprint: "ABCDEF0123456789",
 		AgentExeSHA256: "0123456789ABCDEF",
 	}
 
@@ -97,7 +93,6 @@ func TestGenerateScript_forcesTls12(t *testing.T) {
 		CoordinatorURL: "https://192.168.1.10",
 		AgentToken:     "token123",
 		CertPEM:        "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
-		CertThumbprint: "ABCDEF0123456789",
 		AgentExeSHA256: "0123456789ABCDEF",
 	}
 
@@ -118,7 +113,6 @@ func TestGenerateScript_mandatorySha256(t *testing.T) {
 		CoordinatorURL: "https://192.168.1.10",
 		AgentToken:     "token123",
 		CertPEM:        "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
-		CertThumbprint: "ABCDEF0123456789",
 		AgentExeSHA256: "AABBCCDD11223344",
 	}
 
@@ -137,29 +131,51 @@ func TestGenerateScript_mandatorySha256(t *testing.T) {
 	}
 }
 
-// B5: TestGenerateScript_crossEdition
-func TestGenerateScript_crossEdition(t *testing.T) {
+// B5: TestGenerateScript_pinsTrustToEmbeddedCert
+//
+// Replaces an older cross-edition test that asserted `PSEdition` branching,
+// `-SkipCertificateCheck` and `ServerCertificateValidationCallback`. Those
+// describe an abandoned Invoke-WebRequest design — PS 5.1's HttpWebRequest could
+// not survive this server's TLS renegotiation, so the script switched to
+// curl.exe, which works on both editions and needs no branch. The assertions
+// below pin what the script actually relies on for trust.
+func TestGenerateScript_pinsTrustToEmbeddedCert(t *testing.T) {
 	params := Params{
 		CoordinatorURL: "https://192.168.1.10",
 		AgentToken:     "token123",
 		CertPEM:        "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
-		CertThumbprint: "ABCDEF0123456789",
 		AgentExeSHA256: "0123456789ABCDEF",
 	}
 
 	script := GenerateScript(params)
 
-	// Check for PSEdition branching
-	if !strings.Contains(script, "PSEdition") {
-		t.Error("PSEdition check not found in script")
+	// Trust is pinned to the embedded cert, not to the machine's trust store.
+	if !strings.Contains(script, "--cacert") {
+		t.Error("curl --cacert not found: the download would trust the system store instead of the pinned cert")
 	}
 
-	// Check for both branches
-	if !strings.Contains(script, "-SkipCertificateCheck") {
-		t.Error("-SkipCertificateCheck (PS 7+ branch) not found in script")
+	// An error response must not be saved as agent.exe.
+	if !strings.Contains(script, "--fail") {
+		t.Error("curl --fail not found: an auth/error body could be written as agent.exe")
 	}
 
-	if !strings.Contains(script, "ServerCertificateValidationCallback") {
-		t.Error("ServerCertificateValidationCallback (PS 5.1 branch) not found in script")
+	// PS 5.1 negotiates SSL3/TLS1.0 by default and cannot reach the coordinator.
+	if !strings.Contains(script, "Tls12") {
+		t.Error("TLS 1.2 is not forced: PS 5.1 would fail the HTTPS connection")
+	}
+
+	// The cert has to be on disk before anything is fetched with it.
+	certIdx := strings.Index(script, "Set-Content -Path $CertPath")
+	curlIdx := strings.Index(script, "--cacert")
+	if certIdx == -1 || curlIdx == -1 || certIdx > curlIdx {
+		t.Error("cert must be written before the download that pins to it")
+	}
+
+	// Certificate verification must never be bypassed. These are the two ways
+	// PowerShell does it, and neither belongs in a script that ships a pinned CA.
+	for _, bypass := range []string{"-SkipCertificateCheck", "ServerCertificateValidationCallback", "--insecure"} {
+		if strings.Contains(script, bypass) {
+			t.Errorf("script disables certificate verification via %q", bypass)
+		}
 	}
 }

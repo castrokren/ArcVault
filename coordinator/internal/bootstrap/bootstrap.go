@@ -3,11 +3,15 @@ package bootstrap
 import "strings"
 
 // Params holds the values to interpolate into the bootstrap script template.
+//
+// There is deliberately no cert thumbprint here. The script pins trust with
+// `curl --cacert` against the embedded CertPEM, which validates the certificate
+// itself rather than matching a fingerprint; download integrity is enforced
+// separately by the mandatory AgentExeSHA256 check.
 type Params struct {
 	CoordinatorURL string // https://192.168.1.10 (port omitted when 443)
 	AgentToken     string // role=agent token, minted per generation
 	CertPEM        string // coordinator's cert in PEM format
-	CertThumbprint string // SHA-1 hex, UPPERCASE, no separators
 	AgentExeSHA256 string // UPPERCASE hex
 }
 
@@ -19,7 +23,6 @@ func GenerateScript(p Params) string {
 	// Use simple string replacements
 	s = strings.ReplaceAll(s, "COORDINATOR_URL", p.CoordinatorURL)
 	s = strings.ReplaceAll(s, "AGENT_TOKEN", p.AgentToken)
-	s = strings.ReplaceAll(s, "CERT_THUMBPRINT", p.CertThumbprint)
 	s = strings.ReplaceAll(s, "AGENT_EXE_SHA256", p.AgentExeSHA256)
 	s = strings.ReplaceAll(s, "CERT_PEM", p.CertPEM)
 	return s
@@ -47,7 +50,6 @@ $ErrorActionPreference = 'Stop'
 # --- Generation-time values (interpolated by Go) ---
 $CoordinatorUrl = 'COORDINATOR_URL'   # e.g. https://192.168.1.10  (no :443)
 $AgentToken     = 'AGENT_TOKEN'       # role=agent token, minted per script
-$PinnedThumb    = 'CERT_THUMBPRINT'   # SHA-1, UPPERCASE hex, no separators
 $ExpectedHash   = 'AGENT_EXE_SHA256'  # UPPERCASE SHA-256 of agent.exe
 
 # Coordinator cert — single-quoted here-string so $ and ` + "`" + ` never expand.

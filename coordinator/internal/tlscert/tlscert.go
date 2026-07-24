@@ -125,8 +125,14 @@ func EnsureExists(host string, certPath string, keyPath string) error {
 	return Generate(host, certPath, keyPath)
 }
 
-// ReadCertPEM reads and parses the certificate PEM file.
-// Returns the DER-encoded certificate bytes.
+// ReadCertPEM reads a certificate file and validates that it holds a single
+// CERTIFICATE PEM block.
+//
+// It returns the PEM bytes as read, NOT the DER body — callers that need DER
+// (x509.ParseCertificate, or a Windows-style SHA-1 thumbprint) must pem.Decode
+// it first and use block.Bytes. An earlier version of this comment claimed DER,
+// which is why the tests below fed PEM to x509.ParseCertificates and failed with
+// "malformed certificate".
 func ReadCertPEM(certPath string) ([]byte, error) {
 	pemBytes, err := os.ReadFile(certPath)
 	if err != nil {

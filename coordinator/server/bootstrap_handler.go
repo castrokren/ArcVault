@@ -3,7 +3,6 @@ package server
 import (
 	"arcvault/coordinator/internal/bootstrap"
 	"arcvault/coordinator/internal/tlscert"
-	"crypto/sha1"
 	"crypto/sha256"
 	"fmt"
 	"net/http"
@@ -58,10 +57,6 @@ func (s *Server) handleBootstrapScript(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Compute cert SHA-1 thumbprint for TLS pinning on PS 5.1
-	certHash := sha1.Sum(certPEM)
-	certThumbprint := fmt.Sprintf("%X", certHash)
-
 	// Compute agent.exe SHA-256 for integrity check
 	exePath, err := os.Executable()
 	if err != nil {
@@ -89,7 +84,6 @@ func (s *Server) handleBootstrapScript(w http.ResponseWriter, r *http.Request) {
 		CoordinatorURL: coordinatorURL,
 		AgentToken:     agentToken,
 		CertPEM:        string(certPEM),
-		CertThumbprint: certThumbprint,
 		AgentExeSHA256: agentExeSHA256,
 	}
 
