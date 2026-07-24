@@ -8,6 +8,7 @@ Can be compiled to .exe using PyInstaller
 import os
 import sys
 import json
+import re
 import shutil
 import subprocess
 import time
@@ -445,9 +446,11 @@ class ArcVaultInstaller:
         id_var.insert(0, os.environ.get("COMPUTERNAME", "agent-1"))
 
         if "coordinator" in self.components:
-            self.agent_token = self.admin_token
+            # Minted per-agent during install, once coordinator.exe is in place.
+            # Deliberately NOT the admin token: that is a permanent, fleet-wide
+            # credential that cannot be revoked for one machine.
             token_var = row("Auth Token:", width=36)
-            token_var.insert(0, self.agent_token[:16] + "...")
+            token_var.insert(0, "generated during install")
             token_var.config(state="readonly")
         else:
             token_var = row("Auth Token:", width=36)
@@ -559,15 +562,22 @@ class ArcVaultInstaller:
 
                 if "coordinator" in self.components:
                     self.write_coordinator_config()
-                if "agent" in self.components:
-                    self.write_agent_config()
 
                 status.config(text="Installing services...")
                 self.root.update()
 
+                # Order matters: the coordinator must be installed before the
+                # agent, because minting the agent's own token runs
+                # coordinator.exe against the config and DB it just created.
                 if "coordinator" in self.components:
                     self.install_service("coordinator")
+
                 if "agent" in self.components:
+                    if "coordinator" in self.components:
+                        status.config(text="Minting agent token...")
+                        self.root.update()
+                        self.agent_token = self.mint_agent_token(self.agent_id)
+                    self.write_agent_config()
                     self.install_service("agent")
 
                 if "coordinator" in self.components:
@@ -687,6 +697,40 @@ class ArcVaultInstaller:
                 "You will need it to re-install or migrate the system.\n\n"
                 "The key is stored in C:\\ArcVault\\config.json."
             )
+
+    def mint_agent_token(self, agent_id):
+        """Mint a per-agent token via the coordinator CLI.
+
+        Runs `coordinator.exe create-agent-token <id> --token-only`, which opens
+        config.json and the DB sitting next to the exe -- no running service or
+        network call required. Used instead of handing the agent the admin
+        token: this one is a row in `tokens`, so it names one machine and can be
+        revoked on its own.
+        """
+        exe = self.COORD_DIR / "coordinator.exe"
+        if not exe.exists():
+            raise Exception(f"coordinator.exe not found at {exe}")
+
+        last_err = ""
+        # The coordinator service is starting in parallel and may be migrating
+        # the DB; a couple of retries covers the overlap.
+        for attempt in range(3):
+            result = subprocess.run(
+                [str(exe), "create-agent-token", agent_id, "--token-only"],
+                capture_output=True, text=True, shell=True,
+            )
+            token = result.stdout.strip()
+            # CreateAgentToken returns 32 random bytes hex-encoded.
+            if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{64}", token):
+                return token
+            last_err = (result.stderr or result.stdout or "no output").strip()
+            time.sleep(2)
+
+        raise Exception(
+            "Could not mint an agent token via coordinator.exe "
+            f"(last error: {last_err}). The agent was not installed with a "
+            "token; use 'Enroll Agent' in the dashboard to generate one."
+        )
 
     def write_agent_config(self):
         self.AGENT_DIR.mkdir(parents=True, exist_ok=True)

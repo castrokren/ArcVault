@@ -57,6 +57,8 @@ type Server struct {
 	loginLimiterMu sync.Mutex
 	loginLimiters  map[string]*loginRateLimiter
 	wsUpgrader     *websocket.Upgrader // WebSocket upgrader with origin validation
+	legacyAdminMu  sync.Mutex
+	legacyAdmin    map[string]bool // client IP → already warned (see warnLegacyAdminTokenAgent)
 }
 
 func New(cfg *config.Config, database *db.DB) *Server {
@@ -525,10 +527,7 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		if s.isAdminToken(token) || s.isAgentToken(token) {
-			if s.isAgentToken(token) {
-				r = s.withAgentID(r, token)
-			}
+		if r, ok := s.acceptMachineToken(r, token); ok {
 			next(w, r)
 			return
 		}
@@ -542,10 +541,7 @@ func (s *Server) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) agentOrViewerRoute(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := bearerToken(r)
-		if s.isAdminToken(token) || s.isAgentToken(token) {
-			if s.isAgentToken(token) {
-				r = s.withAgentID(r, token)
-			}
+		if r, ok := s.acceptMachineToken(r, token); ok {
 			next(w, r)
 			return
 		}
@@ -558,10 +554,7 @@ func (s *Server) agentOrViewerRoute(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) agentOrOperatorRoute(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := bearerToken(r)
-		if s.isAdminToken(token) || s.isAgentToken(token) {
-			if s.isAgentToken(token) {
-				r = s.withAgentID(r, token)
-			}
+		if r, ok := s.acceptMachineToken(r, token); ok {
 			next(w, r)
 			return
 		}
@@ -574,15 +567,54 @@ func (s *Server) agentOrOperatorRoute(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) agentOrAdminRoute(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := bearerToken(r)
-		if s.isAdminToken(token) || s.isAgentToken(token) {
-			if s.isAgentToken(token) {
-				r = s.withAgentID(r, token)
-			}
+		if r, ok := s.acceptMachineToken(r, token); ok {
 			next(w, r)
 			return
 		}
 		s.adminRoute(next)(w, r)
 	}
+}
+
+// acceptMachineToken reports whether tok authenticates as a machine — either a
+// per-agent token from the tokens table or the config admin token. When it is an
+// agent token, the returned request carries the agent ID.
+//
+// The admin token is accepted here only for backwards compatibility: installs
+// before the per-agent-token change handed the agent the admin token verbatim.
+// That credential is fleet-wide, never expires, and cannot be revoked for one
+// machine, so each host still using it is logged once (see
+// warnLegacyAdminTokenAgent) to produce a migration list. Once that log stays
+// quiet, the isAdminToken branch can be deleted outright.
+func (s *Server) acceptMachineToken(r *http.Request, tok string) (*http.Request, bool) {
+	if s.isAgentToken(tok) {
+		return s.withAgentID(r, tok), true
+	}
+	if s.isAdminToken(tok) {
+		s.warnLegacyAdminTokenAgent(r)
+		return r, true
+	}
+	return r, false
+}
+
+// warnLegacyAdminTokenAgent logs once per client IP that a machine is still
+// authenticating with the admin token instead of its own. Deduplicated because
+// agents heartbeat every 30s and an undeduplicated line would bury the log.
+func (s *Server) warnLegacyAdminTokenAgent(r *http.Request) {
+	ip := business.ClientIP(r)
+
+	s.legacyAdminMu.Lock()
+	defer s.legacyAdminMu.Unlock()
+	if s.legacyAdmin == nil {
+		s.legacyAdmin = make(map[string]bool)
+	}
+	if s.legacyAdmin[ip] {
+		return
+	}
+	s.legacyAdmin[ip] = true
+
+	log.Printf("[auth] DEPRECATED: %s authenticated with the admin token (%s %s). "+
+		"Re-enroll this machine via 'Enroll Agent' in the dashboard so it gets its own "+
+		"revocable token.", ip, r.Method, r.URL.Path)
 }
 
 // withAgentID injects the agent ID into the request context if the token
