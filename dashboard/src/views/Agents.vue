@@ -58,11 +58,11 @@
         <div class="fleet-big">{{ updatesPending }}<small> behind</small></div>
         <div v-if="updatesPending" class="drift-note">
           <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1v6M6 9.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-          {{ updatesPending }} agent{{ updatesPending === 1 ? '' : 's' }} can update to {{ updateStore.current }}
+          {{ updatesPending }} agent{{ updatesPending === 1 ? '' : 's' }} behind {{ versionBaseline }}
         </div>
         <div v-else class="drift-note is-ok">
           <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.5 6.5 5 9l4.5-5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          All agents on {{ updateStore.current || 'current' }}
+          All agents on {{ versionBaseline || 'current' }}
         </div>
       </div>
     </section>
@@ -112,7 +112,7 @@
               <td class="os-cell">{{ agent.os }}</td>
               <td>
                 <span class="ver mono">{{ agent.version }}</span>
-                <span v-if="!selectedSite && updateAvailable(agent)" class="ver-badge">update</span>
+                <span v-if="updateAvailable(agent)" class="ver-badge">{{ selectedSite ? 'stale' : 'update' }}</span>
               </td>
               <td class="last-seen mono">{{ formatDate(agent.last_seen) }}</td>
               <td v-if="!selectedSite" class="row-action">
@@ -185,7 +185,7 @@
 <script setup>
 import { ref, computed, onMounted, watch, inject } from 'vue'
 import { getAgents, getFederationAgents } from '../api'
-import { formatDate, fmtStaleTime } from '../utils/format.js'
+import { formatDate, fmtStaleTime, versionBehind } from '../utils/format.js'
 import AgentUpdateModal from '../components/AgentUpdateModal.vue'
 import AgentTokenModal from '../components/AgentTokenModal.vue'
 import Pagination from '../components/Pagination.vue'
@@ -218,11 +218,13 @@ const selectedAgentForToken = ref(null)
 
 const updateStore = inject('updateStore', { available: false, latest: '', current: '' })
 
+// Baseline for staleness = the latest published release (what an update installs).
+// Falls back to the coordinator's running version for non-admins, who can't reach
+// the admin-only /api/update/check that populates `latest`.
+const versionBaseline = computed(() => updateStore.latest || updateStore.current)
+
 function updateAvailable(agent) {
-  // An agent needs updating only when it's behind the coordinator's current running version.
-  if (!updateStore.current) return false
-  const normalize = v => String(v).replace(/^v/, '')
-  return normalize(agent.version) !== normalize(updateStore.current)
+  return versionBehind(agent.version, versionBaseline.value)
 }
 
 function openUpdateModal(agent) {
@@ -244,7 +246,7 @@ const onlineRate = computed(() => {
   return n ? Math.round((onlineCount.value / n) * 100) : 0
 })
 const updatesPending = computed(() =>
-  agents.value.filter(a => !selectedSite.value && updateAvailable(a)).length
+  agents.value.filter(a => updateAvailable(a)).length
 )
 
 const statusSegs = computed(() => [

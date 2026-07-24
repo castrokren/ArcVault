@@ -101,7 +101,6 @@ Format: `METHOD /path`. To change: edit the handler + `registerRoutes()`, then u
 - `GET /ws/agent`
 - `GET /ws/federation`
 - `PATCH /api/jobs/{id}/status`
-- `POST /api/admin/token`
 - `POST /api/agents/register`
 - `POST /api/agents/{id}/heartbeat`
 - `POST /api/agents/{id}/rollback`
@@ -146,6 +145,33 @@ Prose only — these live in the agent binary and have no coordinator route to a
 - **Self-update / rollback** (`agent/updater/`) — downloads agent.exe from the release URL the
   coordinator supplies, verifies SHA256, swaps binary (agent.exe→agent.previous→agent.exe), restarts
   the service, and streams `update_progress` / `rollback_progress` over WS.
+
+## Agent version / out-of-date detection
+
+How the coordinator knows which agents are behind:
+
+- **Source of truth for an agent's version** is the `version` column of the `agents` table. It is
+  written only by registration (`POST /api/agents/register` → `db.RegisterAgent`, an upsert with
+  `version=excluded.version`). Heartbeats carry **no** version and never touch it.
+- **A version change always re-registers.** Self-update restarts the agent service, and every startup
+  re-registers, so the new version reaches the coordinator on the next register — no heartbeat path is
+  needed for version freshness.
+- **The "latest available" baseline** is the newest published GitHub release, cached by the
+  coordinator (`GetUpdateCache().Latest`, surfaced to admins via `GET /api/update/check`). This is
+  also the version the coordinator installs when it push-updates an agent
+  (`POST /api/agents/{id}/update` sends `update_command` with that version). The dashboard flags an
+  agent as out-of-date when its reported version is **strictly older** (semver) than this baseline,
+  falling back to the coordinator's own running version (`GET /api/version`) for non-admins who can't
+  reach the admin-only update check.
+- **Federated (remote) agents** are cached on the root coordinator per sub (`SubCache.Agents`). Their
+  version arrives via the replicated `FedAgentRegistered` delta (and full snapshots on reconnect). A
+  `FedAgentHeartbeat` deliberately carries no version and must never overwrite the cached one — doing
+  so previously blanked remote agents' versions every 30s, making remote staleness undetectable
+  (regression guard: `TestFedHub_ApplyDelta_AgentHeartbeat`).
+- **Not reported at all = never connected.** A host whose agent fails TLS to the coordinator (e.g.
+  `tls: bad certificate` — the agent's CA bundle doesn't trust the coordinator cert) never registers,
+  so it has no row and no version. That is a connectivity/cert-distribution problem, not a version
+  bug; fix it by getting the coordinator CA cert onto the agent (`CACertFile`).
 
 ## Adding a route
 

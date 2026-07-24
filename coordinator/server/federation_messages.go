@@ -34,11 +34,13 @@ type FedSnapshot struct {
 }
 
 // FedAgentHeartbeat is the delta payload for agent status updates.
+// It carries no version: version changes only on (re)register, which broadcasts a
+// full FedAgentRegistered. A heartbeat must never touch the cached version, or it
+// would blank it out — the producer (handleHeartbeat) leaves version unset.
 type FedAgentHeartbeat struct {
 	AgentID  string  `json:"agent_id"`
 	Status   string  `json:"status"`
 	LastSeen *string `json:"last_seen"`
-	Version  string  `json:"version"`
 }
 
 // FedJobStateChange is the delta payload for job state transitions.

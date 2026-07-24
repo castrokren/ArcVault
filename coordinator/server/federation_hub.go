@@ -156,7 +156,7 @@ func (h *FederationHub) applyDelta(sc *subConn, msg FedMessage) {
 			if a.ID == hb.AgentID {
 				sc.cache.Agents[i].Status = hb.Status
 				sc.cache.Agents[i].LastSeen = hb.LastSeen
-				sc.cache.Agents[i].Version = hb.Version
+				// Version deliberately untouched — see FedAgentHeartbeat doc.
 				break
 			}
 		}

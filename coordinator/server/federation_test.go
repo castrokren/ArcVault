@@ -234,7 +234,6 @@ func TestFedHub_ApplyDelta_AgentHeartbeat(t *testing.T) {
 		AgentID:  "agent-1",
 		Status:   "online",
 		LastSeen: strPtr("2026-05-18T12:00:00Z"),
-		Version:  "v1.1.0",
 	})
 
 	hub.applyDelta(sc, FedMessage{
@@ -247,8 +246,10 @@ func TestFedHub_ApplyDelta_AgentHeartbeat(t *testing.T) {
 	if sc.cache.Agents[0].Status != "online" {
 		t.Errorf("expected status 'online', got %q", sc.cache.Agents[0].Status)
 	}
-	if sc.cache.Agents[0].Version != "v1.1.0" {
-		t.Errorf("expected version 'v1.1.0', got %q", sc.cache.Agents[0].Version)
+	// A heartbeat carries no version; it must preserve the version seeded by
+	// register/snapshot, never blank it out.
+	if sc.cache.Agents[0].Version != "v1.0.0" {
+		t.Errorf("expected version preserved as 'v1.0.0', got %q", sc.cache.Agents[0].Version)
 	}
 }
 
