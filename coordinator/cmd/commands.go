@@ -121,8 +121,54 @@ func StartCommand(cfg *config.Config, staticFS fs.FS) error {
 	return StartCommandWithContext(cfg, staticFS, nil)
 }
 
+// ensureTLSMaterial fills in default cert/key paths next to the executable and
+// generates the self-signed pair if it is missing. Idempotent — existing files
+// are left untouched — and a no-op when TLS is terminated upstream.
+//
+// This runs on every start, not just `coordinator init`, because nothing in the
+// install path ever called init: the installer writes a config.json with no
+// cert_file/key_file, so Server.Start() saw empty paths and quietly fell through
+// to ListenAndServe (plain HTTP) while the installer, dashboard and agents all
+// addressed it as https://. A fresh install served cleartext on 443.
+func ensureTLSMaterial(cfg *config.Config) error {
+	if cfg.ExternalTLS {
+		return nil
+	}
+
+	if cfg.CertFile == "" || cfg.KeyFile == "" {
+		exePath, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("could not locate executable directory: %w", err)
+		}
+		exeDir := filepath.Dir(exePath)
+		if cfg.CertFile == "" {
+			cfg.CertFile = filepath.Join(exeDir, "cert.pem")
+		}
+		if cfg.KeyFile == "" {
+			cfg.KeyFile = filepath.Join(exeDir, "key.pem")
+		}
+	}
+
+	// Generate() always adds localhost, 127.0.0.1 and os.Hostname() as SANs, so
+	// a blank configured host still yields a usable local certificate.
+	host := cfg.Host
+	if host == "" {
+		host = "localhost"
+	}
+	return tlscert.EnsureExists(host, cfg.CertFile, cfg.KeyFile)
+}
+
 func StartCommandWithContext(cfg *config.Config, staticFS fs.FS, stopCh <-chan struct{}) error {
 	log.Printf("Starting ArcVault Coordinator on port %d", cfg.Port)
+
+	if err := ensureTLSMaterial(cfg); err != nil {
+		// Serving production traffic in cleartext is worse than not serving:
+		// agent tokens and JWTs would go over the wire in the open.
+		if cfg.Environment == "production" {
+			return fmt.Errorf("could not prepare TLS certificate: %w", err)
+		}
+		log.Printf("[startup] WARNING: could not prepare TLS certificate (%v) — falling back to plain HTTP", err)
+	}
 
 	database, err := db.Init(cfg.DatabasePath)
 	if err != nil {

@@ -738,17 +738,49 @@ class ArcVaultInstaller:
         # Strip trailing slash from coordinator URL to avoid double-slash in API paths
         coordinator_url = self.coordinator_url.rstrip("/")
 
-        # Copy coordinator cert for TLS pinning
+        # Copy the coordinator cert for TLS pinning. A ca_cert_file pointing at a
+        # file that does not exist is worse than none at all: BuildTLSConfig
+        # errors, and the agent then runs with its heartbeat disabled. Empty
+        # means "use the system roots", so only write the key when we have a cert.
         cert_dest = self.AGENT_DIR / "coordinator.crt"
         coord_cert = self.COORD_DIR / "cert.pem"
+
+        if "coordinator" in self.components:
+            # Co-install: the coordinator service generates cert.pem on its first
+            # start, which is racing us here. Its absence is a real failure.
+            for _ in range(15):
+                if coord_cert.exists():
+                    break
+                time.sleep(1)
+            if not coord_cert.exists():
+                raise Exception(
+                    f"Coordinator certificate not found at {coord_cert} — the "
+                    "coordinator service may have failed to start."
+                )
+
         if coord_cert.exists():
             shutil.copy2(str(coord_cert), str(cert_dest))
+            ca_line = f"ca_cert_file: {cert_dest}\n"
+        else:
+            # Agent-only install against a remote coordinator: we have no way to
+            # fetch its cert here. System roots work for a CA-signed coordinator;
+            # for the default self-signed one, "Enroll Agent" in the dashboard
+            # generates a script that embeds the cert.
+            ca_line = ""
+            messagebox.showwarning(
+                "No coordinator certificate",
+                "This agent will verify the coordinator against the system trust "
+                "store.\n\nIf the coordinator uses the default self-signed "
+                "certificate, the agent will not be able to connect. Use "
+                "'Enroll Agent' in the dashboard instead — it generates an "
+                "install script with the certificate embedded."
+            )
 
         content = (
             f"agent_id: {self.agent_id}\n"
             f"coordinator_url: {coordinator_url}\n"
             f"auth_token: {self.agent_token}\n"
-            f"ca_cert_file: {cert_dest}\n"
+            f"{ca_line}"
         )
         with open(self.AGENT_DIR / "agent-config.yaml", "w") as f:
             f.write(content)
