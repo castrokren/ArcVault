@@ -48,7 +48,13 @@ func Init(dbPath string) (*DB, error) {
 	// WAL mode: concurrent readers + one writer. busy_timeout retries writes for 5s
 	// instead of returning SQLITE_BUSY immediately. These two settings together handle
 	// all concurrency; no need to strangle the pool with MaxOpenConns(1).
-	dsn := dbPath + "?_busy_timeout=5000&_journal_mode=WAL"
+	//
+	// ponytail: driver is modernc.org/sqlite, whose DSN pragma syntax is
+	// `_pragma=name(value)`. It SILENTLY IGNORES mattn/go-sqlite3's `_busy_timeout=`
+	// / `_journal_mode=` keys — so the old DSN left the DB in default journal mode
+	// with a 0 busy timeout, and any concurrent access returned SQLITE_BUSY. That
+	// made the fail-closed token-revocation check 401 on a lock blip → forced relog.
+	dsn := dbPath + "?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 	conn, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("could not open database: %w", err)
