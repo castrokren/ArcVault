@@ -95,9 +95,26 @@ func sqliteTime(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04:05")
 }
 
+// IsEnrollmentToken reports whether an agent_id names an enrollment (bootstrap)
+// token rather than a long-lived per-agent credential. Enrollment tokens carry a
+// 1-hour expiry; per-agent tokens do not expire.
+func IsEnrollmentToken(roleOrAgentID string) bool {
+	return strings.HasPrefix(roleOrAgentID, "bootstrap")
+}
+
 // CreateAgentToken generates a new token for the given agent and stores it.
-// Multiple tokens per agent are allowed — each call creates a new one.
-// For bootstrap tokens (role starting with "bootstrap"), expires_at is set to 1 hour.
+//
+// For a concrete agent ID the new token SUPERSEDES that agent's previous ones,
+// deleted in the same transaction. Each mint used to leave a permanently valid
+// credential behind: an agent's tokens never expire, nothing pruned the table,
+// and `rebuild-and-restart.ps1` mints on every deploy — which had accumulated 12
+// live tokens for a single agent, every one of which still authenticated as it.
+// An agent reads `auth_token` from one config file, so only the newest is ever
+// reachable by the agent itself; the older rows were unreachable-but-valid.
+//
+// Enrollment tokens (`bootstrap*`) are deliberately NOT superseded: several
+// machines can have pending enrollments simultaneously, and those rows expire on
+// their own.
 func (d *DB) CreateAgentToken(roleOrAgentID string) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -105,29 +122,36 @@ func (d *DB) CreateAgentToken(roleOrAgentID string) (string, error) {
 	}
 	token := hex.EncodeToString(b)
 
-	// Check if this is a bootstrap token
-	var expiresAt *time.Time
-	if strings.HasPrefix(roleOrAgentID, "bootstrap") {
-		exp := time.Now().Add(1 * time.Hour)
-		expiresAt = &exp
+	tx, err := d.conn.Begin()
+	if err != nil {
+		return "", fmt.Errorf("failed to begin token transaction: %w", err)
 	}
+	defer tx.Rollback() // no-op after a successful Commit
 
-	if expiresAt != nil {
-		_, err := d.conn.Exec(
+	if IsEnrollmentToken(roleOrAgentID) {
+		if _, err := tx.Exec(
 			`INSERT INTO tokens (token, agent_id, role, expires_at) VALUES (?, ?, 'agent', ?)`,
-			token, roleOrAgentID, sqliteTime(*expiresAt),
-		)
-		if err != nil {
+			token, roleOrAgentID, sqliteTime(time.Now().Add(1*time.Hour)),
+		); err != nil {
 			return "", fmt.Errorf("failed to store token: %w", err)
 		}
 	} else {
-		_, err := d.conn.Exec(
+		if _, err := tx.Exec(
 			`INSERT INTO tokens (token, agent_id, role) VALUES (?, ?, 'agent')`,
 			token, roleOrAgentID,
-		)
-		if err != nil {
+		); err != nil {
 			return "", fmt.Errorf("failed to store token: %w", err)
 		}
+		if _, err := tx.Exec(
+			`DELETE FROM tokens WHERE agent_id = ? AND token != ?`,
+			roleOrAgentID, token,
+		); err != nil {
+			return "", fmt.Errorf("failed to supersede previous tokens: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("failed to commit token: %w", err)
 	}
 	return token, nil
 }
@@ -185,9 +209,18 @@ func (d *DB) IsTokenRevoked(jti string) (bool, error) {
 	return count > 0, err
 }
 
-// PruneExpiredTokens removes revoked tokens that have already expired.
+// PruneExpiredTokens removes rows that are already dead in both token tables:
+// revoked JWT jtis past their expiry, and agent/enrollment tokens past theirs.
+//
+// Pure garbage collection — ValidateToken and tokenRevoked both already reject
+// these, so dropping the rows changes no auth decision. Rows with a NULL
+// expires_at are long-lived per-agent credentials and are never touched here;
+// those are superseded at mint time instead (see CreateAgentToken).
 func (d *DB) PruneExpiredTokens() error {
-	_, err := d.conn.Exec(`DELETE FROM revoked_tokens WHERE expires_at <= datetime('now')`)
+	if _, err := d.conn.Exec(`DELETE FROM revoked_tokens WHERE expires_at <= datetime('now')`); err != nil {
+		return err
+	}
+	_, err := d.conn.Exec(`DELETE FROM tokens WHERE expires_at IS NOT NULL AND expires_at <= datetime('now')`)
 	return err
 }
 
