@@ -256,16 +256,22 @@ Start-Sleep -Seconds 4
 
 $token  = (Get-Content $coordConfigPath -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue).admin_token
 
-# -SkipCertificateCheck is PS 7+ only; on Windows PowerShell 5.1 use the
-# ServicePointManager callback so the self-signed cert doesn't fail this probe.
-$httpTls = @{}
-if ($PSVersionTable.PSVersion.Major -ge 6) {
-    $httpTls['SkipCertificateCheck'] = $true
-} else {
-    [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+# Probe through curl.exe, not Invoke-RestMethod — same reason as check-sanity.ps1:
+# Windows PowerShell 5.1's HttpWebRequest cannot survive this server's TLS
+# negotiation and dies with "The underlying connection was closed" (the
+# coordinator logs it as `TLS handshake error from [::1]: EOF`), and
+# -SkipCertificateCheck is PS 7+ only. The ServicePointManager callback that used
+# to be here silenced the cert warning but not the connection drop, so this step
+# reported "Could not query agents API" on every 5.1 deploy while the agent had
+# in fact registered fine. curl -k handles both across every shell we deploy from.
+$curl = "$env:SystemRoot\System32\curl.exe"
+if (-not (Test-Path $curl)) { $curl = 'curl.exe' }  # fall back to PATH
+
+$agents = $null
+$agentsRaw = (& $curl -sk --max-time 5 -H "Authorization: Bearer $token" "$coordBase/api/agents" 2>$null) -join "`n"
+if ($agentsRaw) {
+    try { $agents = $agentsRaw | ConvertFrom-Json -ErrorAction Stop } catch { $agents = $null }
 }
-$agents = Invoke-RestMethod -Uri "$coordBase/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 @httpTls -ErrorAction SilentlyContinue
 
 if ($agents -and $agents.data.Count -gt 0) {
     $agentCount = $agents.data.Count

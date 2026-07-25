@@ -11,6 +11,7 @@ import json
 import re
 import shutil
 import subprocess
+import winreg
 import time
 import secrets
 import webbrowser
@@ -612,6 +613,18 @@ class ArcVaultInstaller:
         return secrets.token_hex(32)
 
     def get_or_create_credential_key(self):
+        """Return (key, is_existing).
+
+        Recovering an existing key matters more than anything else here: a fresh
+        key makes every stored `credential_profiles` row permanently
+        undecryptable. Look in the service Environment first (its intended home),
+        then config.json (the legacy location), and only then generate.
+        """
+        env = self._read_service_env("arcvault-coordinator")
+        key = env.get("ARCVAULT_CREDENTIAL_KEY", "")
+        if len(key) == 64:
+            return key, True
+
         try:
             config_path = self.COORD_DIR / "config.json"
             if config_path.exists():
@@ -627,34 +640,114 @@ class ArcVaultInstaller:
     def get_or_create_jwt_secret(self, service_name="arcvault-coordinator"):
         # The coordinator clears jwt_secret from config.json and regenerates a
         # random one on every start unless ARCVAULT_JWT_SECRET is set — which
-        # silently logs out every session on each service restart. Persist it in
-        # the service Environment (like the credential key), preserving any
-        # existing value so upgrades don't invalidate live sessions.
-        try:
-            reg_path = f'HKLM\\SYSTEM\\CurrentControlSet\\Services\\{service_name}\\Environment'
-            out = subprocess.run(
-                ['reg', 'query', reg_path, '/v', 'ARCVAULT_JWT_SECRET'],
-                capture_output=True, text=True, shell=True,
-            )
-            if out.returncode == 0:
-                for line in out.stdout.splitlines():
-                    if 'ARCVAULT_JWT_SECRET' in line:
-                        existing = line.split()[-1]
-                        if len(existing) == 64:
-                            return existing
-        except Exception:
-            pass
+        # silently logs out every session on each service restart. Reuse any
+        # existing value so an upgrade doesn't invalidate live sessions.
+        existing = self._read_service_env(service_name).get("ARCVAULT_JWT_SECRET", "")
+        if len(existing) == 64:
+            return existing
         return secrets.token_hex(32)
 
-    def set_service_environment_variable(self, service_name, var_name, var_value):
+    @staticmethod
+    def parse_env_entries(items):
+        """REG_MULTI_SZ strings -> {NAME: value}. Malformed entries are skipped.
+
+        Values may themselves contain '=' (partition splits on the first only).
+        """
+        entries = {}
+        for item in items:
+            name, sep, value = item.partition("=")
+            if sep and name:
+                entries[name] = value
+        return entries
+
+    @staticmethod
+    def format_env_entries(entries):
+        """{NAME: value} -> sorted REG_MULTI_SZ strings."""
+        return [f"{name}={value}" for name, value in sorted(entries.items())]
+
+    def write_credential_key_to_config(self):
+        """Last-resort fallback: put credential_key back into config.json.
+
+        Only called when the registry write failed. `loadCredentialKey()` prefers
+        cfg.CredentialKey over the env var, so this keeps encryption working at the
+        cost of the key living next to the database.
+        """
+        config_path = self.COORD_DIR / "config.json"
         try:
-            reg_path = f'HKLM\\SYSTEM\\CurrentControlSet\\Services\\{service_name}\\Environment'
-            subprocess.run(
-                ['reg', 'add', reg_path, '/v', var_name, '/d', var_value, '/f'],
-                capture_output=True, text=True, shell=True, check=True
+            with open(config_path) as f:
+                config = json.load(f)
+            config["credential_key"] = self.credential_key
+            with open(config_path, "w") as f:
+                json.dump(config, f, indent=2)
+        except Exception as exc:
+            raise Exception(
+                f"Could not store the credential key in the registry OR in "
+                f"{config_path} ({exc}). The coordinator will not be able to "
+                f"decrypt stored credentials."
             )
-        except Exception as e:
-            print(f"Warning: Failed to set service environment variable: {e}")
+
+    def _read_service_env(self, service_name):
+        """Read a service's environment as {NAME: value}.
+
+        SCM injects exactly one thing: a REG_MULTI_SZ value named `Environment`,
+        sitting directly ON the service key, holding `NAME=value` strings.
+
+        Installer builds before 2026-07-24 ran
+        `reg add ...\\Environment /v NAME /d VALUE`, which instead created a
+        *subkey* named Environment containing REG_SZ values. SCM never reads that,
+        so ARCVAULT_JWT_SECRET and ARCVAULT_CREDENTIAL_KEY were never actually
+        injected — the coordinator logged "Generated new JWTSecret" on every start
+        and read the credential key off disk. We still read the legacy subkey here
+        so an upgrade can recover those secrets rather than minting new ones.
+        """
+        entries = {}
+        path = rf"SYSTEM\CurrentControlSet\Services\{service_name}"
+
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path) as key:
+                raw, kind = winreg.QueryValueEx(key, "Environment")
+                if kind == winreg.REG_MULTI_SZ:
+                    entries.update(self.parse_env_entries(raw))
+        except OSError:
+            pass
+
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path + r"\Environment") as key:
+                index = 0
+                while True:
+                    try:
+                        name, value, _ = winreg.EnumValue(key, index)
+                    except OSError:
+                        break
+                    entries.setdefault(name, value)
+                    index += 1
+        except OSError:
+            pass
+
+        return entries
+
+    def set_service_environment_variable(self, service_name, var_name, var_value):
+        """Set NAME=value in the service key's REG_MULTI_SZ `Environment` value.
+
+        Returns True only after reading the value back — a silent failure here is
+        what left this machine with no injected environment at all. Merges with
+        existing entries instead of replacing, so the credential key and the JWT
+        secret coexist.
+        """
+        path = rf"SYSTEM\CurrentControlSet\Services\{service_name}"
+
+        entries = self._read_service_env(service_name)
+        entries[var_name] = var_value
+        payload = self.format_env_entries(entries)
+
+        try:
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, path, 0, winreg.KEY_SET_VALUE) as key:
+                winreg.SetValueEx(key, "Environment", 0, winreg.REG_MULTI_SZ, payload)
+        except OSError as exc:
+            print(f"Warning: failed to write service Environment: {exc}")
+            return False
+
+        return self._read_service_env(service_name).get(var_name) == var_value
 
     def write_coordinator_config(self):
         self.COORD_DIR.mkdir(parents=True, exist_ok=True)
@@ -674,11 +767,15 @@ class ArcVaultInstaller:
         except Exception:
             pass
 
+        # No credential_key here on purpose. It belongs in the service Environment,
+        # not in a file sitting in the same directory as arcvault.db — anyone who
+        # can read the DB could otherwise read the key that protects it, making
+        # encryption-at-rest decorative. install_service() writes it to the
+        # registry and only falls back to this file if that write fails.
         config = {
             "port": self.coordinator_port,
             "admin_token": self.admin_token,
             "database_path": str(self.COORD_DIR / "arcvault.db"),
-            "credential_key": key,
             "environment": "production",
             "allowed_origins": ["https://localhost"],
         }
@@ -834,12 +931,37 @@ class ArcVaultInstaller:
                 raise Exception(f"install-service failed: {result.stdout} {result.stderr}")
 
             if service_type == "coordinator" and self.credential_key:
-                self.set_service_environment_variable("arcvault-coordinator",
-                                                      "ARCVAULT_CREDENTIAL_KEY",
-                                                      self.credential_key)
-                self.set_service_environment_variable("arcvault-coordinator",
-                                                      "ARCVAULT_JWT_SECRET",
-                                                      self.get_or_create_jwt_secret())
+                # Must run AFTER install-service: `sc delete` + reinstall recreates
+                # the service key, dropping whatever Environment value was there.
+                cred_ok = self.set_service_environment_variable(
+                    "arcvault-coordinator", "ARCVAULT_CREDENTIAL_KEY", self.credential_key)
+                jwt_ok = self.set_service_environment_variable(
+                    "arcvault-coordinator", "ARCVAULT_JWT_SECRET",
+                    self.get_or_create_jwt_secret())
+
+                if not cred_ok:
+                    # Without the env var the coordinator cannot decrypt stored
+                    # credentials at all (503 on credential endpoints). Fall back to
+                    # the on-disk key: weaker, because it then sits beside the DB it
+                    # protects, but functional. Never leave the operator with neither.
+                    self.write_credential_key_to_config()
+                    messagebox.showwarning(
+                        "Credential key stored on disk",
+                        "Could not write the credential key to the service registry, "
+                        "so it was written to C:\\ArcVault\\config.json instead.\n\n"
+                        "This works, but the key then sits in the same folder as the "
+                        "database it protects. Re-run the installer as Administrator "
+                        "to move it into the service environment."
+                    )
+                if not jwt_ok:
+                    messagebox.showwarning(
+                        "Sessions will not survive restarts",
+                        "Could not write ARCVAULT_JWT_SECRET to the service registry.\n\n"
+                        "The coordinator will generate a random JWT secret on every "
+                        "start, so every dashboard session is invalidated whenever the "
+                        "service restarts and logout-revocation stops being meaningful. "
+                        "Re-run the installer as Administrator to fix this."
+                    )
 
             start = subprocess.run(["sc", "start", service_name],
                                    capture_output=True, text=True, shell=True)

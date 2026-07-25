@@ -39,10 +39,57 @@ All deployed to prod (coordinator.exe built 12:32:47, PID restarted 12:32:51) an
 - **PUT vs PATCH fix (2026-07-13).** `handleUpdateUserRole` was checking `MethodPatch` but the route was registered as `PUT`. Fixed the handler to check `MethodPut`. Before this fix, the endpoint always returned 405 (Method Not Allowed).
 
 ## In-progress
-- **2026-07-24: `main` is NO LONGER == deployed behavior.** Phase 3 plus the two findings below
-  sit on `security/hardening-v0.6.0`, undeployed. Re-run `.\scripts\rebuild-and-restart.ps1`
-  and re-verify against the live API before trusting anything in this file as prod behavior.
 - Phase 4's removal is gated on the `[auth] DEPRECATED` log going quiet — see Next #1.
+  Post-deploy 2026-07-24: **zero** DEPRECATED lines so far, but the only agent that has checked
+  in is the local one (which `rebuild-and-restart.ps1` Step 8 re-tokenizes every deploy). The
+  two remote agents have not been seen since June, so the log proves nothing about them yet.
+
+## ⚠ REGRESSION found 2026-07-24 post-deploy — the service Environment was NEVER injected
+Two "Done" entries above (`ARCVAULT_JWT_SECRET set in prod`, `Credential key moved off disk`)
+describe the intended state. **Neither is true on this machine, and the installer could never
+have produced it.**
+
+Evidence from the live box:
+- `HKLM\SYSTEM\CurrentControlSet\Services\arcvault-coordinator` has **no `Environment` value**
+  at all. Its value names are only `Type, Start, ErrorControl, ImagePath, DisplayName,
+  ObjectName, Description, FailureActions`.
+- There IS an `Environment` **subkey** holding `ARCVAULT_CREDENTIAL_KEY` and
+  `ARCVAULT_JWT_SECRET` as `REG_SZ` values (both 64 chars, still recoverable).
+- `coordinator-service.log` contains `[config] Generated new JWTSecret` **13 times, first at
+  2026-07-17 15:22**, including this deploy at 20:57:11.
+- `C:\ArcVault\config.json` again contains `credential_key`, beside `arcvault.db`.
+
+ROOT CAUSE: SCM reads exactly one thing — a **`REG_MULTI_SZ` value named `Environment` directly
+ON the service key**, holding `NAME=value` strings. `set_service_environment_variable` ran
+`reg add ...\Environment /v NAME /d VALUE`, which creates a *subkey* of `REG_SZ` values. That
+shape is never read. So every restart minted a fresh JWT secret (sessions dropped, logout
+revocation meaningless) and `loadCredentialKey()` fell back to the on-disk key.
+
+The 2026-07-08 verification was real but was verifying a **hand-set** registry value; re-running
+the installer did `sc delete` + reinstall, which dropped it, and the installer recreated only
+the wrong shape.
+
+**Correction to commit `04763b4`** ("installer persists ARCVAULT_JWT_SECRET"): that commit wired
+a correct intention through this broken helper. It did not work. Fixed properly in the commit
+that added this section.
+
+FIXED (installer, for future installs):
+- `set_service_environment_variable` now uses `winreg` to write a merged `REG_MULTI_SZ`
+  `Environment` value on the service key, and **returns False unless it reads back** — the
+  silent failure is what hid this for a week. Merging matters: a replace-style write would let
+  the JWT secret evict the credential key.
+- `_read_service_env` reads the correct shape AND the legacy subkey, so an upgrade **recovers**
+  existing secrets instead of minting new ones. Verified against the live key: both 64-char
+  values are readable. This is the data-loss guard — a fresh credential key makes every stored
+  `credential_profiles` row permanently undecryptable.
+- `write_coordinator_config` no longer writes `credential_key`. If the registry write fails the
+  installer puts it back and warns, rather than leaving the coordinator unable to decrypt.
+- `installer/windows/test_service_env.py` covers the parse/format round-trip and the merge.
+
+**STILL BROKEN ON THIS MACHINE — needs an elevated shell.** The installer fix does not
+retroactively repair the live service; the secrets must be rewritten in the correct shape from
+the legacy subkey. Until then: every coordinator restart logs out every session, and the
+credential key sits next to the database.
 
 ## Next
 Ordered by value:
