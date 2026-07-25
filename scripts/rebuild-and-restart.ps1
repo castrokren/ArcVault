@@ -179,6 +179,23 @@ if (Test-Path "C:\ArcVault-Agent") {
     Write-Host "  WARNING: C:\ArcVault-Agent not found, skipping live deploy" -ForegroundColor Yellow
 }
 
+# handleDownloadAgent / handleBootstrapScript (coordinator/server/downloads.go,
+# bootstrap_handler.go) read agent.exe from the SAME directory as coordinator.exe,
+# not from C:\ArcVault-Agent. Every bootstrap.ps1 hashes and serves whatever sits
+# in C:\ArcVault\agent.exe, so a missing copy here means every newly-enrolled
+# machine silently gets a stale binary forever, no matter how many times this
+# script runs. Found 2026-07-25: C:\ArcVault\agent.exe was still dated June 9
+# after multiple full rebuild+redeploy cycles.
+if (Test-Path "C:\ArcVault") {
+    try {
+        Copy-Item "build\agent.exe" "C:\ArcVault\agent.exe" -Force -ErrorAction Stop
+        Write-Host "  Copied agent.exe -> C:\ArcVault\ (served to newly-enrolled machines)" -ForegroundColor Green
+    } catch {
+        Write-Host "  ERROR: Could not copy agent.exe to C:\ArcVault\ - $_" -ForegroundColor Red
+        exit 1
+    }
+}
+
 # Also keep installer\windows\ in sync for building the installer
 Copy-Item "build\coordinator.exe" "$ProjectRoot\installer\windows\coordinator.exe" -Force
 Copy-Item "build\agent.exe" "$ProjectRoot\installer\windows\agent.exe" -Force

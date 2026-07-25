@@ -181,3 +181,64 @@ func TestPruneExpiredTokens_dropsExpiredAgentTokens(t *testing.T) {
 		t.Errorf("pruner deleted a live non-expiring agent token: %v", err)
 	}
 }
+
+// PruneBootstrapTokens is an explicit operator action (unlike the automatic
+// PruneExpiredTokens), so it must remove every bootstrap-tagged row regardless
+// of expiry, leave real per-agent tokens untouched, and report which agent_id
+// hints it deleted so the caller can warn about hosts that never re-enrolled.
+func TestPruneBootstrapTokens_removesAllBootstrapRegardlessOfExpiry(t *testing.T) {
+	forceNonUTCLocal(t)
+	d := newTestDB(t)
+
+	// A live enrollment token (not yet expired).
+	live, err := d.CreateAgentToken("bootstrap:HOST-A")
+	if err != nil {
+		t.Fatalf("mint live bootstrap: %v", err)
+	}
+	// A second host's enrollment token.
+	if _, err := d.CreateAgentToken("bootstrap:HOST-B"); err != nil {
+		t.Fatalf("mint second bootstrap: %v", err)
+	}
+	// A plain (no hostname hint) enrollment token.
+	if _, err := d.CreateAgentToken("bootstrap"); err != nil {
+		t.Fatalf("mint plain bootstrap: %v", err)
+	}
+	// A real per-agent token that must survive.
+	agentTok, err := d.CreateAgentToken("REAL-AGENT-1")
+	if err != nil {
+		t.Fatalf("mint real agent token: %v", err)
+	}
+
+	hints, err := d.PruneBootstrapTokens()
+	if err != nil {
+		t.Fatalf("PruneBootstrapTokens: %v", err)
+	}
+
+	wantHints := map[string]bool{"bootstrap:HOST-A": true, "bootstrap:HOST-B": true, "bootstrap": true}
+	if len(hints) != len(wantHints) {
+		t.Errorf("hints = %v, want 3 entries covering %v", hints, wantHints)
+	}
+	for _, h := range hints {
+		if !wantHints[h] {
+			t.Errorf("unexpected hint %q returned", h)
+		}
+	}
+
+	if _, err := d.ValidateToken(live); err == nil {
+		t.Error("a live (unexpired) bootstrap token survived pruning — should be gone regardless of expiry")
+	}
+	if _, err := d.ValidateToken(agentTok); err != nil {
+		t.Errorf("real per-agent token was deleted by bootstrap pruning: %v", err)
+	}
+}
+
+func TestPruneBootstrapTokens_emptyIsNoOp(t *testing.T) {
+	d := newTestDB(t)
+	hints, err := d.PruneBootstrapTokens()
+	if err != nil {
+		t.Fatalf("PruneBootstrapTokens on empty table: %v", err)
+	}
+	if len(hints) != 0 {
+		t.Errorf("hints = %v, want empty", hints)
+	}
+}

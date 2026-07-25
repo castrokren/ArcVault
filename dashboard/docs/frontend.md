@@ -48,7 +48,8 @@ Format: `<path> -> <role>` where role is `any` (any authenticated user) or the r
 
 - **Agents** (`/agents`, `Agents.vue`) — fleet console: agent table (hostname/OS/version/last-seen),
   search + status filter, status rail, per-agent **Update** button (`AgentUpdateModal`, 4-step WS
-  progress) and **Get token** button (`AgentTokenModal`, for installing an agent on a new machine).
+  progress). Per-machine enrollment goes through **Enroll Agent** (bootstrap script) only — the
+  old per-agent **Get token** button/modal was removed 2026-07-25.
 - **Jobs** (`/jobs`) — list/create/edit jobs, run and cancel, live progress.
 - **History** (`/history`) — job-run history.
 - **Templates** (`/templates`) — reusable job templates (admin/operator to mutate).

@@ -130,6 +130,11 @@ for the DEPRECATED line, and only then delete the `isAdminToken` branch in
   than emit a loopback URL the target machine cannot reach.
 - The script downloads to `agent.exe.new` and stops the service before swapping, so it can be
   re-run on a machine that already has an agent (`0299716`).
+- **Dashboard "Get Token" button removed 2026-07-25.** Per-agent token minting from the UI was
+  the trigger for the revocation regression above and duplicated the safer "Enroll Agent"
+  bootstrap flow. Removed `AgentTokenModal.vue`, its wiring in `Agents.vue`, and the
+  `createAgentToken` API call. The backend route (`POST /api/agents/{id}/token`) is untouched —
+  still used by the bootstrap/enrollment path — only the dashboard entry point is gone.
 
 ## Next
 Ordered by value:

@@ -173,6 +173,33 @@ func (d *DB) SupersedeAgentTokens(agentID, keepToken string) (int64, error) {
 	return n, nil
 }
 
+// PruneBootstrapTokens deletes every enrollment (bootstrap) token, regardless
+// of expiry. Unlike PruneExpiredTokens, this is an explicit operator action,
+// not automatic housekeeping — bootstrap tokens are the only credential a
+// machine has until it completes its first registration exchange, so wiping
+// them wipes access for any host that hasn't re-enrolled yet. Returns the
+// agent_id hints of what was deleted so the caller can warn about un-migrated
+// hosts before they're locked out silently.
+func (d *DB) PruneBootstrapTokens() ([]string, error) {
+	rows, err := d.conn.Query(`SELECT DISTINCT agent_id FROM tokens WHERE agent_id LIKE 'bootstrap%'`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list bootstrap token hints: %w", err)
+	}
+	var hints []string
+	for rows.Next() {
+		var hint string
+		if err := rows.Scan(&hint); err == nil {
+			hints = append(hints, hint)
+		}
+	}
+	rows.Close()
+
+	if _, err := d.conn.Exec(`DELETE FROM tokens WHERE agent_id LIKE 'bootstrap%'`); err != nil {
+		return nil, fmt.Errorf("failed to prune bootstrap tokens: %w", err)
+	}
+	return hints, nil
+}
+
 // ValidateToken checks if a token exists in the tokens table and hasn't expired.
 // Returns the role ("agent") if valid, or an error if not found or expired.
 func (d *DB) ValidateToken(token string) (string, error) {

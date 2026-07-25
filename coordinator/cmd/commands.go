@@ -280,6 +280,43 @@ func CreateAgentTokenCommand(agentID string, tokenOnly bool) error {
 	return nil
 }
 
+// PruneBootstrapTokensCommand deletes every enrollment (bootstrap) token in
+// the database, regardless of expiry, and prints which agent_id hints were
+// removed. This is a destructive operator action: any host that has never
+// completed its first registration exchange has no other credential and will
+// need to be re-enrolled from scratch afterward.
+func PruneBootstrapTokensCommand() error {
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	database, err := db.Init(cfg.DatabasePath)
+	if err != nil {
+		return fmt.Errorf("failed to initialize database: %w", err)
+	}
+	defer database.Close()
+
+	hints, err := database.PruneBootstrapTokens()
+	if err != nil {
+		return fmt.Errorf("failed to prune bootstrap tokens: %w", err)
+	}
+
+	if len(hints) == 0 {
+		fmt.Println("No bootstrap tokens found — nothing to prune.")
+		return nil
+	}
+
+	fmt.Printf("Pruned %d bootstrap token(s):\n\n", len(hints))
+	for _, h := range hints {
+		fmt.Printf("  - %s\n", h)
+	}
+	fmt.Println("\nAny host among these that has not completed its first registration")
+	fmt.Println("exchange has just lost its only credential and must be re-enrolled via")
+	fmt.Println("'Enroll Agent' in the dashboard.")
+	return nil
+}
+
 // CheckUpdateCommand checks for available updates without starting the server.
 func CheckUpdateCommand(currentVersion string) error {
 	info, err := updater.CheckLatestRelease(currentVersion)

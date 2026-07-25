@@ -49,6 +49,10 @@ func main() {
 		if err := cmd.CreateAgentTokenCommand(os.Args[2], tokenOnly); err != nil {
 			log.Fatalf("create-agent-token failed: %v", err)
 		}
+	case "prune-bootstrap-tokens":
+		if err := cmd.PruneBootstrapTokensCommand(); err != nil {
+			log.Fatalf("prune-bootstrap-tokens failed: %v", err)
+		}
 	case "rekey":
 		if len(os.Args) < 5 {
 			fmt.Println("Usage: coordinator rekey --old-key <hex> --new-key <hex>")
@@ -158,6 +162,7 @@ func printUsage() {
 	fmt.Println("  init                          - Initialize and generate admin token")
 	fmt.Println("  start                         - Start the coordinator server")
 	fmt.Println("  create-agent-token <agent-id> - Generate a token for an agent")
+	fmt.Println("  prune-bootstrap-tokens        - Delete all enrollment tokens (destructive)")
 	fmt.Println("  rekey <args>                  - Rotate credential encryption keys")
 	fmt.Println("  rekey-cert                    - Regenerate TLS certificate")
 	fmt.Println("  check-update                  - Check for available updates")

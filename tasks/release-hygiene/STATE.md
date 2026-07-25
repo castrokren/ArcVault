@@ -134,8 +134,12 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
   federation_messages.go, federation_hub.go, federation_test.go).
 
 ## In-progress
-- Nothing blocking. Branch `security/hardening-v0.6.0` is DEPLOYED (coordinator.exe
-  09:07 07-25) and the fleet is healthy: `DESKTOP-EE77F38` v0.6.0 online,
+- **Correction 2026-07-25 (later session): the 09:07 deploy is now stale.** `0299671`
+  ("stop the service before replacing agent.exe" — makes bootstrap safe to re-run on a
+  machine that already has an agent) was committed at **09:43:43**, 36 minutes AFTER the
+  coordinator.exe on disk (built 09:07:48). The live coordinator is still serving the
+  OLD bootstrap script template. See the dated section below — needs a redeploy.
+- Fleet as of 09:49 07-25 (may be stale per above): `DESKTOP-EE77F38` v0.6.0 online,
   `SRB3FLPC010` v0.5.0 online (freshly enrolled), `SMILOW3FLSP001` still offline
   since 06-11 and never re-enrolled.
 - Left uncommitted (kren's call): `.agents/` + `skills-lock.json` (hallmark skill
@@ -143,6 +147,54 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
 - BLOCKED (needs kren): `gh release upload v0.6.0 installer/windows/dist/ArcVault-Setup-0.6.0-windows-amd64.exe --clobber`
   — permission classifier blocks the outward upload. Run it via `!` in the prompt.
   Rebuild the .exe first: the one on disk (07-19) predates every token/cert change.
+
+## Done (2026-07-25 later session) — dashboard "Get Token" removal + Update-button root-cause
+- **Dashboard "Get Token" button removed.** Per-agent token minting from the UI was the
+  trigger for the mint-revokes-live-agent regression fixed earlier today (`984dd1d`), and
+  duplicated the safer "Enroll Agent" bootstrap flow. Removed `AgentTokenModal.vue`, its
+  wiring in `Agents.vue` (`tokenModalOpen`/`selectedAgentForToken`/`openTokenModal`), and
+  the dead `createAgentToken` export from `api.ts`. Backend route
+  (`POST /api/agents/{id}/token`) is untouched — still used by bootstrap. CONTRACT block in
+  `dashboard/docs/frontend.md` updated. Also logged in `tasks/security-hardening/STATE.md`.
+- **"Update agent" button investigated end to end — not a dashboard bug, three real findings:**
+  1. **The mechanism itself works.** Read the local agent's own log
+     (`C:\ArcVault-Agent\logs\arcvault-agent.log`): its WS thread 401'd from 07:42–07:45
+     (caught in the crossfire of the token-mint-revokes-agent bug fixed today), then after
+     the 09:07 redeploy re-enrolled with a fresh token and has held `Agent WS: connected to
+     coordinator` continuously since — over an hour, no drops. `hub.SendToAgent` /
+     `handleAgentWS` are sound.
+  2. **`SRB3FLPC010`'s 404 ("agent not connected") is real**: its heartbeat (HTTP) is fine
+     but its WS thread (the actual command channel for push-updates) isn't registered in the
+     coordinator's `agentConns`. It's on a pre-fix v0.5.0 binary from before today's
+     token/enrollment work; a re-enroll (bootstrap re-run) was the agreed next step to get it
+     current, matching how the local agent recovered.
+  3. **The re-enroll attempt uncovered a stale deploy.** `GET /api/admin/bootstrap.ps1`
+     refused with 409 (`host` unset in `C:\ArcVault\config.json` — the existing
+     hardening from earlier today working as designed). After a retry that got further, the
+     download step failed with curl exit 23 ("client returned ERROR on write") — this is
+     the exact failure mode `0299671`'s comment describes for a machine that already has a
+     running agent. **`0299671` was committed at 09:43:43, but the live `coordinator.exe`
+     was built at 09:07:48 — 36 minutes earlier.** The running coordinator is still serving
+     the pre-fix bootstrap template that writes straight over the locked, live `agent.exe`
+     instead of `agent.exe.new`. Confirmed by comparing `Get-Item coordinator.exe
+     .LastWriteTime` against `git log -1 --format=%ci 0299671`.
+  - **Cert/host finding**: the live cert's SAN list is `localhost`, `DESKTOP-EE77F38`,
+    `192.168.68.62`, `127.0.0.1` — but this machine's actual current Wi-Fi IP is
+    `192.168.68.58` (the `.62` mismatch was already flagged earlier today, session note
+    "Certificate issued for wrong IP"). Recommended `host` value: **`DESKTOP-EE77F38`** — it's
+    already in the SAN (no cert regen needed, which would otherwise require hand-copying a
+    new cert to every already-enrolled agent's `coordinator.crt`), and it's immune to future
+    DHCP churn on `.58`.
+
+### Next (for whoever picks this up — kren is doing the actual deploy outside this session)
+1. Set `"host": "DESKTOP-EE77F38"` in `C:\ArcVault\config.json`.
+2. Redeploy via `.\scripts\rebuild-and-restart.ps1` (picks up `0299671` + everything through
+   `f5f8878`; also makes the coordinator advertise the corrected host in bootstrap URLs).
+3. Re-run **Enroll Agent** for `SRB3FLPC010`, download the fresh script, run it there
+   (elevated PowerShell, `Unblock-File` first — double-clicking a `.ps1` just opens an editor).
+4. Confirm via that machine's `logs\arcvault-agent.log`: look for `Agent WS: connected to
+   coordinator` with no repeated disconnects, then retry the dashboard Update button.
+5. Once confirmed working, re-enroll `SMILOW3FLSP001` the same way (still offline since 06-11).
 
 ## Verification debts — what is NOT proven
 - `SMILOW3FLSP001` has never been re-enrolled. It has no per-agent token row, so it

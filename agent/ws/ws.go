@@ -114,8 +114,15 @@ func (c *Client) run(url string) error {
 	header := make(map[string][]string)
 	header["Authorization"] = []string{fmt.Sprintf("Bearer %s", c.Tokens.Get())}
 
-	conn, _, err := dialer.Dial(url, header)
+	conn, resp, err := dialer.Dial(url, header)
 	if err != nil {
+		// gorilla/websocket's bare "bad handshake" error gives no way to tell an
+		// auth rejection (401), an origin rejection (403), or anything else apart
+		// without the actual response. Surface the status code so the agent log
+		// is diagnosable instead of a dead end.
+		if resp != nil {
+			return fmt.Errorf("dial: %w (HTTP %d)", err, resp.StatusCode)
+		}
 		return fmt.Errorf("dial: %w", err)
 	}
 	defer conn.Close()

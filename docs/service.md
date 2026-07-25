@@ -66,6 +66,7 @@ Dispatched from each `main.go`'s `switch os.Args[1]`.
 - `init`
 - `start`
 - `create-agent-token`
+- `prune-bootstrap-tokens`
 - `rekey`
 - `rekey-cert`
 - `check-update`
