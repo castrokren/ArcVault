@@ -3,9 +3,12 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"time"
+
+	"arcvault/coordinator/db"
 )
 
 type registerRequest struct {
@@ -73,12 +76,39 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	s.logAudit(r, claims, "agent.register", true, strPtr("agent"), strPtr(req.AgentID))
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{
+	resp := map[string]string{
 		"status":   "registered",
 		"agent_id": req.AgentID,
-	})
+	}
+
+	// Enrollment-token exchange. A machine installed by bootstrap.ps1 authenticates
+	// with a `bootstrap:<hostname>` token, which expires an hour after the script
+	// was generated — but the script writes it into agent-config.yaml as the
+	// agent's permanent auth_token, and the agent never rotated it. The agent
+	// therefore stopped authenticating an hour after enrollment.
+	//
+	// Hand back a long-lived per-agent token instead. Additive field: agents built
+	// before this ignore it and keep using whatever they have.
+	//
+	// The enrollment token is deliberately NOT deleted here. If this response were
+	// lost in transit, deleting it would leave the machine with no working
+	// credential at all and no way to recover but a re-enrollment; its 1-hour
+	// expiry already bounds the exposure.
+	if callerToken := GetAgentID(r); db.IsEnrollmentToken(callerToken) {
+		agentToken, err := s.db.CreateAgentToken(req.AgentID)
+		if err != nil {
+			// Registration itself succeeded, so report that rather than failing the
+			// whole call — the agent keeps its enrollment token and can retry.
+			log.Printf("[register] %s: could not issue per-agent token (still on enrollment token): %v", req.AgentID, err)
+		} else {
+			resp["token"] = agentToken
+			log.Printf("[register] %s: exchanged enrollment token %q for a per-agent token", req.AgentID, callerToken)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (s *Server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {

@@ -32,7 +32,7 @@ type Client struct {
 	AgentID        string
 	CoordinatorURL string   // http(s)://host:port (single, backward compat)
 	Coordinators   []string // list of coordinator URLs for failover
-	AuthToken      string
+	Tokens         *config.TokenStore
 	CACertFile     string
 	Canceller      JobCanceller // used to cancel running jobs
 	Poller         PollTrigger  // triggers immediate job poll
@@ -73,7 +73,7 @@ func (c *Client) Start() {
 	for {
 		// Try each coordinator in round-robin
 		coordinator := coordinators[coordinatorIndex%len(coordinators)]
-		wsURL := buildWSURL(coordinator, c.AgentID, c.AuthToken)
+		wsURL := buildWSURL(coordinator, c.AgentID, c.Tokens.Get())
 
 		if err := c.run(wsURL); err != nil {
 			log.Printf("Agent WS: disconnected from %s (%v) — trying next coordinator in %s", coordinator, err, backoff)
@@ -112,7 +112,7 @@ func (c *Client) run(url string) error {
 
 	// Build authorization header for the WebSocket upgrade request.
 	header := make(map[string][]string)
-	header["Authorization"] = []string{fmt.Sprintf("Bearer %s", c.AuthToken)}
+	header["Authorization"] = []string{fmt.Sprintf("Bearer %s", c.Tokens.Get())}
 
 	conn, _, err := dialer.Dial(url, header)
 	if err != nil {

@@ -16,7 +16,7 @@ import (
 type Config struct {
 	AgentID        string
 	CoordinatorURL string
-	AuthToken      string
+	Tokens         *config.TokenStore
 	CACertFile     string
 	Interval       time.Duration
 	Client         *http.Client
@@ -94,7 +94,7 @@ func Register(cfg Config, hostname, os, arch, version string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
+	req.Header.Set("Authorization", "Bearer "+cfg.Tokens.Get())
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := cfg.Client.Do(req)
@@ -108,6 +108,30 @@ func Register(cfg Config, hostname, os, arch, version string) error {
 	}
 
 	log.Printf("Registered with coordinator as %s", cfg.AgentID)
+
+	// The coordinator returns a long-lived per-agent token when we authenticated
+	// with a short-lived enrollment token (bootstrap.ps1 installs). Adopt and
+	// persist it: the enrollment token expires an hour after the install script was
+	// generated, and nothing else would ever replace it.
+	//
+	// A decode failure here is not a registration failure — we are registered
+	// either way, and coordinators older than this simply omit the field.
+	var registerResp struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&registerResp); err != nil {
+		log.Printf("registered, but could not read the response body: %v", err)
+		return nil
+	}
+	if registerResp.Token != "" && registerResp.Token != cfg.Tokens.Get() {
+		if err := cfg.Tokens.Replace(registerResp.Token); err != nil {
+			// In use for this process, but not persisted — say so, because a restart
+			// would fall back to the enrollment token in the config file.
+			log.Printf("adopted a per-agent token but could not persist it: %v", err)
+		} else {
+			log.Printf("exchanged enrollment token for a per-agent token")
+		}
+	}
 	return nil
 }
 
@@ -126,7 +150,7 @@ func send(cfg Config) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+cfg.AuthToken)
+	req.Header.Set("Authorization", "Bearer "+cfg.Tokens.Get())
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := cfg.Client.Do(req)

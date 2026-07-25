@@ -39,7 +39,7 @@ type Executor func(ctx context.Context, job Job, report ProgressFunc) (exitCode 
 type Config struct {
 	AgentID        string
 	CoordinatorURL string
-	AuthToken      string
+	Tokens         *config.TokenStore
 	CACertFile     string
 	PollInterval   time.Duration
 	Client         *http.Client
@@ -159,7 +159,7 @@ func (r *Runner) fetchPendingJobs() ([]Job, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+r.cfg.AuthToken)
+	req.Header.Set("Authorization", "Bearer "+r.cfg.Tokens.Get())
 
 	resp, err := r.cfg.Client.Do(req)
 	if err != nil {
@@ -284,7 +284,7 @@ func (r *Runner) updateStatus(jobID, status string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+r.cfg.AuthToken)
+	req.Header.Set("Authorization", "Bearer "+r.cfg.Tokens.Get())
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := r.cfg.Client.Do(req)
@@ -324,7 +324,7 @@ func (r *Runner) postResult(jobID string, exitCode int, output string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+r.cfg.AuthToken)
+	req.Header.Set("Authorization", "Bearer "+r.cfg.Tokens.Get())
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := r.cfg.Client.Do(req)

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"arcvault/agent/config"
 )
 
 // fakeCoordinator stands in for the real coordinator during tests.
@@ -97,7 +99,7 @@ func TestRunner_claimsAPendingJob(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: srv.URL,
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   50 * time.Millisecond,
 	}
 
@@ -135,7 +137,7 @@ func TestRunner_postsResultAfterExecution(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: srv.URL,
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   50 * time.Millisecond,
 	}
 
@@ -169,7 +171,7 @@ func TestRunner_marksJobCompletedOnSuccess(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: srv.URL,
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   50 * time.Millisecond,
 	}
 
@@ -206,7 +208,7 @@ func TestRunner_marksJobFailedOnNonZeroExitCode(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: srv.URL,
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   50 * time.Millisecond,
 	}
 
@@ -240,7 +242,7 @@ func TestRunner_doesNothingWhenNoJobsPending(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: srv.URL,
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   50 * time.Millisecond,
 	}
 
@@ -299,7 +301,7 @@ func TestFetchPendingJobs_Success(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: srv.URL,
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   30 * time.Second,
 	}
 	r, err := New(cfg, echoExecutor)
@@ -332,7 +334,7 @@ func TestFetchPendingJobs_NetworkTimeout(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: srv.URL,
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   30 * time.Second,
 		Client: &http.Client{
 			Timeout: 1 * time.Second,
@@ -361,7 +363,7 @@ func TestFetchPendingJobs_InvalidJSON(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: srv.URL,
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   30 * time.Second,
 	}
 	r, err := New(cfg, echoExecutor)
@@ -387,7 +389,7 @@ func TestFetchPendingJobs_ServerError(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: srv.URL,
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   30 * time.Second,
 	}
 	r, err := New(cfg, echoExecutor)
@@ -416,7 +418,7 @@ func TestUpdateStatus_MarshalError(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: srv.URL,
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   30 * time.Second,
 	}
 	r, err := New(cfg, echoExecutor)
@@ -477,7 +479,7 @@ func TestJobValidation_MissingFields(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: srv.URL,
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   30 * time.Second,
 	}
 	r, err := New(cfg, echoExecutor)
@@ -496,7 +498,7 @@ func TestStop_ConcurrentCalls(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: "http://localhost:9999",
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   30 * time.Second,
 	}
 	r, err := New(cfg, echoExecutor)
@@ -526,7 +528,7 @@ func TestHTTPSEnforcement(t *testing.T) {
 	cfg := Config{
 		AgentID:        "agent-01",
 		CoordinatorURL: "http://coordinator.example.com:8080",
-		AuthToken:      "test-token",
+		Tokens:         config.NewTokenStore("test-token", ""),
 		PollInterval:   30 * time.Second,
 	}
 	_, err := New(cfg, echoExecutor)

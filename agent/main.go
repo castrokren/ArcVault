@@ -88,10 +88,17 @@ func runAgent() {
 	}
 	// ────────────────────────────────────────────────────────────────────────
 
+	// One store shared by the heartbeat loop, the job runner and the WS client.
+	// Registration can exchange a short-lived enrollment token for a long-lived
+	// per-agent one, so all three must read the token at request time — copying the
+	// string here left them on the enrollment token after it had been replaced, and
+	// it expires an hour after the install script was generated.
+	tokens := config.NewTokenStore(cfg.AuthToken, cfgPath)
+
 	hbCfg := heartbeat.Config{
 		AgentID:        cfg.AgentID,
 		CoordinatorURL: cfg.CoordinatorURL,
-		AuthToken:      cfg.AuthToken,
+		Tokens:         tokens,
 		CACertFile:     cfg.CACertFile,
 		Interval:       30 * time.Second,
 	}
@@ -118,7 +125,7 @@ func runAgent() {
 	r, err := runner.New(runner.Config{
 		AgentID:        cfg.AgentID,
 		CoordinatorURL: cfg.CoordinatorURL,
-		AuthToken:      cfg.AuthToken,
+		Tokens:         tokens,
 		CACertFile:     cfg.CACertFile,
 		PollInterval:   30 * time.Second,
 	}, runner.RealExecutor)
@@ -134,7 +141,7 @@ func runAgent() {
 		AgentID:        cfg.AgentID,
 		CoordinatorURL: cfg.CoordinatorURL,
 		Coordinators:   cfg.Coordinators,
-		AuthToken:      cfg.AuthToken,
+		Tokens:         tokens,
 		CACertFile:     cfg.CACertFile,
 		Canceller:      r,
 		Poller:         r,
