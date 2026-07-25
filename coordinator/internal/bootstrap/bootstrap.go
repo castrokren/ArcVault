@@ -61,6 +61,7 @@ CERT_PEM
 $InstallDir  = 'C:\ArcVault-Agent'
 $CertPath    = Join-Path $InstallDir 'coordinator.crt'
 $AgentExe    = Join-Path $InstallDir 'agent.exe'
+$AgentExeNew = Join-Path $InstallDir 'agent.exe.new'
 $ConfigPath  = Join-Path $InstallDir 'agent-config.yaml'
 $ServiceName = 'arcvault-agent'
 
@@ -69,41 +70,40 @@ New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 # --- 1. Write the pinned cert FIRST, before any download (cert-first order) ---
 Set-Content -Path $CertPath -Value $CertPem -Encoding Ascii
 
-# --- 2. Download agent.exe over HTTPS using curl.exe ---
+# --- 2. Download agent.exe to a TEMP path over HTTPS using curl.exe ---
+# Downloading straight onto $AgentExe fails on any machine that already has the
+# agent: Windows locks a running executable, so curl aborts partway with
+# "client returned ERROR on write" (exit 23 = CURLE_WRITE_ERROR) and the script
+# died before it ever reached the service-stop below. Fetch to .new instead, so a
+# failed or tampered download also leaves a working agent untouched.
 # Invoke-WebRequest on PS 5.1 (.NET HttpWebRequest) cannot survive the TLS
 # renegotiation this server performs and drops the connection. curl.exe (present
 # on Windows 10+) handles it. --cacert pins trust to the coordinator cert written
 # in step 1; --fail turns an auth/error response into a non-zero exit instead of
-# saving an error body as agent.exe. Integrity is still enforced by step 3.
+# saving an error body as agent.exe.
 $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
 if (-not (Test-Path $curl)) { $curl = 'curl.exe' }  # fall back to PATH
+if (Test-Path $AgentExeNew) { Remove-Item $AgentExeNew -Force }
 & $curl --cacert $CertPath --fail --silent --show-error ` + "`" + `
     -H "Authorization: Bearer $AgentToken" ` + "`" + `
-    -o $AgentExe "$CoordinatorUrl/downloads/agent.exe"
+    -o $AgentExeNew "$CoordinatorUrl/downloads/agent.exe"
 if ($LASTEXITCODE -ne 0) {
-    throw "agent.exe download failed (curl exit $LASTEXITCODE)"
+    if (Test-Path $AgentExeNew) { Remove-Item $AgentExeNew -Force }
+    throw "agent.exe download failed (curl exit $LASTEXITCODE). 23 = could not write to $AgentExeNew (disk full, or the path is locked/denied); 60 = the coordinator cert is not trusted; 22 = HTTP error such as an expired enrollment token."
 }
 
-# --- 3. MANDATORY integrity check (blocks tampered or truncated downloads) ---
-$actual = (Get-FileHash -Path $AgentExe -Algorithm SHA256).Hash.ToUpper()
+# --- 3. MANDATORY integrity check, on the temp copy, BEFORE it replaces anything ---
+$actual = (Get-FileHash -Path $AgentExeNew -Algorithm SHA256).Hash.ToUpper()
 if ($actual -ne $ExpectedHash.ToUpper()) {
+    Remove-Item $AgentExeNew -Force
     throw "agent.exe integrity check failed: expected $ExpectedHash, got $actual"
 }
 
-# --- 4. Write agent config ---
-# NOTE: agent_id = $env:COMPUTERNAME. Collides on cloned/imaged VMs — acceptable
-# for the current dev fleet; revisit if onboarding imaged machines.
-$config = @"
-agent_id: $env:COMPUTERNAME
-coordinator_url: $CoordinatorUrl
-auth_token: $AgentToken
-ca_cert_file: $CertPath
-"@
-Set-Content -Path $ConfigPath -Value $config -Encoding Ascii
-
-# --- 5. Idempotent service (re)install ---
-# Re-running on an onboarded box: stop + delete + wait for it to truly go away
-# (exit 1060 = does not exist) before reinstalling.
+# --- 4. Stop and remove any existing service BEFORE touching the binary ---
+# This has to happen before the swap, not after: Windows locks a running exe, so
+# replacing agent.exe underneath a live service is what made re-running this script
+# on an already-onboarded machine fail. Waits for the service to truly go away
+# (exit 1060 = does not exist).
 sc.exe query $ServiceName 2>$null | Out-Null
 if ($LASTEXITCODE -eq 0) {
     Write-Host "Existing $ServiceName found - stopping and removing first..."
@@ -117,7 +117,35 @@ if ($LASTEXITCODE -eq 0) {
     Start-Sleep -Seconds 2   # buffer after confirmed gone
 }
 
-# --- 6. Install, start, and set SCM failure recovery ---
+# --- 5. Swap the verified binary into place ---
+# The service is stopped, so the file is no longer locked. Retry briefly anyway:
+# the SCM can report a service gone while the process is still exiting.
+$swapped = $false
+for ($i = 0; $i -lt 10; $i++) {
+    try {
+        Move-Item -Path $AgentExeNew -Destination $AgentExe -Force -ErrorAction Stop
+        $swapped = $true
+        break
+    } catch {
+        Start-Sleep -Seconds 1
+    }
+}
+if (-not $swapped) {
+    throw "could not replace $AgentExe - it is still locked. Stop the $ServiceName service and any running agent.exe, then re-run. The verified download is waiting at $AgentExeNew."
+}
+
+# --- 6. Write agent config ---
+# NOTE: agent_id = $env:COMPUTERNAME. Collides on cloned/imaged VMs — acceptable
+# for the current dev fleet; revisit if onboarding imaged machines.
+$config = @"
+agent_id: $env:COMPUTERNAME
+coordinator_url: $CoordinatorUrl
+auth_token: $AgentToken
+ca_cert_file: $CertPath
+"@
+Set-Content -Path $ConfigPath -Value $config -Encoding Ascii
+
+# --- 7. Install, start, and set SCM failure recovery ---
 & $AgentExe install-service
 sc.exe start   $ServiceName
 sc.exe failure $ServiceName reset=86400 actions=restart/3000/restart/3000/restart/3000

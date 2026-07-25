@@ -179,3 +179,47 @@ func TestGenerateScript_pinsTrustToEmbeddedCert(t *testing.T) {
 		}
 	}
 }
+
+// Re-running the script on a machine that already had an agent used to fail:
+// curl wrote straight onto agent.exe, Windows locks a running executable, and the
+// service was only stopped further down. curl aborted with exit 23
+// (CURLE_WRITE_ERROR) before the stop was ever reached. Observed live 2026-07-25
+// on SRB3FLPC010: "curl: (23) client returned ERROR on write of 14083 bytes".
+func TestGenerateScript_stopsServiceBeforeReplacingBinary(t *testing.T) {
+	script := GenerateScript(Params{
+		CoordinatorURL: "https://arcvault.lan",
+		AgentToken:     "token123",
+		CertPEM:        "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
+		AgentExeSHA256: "0123456789ABCDEF",
+	})
+
+	// The download must target a temp path, never the live binary.
+	if !strings.Contains(script, "-o $AgentExeNew") {
+		t.Error("download does not go to a temp path; it would overwrite the running agent.exe")
+	}
+
+	idx := func(needle string) int {
+		i := strings.Index(script, needle)
+		if i == -1 {
+			t.Fatalf("script is missing %q", needle)
+		}
+		return i
+	}
+
+	download := idx("-o $AgentExeNew")
+	hash := idx("Get-FileHash -Path $AgentExeNew")
+	stop := idx("sc.exe stop   $ServiceName")
+	swap := idx("Move-Item -Path $AgentExeNew")
+	install := idx("install-service")
+
+	// Verify before touching anything, stop before swapping, swap before install.
+	if !(download < hash && hash < stop && stop < swap && swap < install) {
+		t.Errorf("wrong order: download=%d hash=%d stop=%d swap=%d install=%d "+
+			"(need download < hash < stop < swap < install)", download, hash, stop, swap, install)
+	}
+
+	// A failed download must not leave a working agent broken.
+	if !strings.Contains(script, "Remove-Item $AgentExeNew -Force") {
+		t.Error("a failed download should clean up the temp file")
+	}
+}
