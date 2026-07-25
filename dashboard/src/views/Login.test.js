@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils'
 import Login from './Login.vue'
 
 // ── Mock external dependencies ────────────────────────────────
-vi.mock('../../composables/useAuth.js', () => ({
+vi.mock('../composables/useAuth.js', () => ({
   useAuth: vi.fn(() => ({
     login: vi.fn(),
     logout: vi.fn(),
@@ -16,18 +16,6 @@ vi.mock('vue-router', () => ({
   useRouter: vi.fn(() => ({
     push: vi.fn(),
   })),
-}))
-
-vi.mock('motion-v', () => ({
-  motion: new Proxy(
-    {},
-    {
-      get: () => ({
-        props: ['initial', 'animate', 'transition', 'whileHover', 'whilePress'],
-        template: '<div><slot /></div>',
-      }),
-    },
-  ),
 }))
 
 // ── Factory: matchMedia mock ──────────────────────────────────

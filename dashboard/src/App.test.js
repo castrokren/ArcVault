@@ -49,10 +49,6 @@ vi.mock('vue-router', () => ({
   useRouter: vi.fn(() => ({ push: vi.fn() }))
 }))
 
-vi.mock('motion-v', () => ({
-  motion: new Proxy({}, { get: () => ({ props: [], template: '<div><slot /></div>' }) })
-}))
-
 it('re-fetches version and update state after successful update', async () => {
   const wrapper = mount(App, {
     global: {
