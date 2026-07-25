@@ -12,50 +12,91 @@ func countTokens(t *testing.T, d *DB, agentID string) int {
 	return n
 }
 
-// An agent's tokens never expire and nothing pruned the table, so every mint used
-// to leave a permanently valid credential behind. rebuild-and-restart.ps1 mints on
-// every deploy, which had accumulated 12 live tokens for one agent on the live box.
-func TestCreateAgentToken_supersedesPreviousTokensForSameAgent(t *testing.T) {
+// REGRESSION GUARD. Minting must not revoke anything. An earlier version deleted
+// the agent's other tokens inside CreateAgentToken, so clicking "Get Token" in the
+// dashboard revoked the running agent's credential -- it 401'd on every request
+// from that moment until agent-config.yaml was hand-edited. Observed live
+// 2026-07-25 11:42:01 (mint) -> 11:42:08 (first 401).
+func TestCreateAgentToken_mintDoesNotRevokeTheRunningAgentsToken(t *testing.T) {
 	d := newTestDB(t)
 
-	first, err := d.CreateAgentToken("AGENT-1")
+	inUse, err := d.CreateAgentToken("AGENT-1")
 	if err != nil {
 		t.Fatalf("first mint: %v", err)
 	}
-	second, err := d.CreateAgentToken("AGENT-1")
+	readOut, err := d.CreateAgentToken("AGENT-1") // operator clicks "Get Token"
 	if err != nil {
 		t.Fatalf("second mint: %v", err)
 	}
 
-	if n := countTokens(t, d, "AGENT-1"); n != 1 {
-		t.Errorf("expected exactly 1 live token after re-mint, got %d", n)
+	if _, err := d.ValidateToken(inUse); err != nil {
+		t.Errorf("the running agent's token stopped working after a mint: %v", err)
 	}
-	if _, err := d.ValidateToken(second); err != nil {
-		t.Errorf("newest token must validate: %v", err)
+	if _, err := d.ValidateToken(readOut); err != nil {
+		t.Errorf("newly minted token does not validate: %v", err)
 	}
-	if _, err := d.ValidateToken(first); err == nil {
-		t.Error("superseded token still validates — the old credential remains usable")
+	if n := countTokens(t, d, "AGENT-1"); n != 2 {
+		t.Errorf("expected both tokens to coexist, got %d", n)
 	}
 }
 
-// Superseding must be scoped to one agent. Deleting by anything broader would log
-// out the rest of the fleet on the next deploy.
-func TestCreateAgentToken_doesNotTouchOtherAgents(t *testing.T) {
+// Cleanup happens only once an agent has proven which token it holds.
+func TestSupersedeAgentTokens_keepsTheLiveTokenDropsTheRest(t *testing.T) {
+	d := newTestDB(t)
+
+	old1, _ := d.CreateAgentToken("AGENT-1")
+	old2, _ := d.CreateAgentToken("AGENT-1")
+	live, err := d.CreateAgentToken("AGENT-1")
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+
+	n, err := d.SupersedeAgentTokens("AGENT-1", live)
+	if err != nil {
+		t.Fatalf("SupersedeAgentTokens: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("removed %d tokens, want 2", n)
+	}
+	if _, err := d.ValidateToken(live); err != nil {
+		t.Errorf("live token was removed: %v", err)
+	}
+	for i, tok := range []string{old1, old2} {
+		if _, err := d.ValidateToken(tok); err == nil {
+			t.Errorf("superseded token %d still validates", i)
+		}
+	}
+}
+
+// An empty keepToken must be a no-op, never "delete everything".
+func TestSupersedeAgentTokens_emptyKeepTokenIsNoOp(t *testing.T) {
+	d := newTestDB(t)
+
+	tok, _ := d.CreateAgentToken("AGENT-1")
+	if n, err := d.SupersedeAgentTokens("AGENT-1", ""); err != nil || n != 0 {
+		t.Errorf("got (%d, %v), want (0, nil)", n, err)
+	}
+	if _, err := d.ValidateToken(tok); err != nil {
+		t.Errorf("no-op call deleted the token: %v", err)
+	}
+}
+
+// Superseding must be scoped to one agent, or a registration would log out the
+// rest of the fleet.
+func TestSupersedeAgentTokens_doesNotTouchOtherAgents(t *testing.T) {
 	d := newTestDB(t)
 
 	other, err := d.CreateAgentToken("AGENT-2")
 	if err != nil {
 		t.Fatalf("mint for AGENT-2: %v", err)
 	}
-	if _, err := d.CreateAgentToken("AGENT-1"); err != nil {
-		t.Fatalf("mint for AGENT-1: %v", err)
+	live, _ := d.CreateAgentToken("AGENT-1")
+	if _, err := d.SupersedeAgentTokens("AGENT-1", live); err != nil {
+		t.Fatalf("supersede: %v", err)
 	}
 
 	if _, err := d.ValidateToken(other); err != nil {
-		t.Errorf("AGENT-2's token was revoked by a mint for AGENT-1: %v", err)
-	}
-	if n := countTokens(t, d, "AGENT-2"); n != 1 {
-		t.Errorf("AGENT-2 should still have 1 token, got %d", n)
+		t.Errorf("AGENT-2's token was revoked by AGENT-1's cleanup: %v", err)
 	}
 }
 

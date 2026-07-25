@@ -125,3 +125,50 @@ func TestRegister_responseKeepsStatusAndAgentID(t *testing.T) {
 		t.Errorf("agent_id = %q, want HOST-D", resp["agent_id"])
 	}
 }
+
+// The operator's "Get Token" button must never disturb a running agent. Cleanup
+// happens at registration, once the agent has proven which token it holds.
+func TestRegister_prunesSupersededTokensOnlyAfterAuthenticating(t *testing.T) {
+	s := newTestServer(t)
+
+	// The agent's live credential, plus two the operator read out of the UI.
+	live, err := s.db.CreateAgentToken("HOST-E")
+	if err != nil {
+		t.Fatalf("mint live token: %v", err)
+	}
+	spare1, _ := s.db.CreateAgentToken("HOST-E")
+	spare2, _ := s.db.CreateAgentToken("HOST-E")
+
+	// Minting alone must not have revoked the live token.
+	if _, err := s.db.ValidateToken(live); err != nil {
+		t.Fatalf("minting revoked the running agent's token: %v", err)
+	}
+
+	registerWith(t, s, "HOST-E", "Bearer "+live)
+
+	if _, err := s.db.ValidateToken(live); err != nil {
+		t.Errorf("the token the agent registered with was pruned: %v", err)
+	}
+	for i, tok := range []string{spare1, spare2} {
+		if _, err := s.db.ValidateToken(tok); err == nil {
+			t.Errorf("superseded token %d survived registration", i)
+		}
+	}
+}
+
+// An admin-token registration cannot identify the agent's live credential, so it
+// must prune nothing rather than guess.
+func TestRegister_adminTokenDoesNotPruneAgentTokens(t *testing.T) {
+	s := newTestServer(t)
+
+	tok, err := s.db.CreateAgentToken("HOST-F")
+	if err != nil {
+		t.Fatalf("mint: %v", err)
+	}
+
+	registerWith(t, s, "HOST-F", machineAuthHeader())
+
+	if _, err := s.db.ValidateToken(tok); err != nil {
+		t.Errorf("admin-token registration pruned the agent's token: %v", err)
+	}
+}

@@ -94,7 +94,10 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	// lost in transit, deleting it would leave the machine with no working
 	// credential at all and no way to recover but a re-enrollment; its 1-hour
 	// expiry already bounds the exposure.
-	if callerToken := GetAgentID(r); db.IsEnrollmentToken(callerToken) {
+	callerBoundTo := GetAgentID(r) // the agent_id the caller's token belongs to
+	liveToken := ""               // the credential this agent will be using from here on
+
+	if db.IsEnrollmentToken(callerBoundTo) {
 		agentToken, err := s.db.CreateAgentToken(req.AgentID)
 		if err != nil {
 			// Registration itself succeeded, so report that rather than failing the
@@ -102,7 +105,24 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[register] %s: could not issue per-agent token (still on enrollment token): %v", req.AgentID, err)
 		} else {
 			resp["token"] = agentToken
-			log.Printf("[register] %s: exchanged enrollment token %q for a per-agent token", req.AgentID, callerToken)
+			liveToken = agentToken
+			log.Printf("[register] %s: exchanged enrollment token %q for a per-agent token", req.AgentID, callerBoundTo)
+		}
+	} else if callerBoundTo == req.AgentID {
+		// Registered with its own per-agent token: that token is, by definition, the
+		// live credential.
+		liveToken = bearerToken(r)
+	}
+
+	// Clean up superseded credentials now that we know which one is live. Doing this
+	// at mint time instead would revoke a running agent's token before it ever
+	// received the replacement. Skipped entirely for admin-token callers (ops
+	// scripts), where liveToken stays empty.
+	if liveToken != "" {
+		if n, err := s.db.SupersedeAgentTokens(req.AgentID, liveToken); err != nil {
+			log.Printf("[register] %s: could not prune superseded tokens: %v", req.AgentID, err)
+		} else if n > 0 {
+			log.Printf("[register] %s: removed %d superseded token(s)", req.AgentID, n)
 		}
 	}
 

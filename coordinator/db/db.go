@@ -103,18 +103,18 @@ func IsEnrollmentToken(roleOrAgentID string) bool {
 }
 
 // CreateAgentToken generates a new token for the given agent and stores it.
+// Enrollment tokens (`bootstrap*`) get a 1-hour expiry; per-agent tokens do not
+// expire.
 //
-// For a concrete agent ID the new token SUPERSEDES that agent's previous ones,
-// deleted in the same transaction. Each mint used to leave a permanently valid
-// credential behind: an agent's tokens never expire, nothing pruned the table,
-// and `rebuild-and-restart.ps1` mints on every deploy — which had accumulated 12
-// live tokens for a single agent, every one of which still authenticated as it.
-// An agent reads `auth_token` from one config file, so only the newest is ever
-// reachable by the agent itself; the older rows were unreachable-but-valid.
+// Minting is purely ADDITIVE. It must be: `POST /api/agents/{id}/token` exists so
+// an operator can read out a token to install somewhere, and nothing writes that
+// token into the running agent's config. An earlier version of this function
+// deleted the agent's other tokens here, which revoked the live agent's
+// credential the instant the operator clicked "Get Token" — it then 401'd on
+// every request until someone hand-edited agent-config.yaml.
 //
-// Enrollment tokens (`bootstrap*`) are deliberately NOT superseded: several
-// machines can have pending enrollments simultaneously, and those rows expire on
-// their own.
+// Accumulated tokens are cleaned up by SupersedeAgentTokens once an agent has
+// proven which one it actually holds. See handleRegister.
 func (d *DB) CreateAgentToken(roleOrAgentID string) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -122,38 +122,55 @@ func (d *DB) CreateAgentToken(roleOrAgentID string) (string, error) {
 	}
 	token := hex.EncodeToString(b)
 
-	tx, err := d.conn.Begin()
-	if err != nil {
-		return "", fmt.Errorf("failed to begin token transaction: %w", err)
-	}
-	defer tx.Rollback() // no-op after a successful Commit
-
 	if IsEnrollmentToken(roleOrAgentID) {
-		if _, err := tx.Exec(
+		if _, err := d.conn.Exec(
 			`INSERT INTO tokens (token, agent_id, role, expires_at) VALUES (?, ?, 'agent', ?)`,
 			token, roleOrAgentID, sqliteTime(time.Now().Add(1*time.Hour)),
 		); err != nil {
 			return "", fmt.Errorf("failed to store token: %w", err)
 		}
-	} else {
-		if _, err := tx.Exec(
-			`INSERT INTO tokens (token, agent_id, role) VALUES (?, ?, 'agent')`,
-			token, roleOrAgentID,
-		); err != nil {
-			return "", fmt.Errorf("failed to store token: %w", err)
-		}
-		if _, err := tx.Exec(
-			`DELETE FROM tokens WHERE agent_id = ? AND token != ?`,
-			roleOrAgentID, token,
-		); err != nil {
-			return "", fmt.Errorf("failed to supersede previous tokens: %w", err)
-		}
+		return token, nil
 	}
 
-	if err := tx.Commit(); err != nil {
-		return "", fmt.Errorf("failed to commit token: %w", err)
+	if _, err := d.conn.Exec(
+		`INSERT INTO tokens (token, agent_id, role) VALUES (?, ?, 'agent')`,
+		token, roleOrAgentID,
+	); err != nil {
+		return "", fmt.Errorf("failed to store token: %w", err)
 	}
 	return token, nil
+}
+
+// SupersedeAgentTokens deletes every token for agentID except keepToken.
+//
+// Called only after an agent has authenticated — i.e. once it has proven which
+// credential it is actually using — so this can never revoke a token that is in
+// use. That ordering is the whole point: minting cannot safely delete anything,
+// because the new token has not reached the agent yet.
+//
+// Without this, tokens accumulate one permanently valid credential per mint. Agent
+// tokens never expire and the pruner only removes expired rows, and
+// `rebuild-and-restart.ps1` mints on every deploy — which had left 12 live tokens
+// for one agent, each still able to authenticate as it.
+//
+// Returns the number of rows removed. A no-op when keepToken is empty, so a
+// caller that cannot identify the live credential cannot accidentally wipe them all.
+func (d *DB) SupersedeAgentTokens(agentID, keepToken string) (int64, error) {
+	if agentID == "" || keepToken == "" {
+		return 0, nil
+	}
+	res, err := d.conn.Exec(
+		`DELETE FROM tokens WHERE agent_id = ? AND token != ?`,
+		agentID, keepToken,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to supersede previous tokens: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, nil // driver did not report it; the delete still happened
+	}
+	return n, nil
 }
 
 // ValidateToken checks if a token exists in the tokens table and hasn't expired.
