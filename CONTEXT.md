@@ -1,6 +1,6 @@
 # CONTEXT — ArcVault 2.0
 
-Last updated: 2026-07-24
+Last updated: 2026-07-25
 
 ## Current version
 **v0.6.0** (single source of truth: `VERSION` file, flows through ldflags via
@@ -51,26 +51,45 @@ own `CONTEXT.md` — see `coordinator/CONTEXT.md`, `agent/CONTEXT.md`, `dashboar
 ## Agent enrollment — the one flow to know
 New machines are enrolled from the dashboard's **Enroll Agent** button (Agents view), which
 downloads `GET /api/admin/bootstrap.ps1`. That mints a `bootstrap:<hostname>` token with a
-**1-hour expiry** and embeds it, plus the coordinator cert, in an install script.
+**1-hour expiry** and embeds it, plus the coordinator cert, in an install script. On
+registration the agent **exchanges** that short-lived token for a permanent per-agent one and
+rewrites its own `agent-config.yaml`. Verified end to end on the real fleet 2026-07-25.
 
-The admin token is **not** an agent credential. It is fleet-wide, never expires, and cannot
-be revoked for one machine. `acceptMachineToken` (`coordinator/server/server.go`) still
-accepts it so pre-2026-07-24 agents keep working, and logs
-`[auth] DEPRECATED: <ip> authenticated with the admin token` once per host. **That log is the
-migration checklist** — when it goes quiet, the `isAdminToken` branch can be deleted. See
-`tasks/security-hardening/STATE.md` Phase 3/4.
+Three things that will bite you here, all learned the hard way:
+
+1. **`host` must be set in `C:\ArcVault\config.json`.** It is optional and the installer never
+   writes it. Without it the script URL falls back to the browser's Host header, and a loopback
+   result is now refused with 409 rather than producing a script the target machine cannot use.
+2. **The cert must cover the address the script uses.** `cert.pem` is generated once and never
+   regenerated (deliberately — agents pin it). If DHCP moves this machine, or you change
+   `host`, the SANs go stale and agents fail with `x509: certificate signed by unknown
+   authority`. Prefer a hostname over an IP. Regenerating means `coordinator.exe rekey-cert`
+   AND hand-copying `cert.pem` to every agent's `coordinator.crt` — `rebuild-and-restart.ps1`
+   does **not** refresh those.
+3. **The script needs an elevated PowerShell** (`#Requires -RunAsAdministrator`) and an
+   `Unblock-File` after download. Double-clicking a `.ps1` opens an editor and does nothing.
+
+The admin token is **not** an agent credential. It is fleet-wide, never expires, and cannot be
+revoked for one machine. `acceptMachineToken` (`coordinator/server/server.go`) still accepts it
+so older agents keep working, and logs `[auth] DEPRECATED: <ip> authenticated with the admin
+token` once per host. **That log is the migration checklist** — when it goes quiet, the
+`isAdminToken` branch can be deleted. See `tasks/security-hardening/STATE.md` Phase 3/4.
 
 ## Open items / next actions
-- **Not deployed.** Eight commits sit on `security/hardening-v0.6.0` (SQLite WAL fix, version
-  staleness, bootstrap enrollment, per-agent installer tokens, TLS-on-first-start, dead
-  thumbprint removal, dashboard test/dep cleanup). Run `.\scripts\rebuild-and-restart.ps1`.
-- **Needs a human in a browser:** the Enroll Agent form and the stale/update version badges
-  have never been clicked against a live coordinator (no credentials on file).
-- **Needs a scratch-box install:** the installer's GUI path changed (mint order, cert wait);
-  verify a real coordinator+agent install and an agent-only install before cutting a release.
-- Release hygiene tracked in `tasks/release-hygiene/STATE.md` — steps 2-5 (merge to main,
-  re-point the v0.6.0 tag, delete poison tags incl. `v5.01`, add `publish-release.ps1`) are
-  still untouched.
-- Security hardening tracked in `tasks/security-hardening/` (see `PLAN-review-fixes.md`).
-- Dashboard cleanup awaiting a decision: two unused components (`Sparkline.vue`,
-  `orbit/OrbitField.vue`) and a 4× duplicated page header — see `dashboard/CONTEXT.md`.
+Branch `security/hardening-v0.6.0` is **deployed** (coordinator.exe 2026-07-25 09:07) and the
+fleet is healthy: `DESKTOP-EE77F38` v0.6.0 online, `SRB3FLPC010` v0.5.0 online, and
+`SMILOW3FLSP001` offline since 06-11 and not yet re-enrolled.
+
+Ordered next actions live in `tasks/release-hygiene/STATE.md` → **Next**. The two that matter
+most:
+- **Re-enroll `SMILOW3FLSP001`.** It has no per-agent token row, so it is the last machine that
+  might still be on the admin token — and therefore the last thing gating Phase 4.
+- **Run `scripts/repair-service-env.ps1`** (elevated). The live service has no `Environment`
+  registry value, so `ARCVAULT_JWT_SECRET` / `ARCVAULT_CREDENTIAL_KEY` are never injected. The
+  installer wrote them in a shape SCM does not read; details in
+  `tasks/security-hardening/STATE.md`.
+
+Still unverified: the dashboard UI by eye (no credentials on file — Enroll Agent and the
+version badges have only been driven over the API), and the installer's GUI path since the
+token/cert/registry changes. Dashboard cleanup awaiting a decision: two unused components and a
+4× duplicated page header — see `dashboard/CONTEXT.md`.

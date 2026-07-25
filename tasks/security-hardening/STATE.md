@@ -86,10 +86,50 @@ FIXED (installer, for future installs):
   installer puts it back and warns, rather than leaving the coordinator unable to decrypt.
 - `installer/windows/test_service_env.py` covers the parse/format round-trip and the merge.
 
-**STILL BROKEN ON THIS MACHINE — needs an elevated shell.** The installer fix does not
-retroactively repair the live service; the secrets must be rewritten in the correct shape from
-the legacy subkey. Until then: every coordinator restart logs out every session, and the
-credential key sits next to the database.
+**STILL BROKEN ON THIS MACHINE — needs an elevated shell.** Run
+`scripts/repair-service-env.ps1` (added 2026-07-24, never yet run). It reads the secrets from
+wherever they currently are, writes a merged `REG_MULTI_SZ` `Environment` value, verifies the
+readback, restarts, and PASSES only when the log says
+`JWTSecret loaded from ARCVAULT_JWT_SECRET env var` (`config.go:132`) with no
+`Generated new JWTSecret` (`config.go:142`). `-RemoveDiskKey` is a deliberate second pass,
+gated on the registry value matching the on-disk key.
+
+SEVERITY, corrected 2026-07-25 after kren pushed back on an overstatement:
+- **The credential key on disk is the part with real weight** — it sits beside `arcvault.db`,
+  so read access to the database is read access to the key protecting it. But measure the blast
+  radius before prioritising: it protects exactly **one** row, `cred-d077217915c0b069`
+  ("testng credentials ", SMB), with **0 jobs bound to it**.
+- **The rotating JWT secret is hygiene, not an incident.** Measured on the live box: 13
+  startups, 13 `Generated new JWTSecret`, 0 `loaded from ARCVAULT_JWT_SECRET`. So it does
+  rotate every start and a token minted before a restart cannot validate after it. But the TTL
+  is 4h (`auth.go:81`), restarts are mostly deploys, and `useAuth.initialize()` sets
+  `isAuthenticated` from localStorage without validating — so the observable window is a
+  session that is live, under 4h old, AND crossing a restart. **Kren reports no logout problem
+  and there is no evidence of one.** An earlier draft here asserted "every restart logs out
+  every session" as though observed; it was inferred from the mechanism. The 07-19 entry in
+  `tasks/release-hygiene/STATE.md` had already flagged the same theory as a FALSE LEAD.
+- A random 32-byte per-start secret is cryptographically sound; this is not a confidentiality
+  hole. "Revocation is moot" above means the revocation list is *redundant* when tokens die at
+  restart anyway — not that revocation can be bypassed. `revoked_tokens` is currently empty.
+
+### Phase 4 gate — status 2026-07-25
+Zero `[auth] DEPRECATED` lines so far. `DESKTOP-EE77F38` and `SRB3FLPC010` both hold per-agent
+tokens. **`SMILOW3FLSP001` is the last unknown**: offline since 06-11, no per-agent token row,
+so it is presumably still on the admin token or a June `bootstrap` token. Re-enroll it, watch
+for the DEPRECATED line, and only then delete the `isAdminToken` branch in
+`acceptMachineToken`.
+
+### Also fixed 2026-07-25 — the token lifecycle around enrollment
+- Registration now exchanges an enrollment token for a per-agent token (`fda901f`); before
+  this, every bootstrap-installed agent died one hour after the script was generated.
+- Minting a token no longer revokes anything (`984dd1d`). `2247dd5` had made
+  `CreateAgentToken` delete the agent's other tokens, so the dashboard "Get Token" button
+  revoked the running agent's credential — observed live at 11:42:01 (mint) to 11:42:08 (first
+  401). Cleanup moved to `handleRegister`, after the agent proves which token it holds.
+- Bootstrap scripts no longer emit `https://` when `host` is unset, and refuse (409) rather
+  than emit a loopback URL the target machine cannot reach.
+- The script downloads to `agent.exe.new` and stops the service before swapping, so it can be
+  re-run on a machine that already has an agent (`0299716`).
 
 ## Next
 Ordered by value:

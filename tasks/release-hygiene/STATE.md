@@ -134,23 +134,31 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
   federation_messages.go, federation_hub.go, federation_test.go).
 
 ## In-progress
-- **NOT DEPLOYED.** All 8 commits above are branch-only. `.\scripts\rebuild-and-restart.ps1`.
-  The installer .exe on disk (7/19) also predates the Phase-3 token + cert changes, so it must
-  be rebuilt before it is handed to anyone.
+- Nothing blocking. Branch `security/hardening-v0.6.0` is DEPLOYED (coordinator.exe
+  09:07 07-25) and the fleet is healthy: `DESKTOP-EE77F38` v0.6.0 online,
+  `SRB3FLPC010` v0.5.0 online (freshly enrolled), `SMILOW3FLSP001` still offline
+  since 06-11 and never re-enrolled.
+- Left uncommitted (kren's call): `.agents/` + `skills-lock.json` (hallmark skill
+  toolchain), `tasks/security-hardening/PLAN-review-fixes.md` (unrelated prior task).
 - BLOCKED (needs kren): `gh release upload v0.6.0 installer/windows/dist/ArcVault-Setup-0.6.0-windows-amd64.exe --clobber`
-  — permission classifier blocks the outward upload. Run it via `!` in the prompt. (Installer
-  isn't fetched by the auto-updater — safe to clobber.) Rebuild the .exe first, per above.
-- Left uncommitted (kren's call): `.agents/` + `skills-lock.json` (hallmark skill toolchain),
-  `tasks/security-hardening/PLAN-review-fixes.md` (unrelated prior task).
+  — permission classifier blocks the outward upload. Run it via `!` in the prompt.
+  Rebuild the .exe first: the one on disk (07-19) predates every token/cert change.
 
-## Verification debts — things NOT proven, despite green tests
-- **Enroll Agent has never been clicked.** No dashboard credentials on file; the login screen
-  is reachable and nothing past it. Same for the stale/update version badges from `4706ef9`.
-- **The installer's GUI path has never been run.** `do_install` was reordered and
-  `write_agent_config` changed; needs a scratch-box test of BOTH a coordinator+agent install
-  and an agent-only install (the two paths now diverge on cert handling).
-- Phase 3's minting is only argued correct from reading `CreateAgentTokenCommand`; the
-  `coordinator.exe create-agent-token` shell-out has not been exercised from the installer.
+## Verification debts — what is NOT proven
+- `SMILOW3FLSP001` has never been re-enrolled. It has no per-agent token row, so it
+  is presumably still on the admin token or a June `bootstrap` token. Re-enroll it
+  via Enroll Agent to find out, and watch for `[auth] DEPRECATED` in
+  `coordinator-service.log` when it next checks in.
+- The dashboard UI itself is still unverified by eye — Enroll Agent and the
+  stale/update version badges have only been exercised over the API, never clicked.
+  (No dashboard credentials on file.)
+- The installer's GUI path (`arcvault_installer.py`) has NOT been run since the
+  Phase-3 token minting, cert wait and registry-shape changes. Needs a scratch-box
+  test of BOTH a coordinator+agent install and an agent-only install.
+- `scripts/repair-service-env.ps1` has never been run. See
+  `tasks/security-hardening/STATE.md` — the live service still has no `Environment`
+  value, so the coordinator mints a fresh JWT secret on every start and the
+  credential key still sits beside the DB.
 
 ## Done (2026-07-17 session, cont'd) — agent push-update fixes
 - KREN ASK #2 RESOLVED: coordinator→agent push-update pipeline already fully exists (HTTP trigger
@@ -193,7 +201,7 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
   - VERIFIED via rebuild-and-restart.ps1: both services RUNNING, sanity 13/0/0, CLEAN agent boot
     (WS connected → Registered → Heartbeat OK, no 404/401). Agent online in /api/agents. NOT committed.
 
-## Done (2026-07-24 session) — 8 commits on security/hardening-v0.6.0, NONE DEPLOYED
+## Done (2026-07-24 session) — 8 commits on security/hardening-v0.6.0 (all now DEPLOYED 07-25)
 Started by committing the backlog above, then followed the admin-token thread it exposed.
 
 - `45e376d` SQLite pragma DSN fix + `db/dsn_test.go` (see the 2026-07-19 entry above).
@@ -235,34 +243,111 @@ Started by committing the backlog above, then followed the admin-token thread it
   192.168.68.64 `tls: bad certificate` flood is **still open** and is NOT the fresh-install
   cert bug — a coordinator serving plain HTTP cannot emit that client-side TLS alert.
 
+## Done (2026-07-25 session) — DEPLOYED, plus two regressions of my own caught in prod
+
+DEPLOY: `rebuild-and-restart.ps1` ran 07-25 09:07. The Step 9 agent check now uses
+curl.exe (`Invoke-RestMethod` on PS 5.1 cannot survive this server's TLS and printed
+"Could not query agents API" on every deploy while the agent was fine).
+
+### Corrections to earlier claims in this file — read these before trusting the rest
+- **The "restarts invalidate every session" line was overstated.** Measured: 13 startups,
+  13 `Generated new JWTSecret`, 0 `loaded from ARCVAULT_JWT_SECRET` — the secret really does
+  rotate every start. But token TTL is 4h (`auth.go:81`), the restarts are mostly deploys,
+  and kren reports no logout problem. Hygiene, not an incident. The 07-19 entry above already
+  flagged this theory as a FALSE LEAD; it got restated as fact anyway.
+- **`192.168.68.58` is THIS machine's Wi-Fi IP**, not a remote host. Audit-log entries from it
+  are kren's own browser over LAN IP. Do not read them as remote-agent traffic.
+- **The credential-key-on-disk finding is real but tiny:** it protects exactly one row,
+  `cred-d077217915c0b069` ("testng credentials ", SMB), with 0 jobs bound to it.
+
+### `fda901f` — enrollment tokens are exchanged at registration
+`bootstrap.ps1` writes the enrollment token into `agent-config.yaml` as the agent's permanent
+`auth_token`, but those tokens expire in 1h and `handleRegister` returned no replacement, so
+every machine enrolled by script died after an hour. Registration now returns a per-agent
+`token` (additive field); the agent adopts it and rewrites only the `auth_token` line.
+Consumers read through `config.TokenStore` at request time — copying the string at
+construction had left the job runner and WS client on the dead enrollment token.
+
+### `2247dd5` then `984dd1d` — a regression shipped, then fixed
+`2247dd5` made `CreateAgentToken` delete the agent's other tokens. `POST /api/agents/{id}/token`
+is the dashboard "Get Token" button — a read — and nothing writes that token into the running
+agent's config. Clicking it revoked the live credential:
+
+    11:42:01  POST /api/agents/DESKTOP-EE77F38/token      200
+    11:42:08  POST /api/agents/DESKTOP-EE77F38/heartbeat  401   <- and every one after
+
+Minting is additive again; cleanup moved to `handleRegister` via
+`SupersedeAgentTokens(agentID, keepToken)`, which runs only after the agent has proven which
+token it holds. No-op on empty keepToken, so an admin-token registration prunes nothing rather
+than guessing.
+
+### `984dd1d` — enrollment scripts pointed at the literal string `https://`
+`host` is optional in config.json and the installer never writes it, so
+`fmt.Sprintf("https://%s", cfg.Host)` produced a bare scheme and every curl in the script had
+nowhere to go. New `coordinatorBaseURL(cfgHost, cfgPort, requestHost)` falls back to the Host
+header and **refuses with 409** on a loopback result rather than emitting an unusable script.
+URL resolution also moved ahead of the cert read and token mint, so a refused request no longer
+leaves an orphan enrollment token.
+
+### `0299716` — the script could never re-run on a machine that already had an agent
+curl wrote straight onto `agent.exe`; Windows locks a running executable and the service was
+only stopped further down, so curl aborted first:
+
+    curl: (23) client returned ERROR on write of 14083 bytes
+
+That is why `SRB3FLPC010` sat on its stale June config reporting
+`x509: certificate signed by unknown authority` — the script threw before the config write, so
+its `ca_cert_file` still pointed at a pre-current cert. Now: download to `agent.exe.new`, verify
+the hash on the temp copy, stop+delete the service, swap, then write config and install. A
+failed download leaves a working agent untouched. curl exit codes are explained in the error
+text (23 = cannot write, 60 = untrusted cert, 22 = HTTP error).
+
+### `7ac0537` / `9a2bdd3` / `db48c07` — smaller items
+- Deleted the bootstrap cert thumbprint: computed as sha1-over-PEM (a Windows thumbprint is
+  sha1-over-DER; measured, PowerShell agrees with DER) **and** never compared by the script.
+  Real pinning is `curl --cacert` against the embedded PEM.
+- Repaired two stale suites that were already red: `tlscert` (fed PEM to a DER parser) and
+  `bootstrap`'s `crossEdition` test (asserted an abandoned Invoke-WebRequest design).
+- fallow audit of `dashboard/`: fixed a `vi.mock` path that resolved nowhere and was therefore
+  a silent no-op, and removed `motion-v` (zero source imports). `db48c07` then made that mock
+  *correct* — its `login` resolved `undefined` while `handleSubmit` reads `result.success`.
+
+### PROVEN ON THE REAL FLEET (not just tests)
+- `SRB3FLPC010` installed via bootstrap.ps1, registered **201**, exchanged its enrollment
+  token, heartbeats **200** from 192.168.68.64. Coordinator logged:
+  `[register] SRB3FLPC010: exchanged enrollment token "bootstrap:SRB3FLPC010" for a per-agent token`
+- Sandbox e2e with real binaries: clicking Get Token against a running agent no longer kills
+  it; an agent restart triggers `removed 1 superseded token(s)`; the old pre-fix binary 401s
+  under the same conditions where the new one survives (9 vs 0 auth failures).
+- `host` was set manually by kren; the working URL before that came from the Host-header
+  fallback.
+
 ## Next
-1. **Deploy and verify** — `.\scripts\rebuild-and-restart.ps1`, then clear the verification
-   debts above (Enroll Agent, version badges, a scratch-box install).
-2. **Watch `coordinator-service.log` for `[auth] DEPRECATED`** after deploying. Each host that
-   appears is still using the admin token as its agent credential; re-enroll it via Enroll
-   Agent. When the line stops appearing, security-hardening Phase 4 becomes a one-line delete.
-3. 192.168.68.64 `tls: bad certificate` flood — still unexplained. Now that agent-only
-   installs no longer write a dangling `ca_cert_file`, re-enrolling that host via Enroll Agent
-   (which embeds the cert) is the cheapest test of whether it was a trust-material problem.
-4. KREN ASK (2026-07-17) #1 — DOWNLOAD INSTALLER BUTTON. `installer_dir` in config.json must
-   point at `installer\windows\dist` (per `bf4a272`); the old note here said root `dist\`,
-   which `bf4a272` deleted. Verify after the next coordinator restart.
-5. AGENT TOKEN GENERATOR (was KREN ASK 2026-07-17 #3) — **superseded for its actual use case.**
-   New machines now go through Enroll Agent; `POST /api/agents/{id}/token` +
-   `AgentTokenModal.vue` remain for *re-tokenizing an agent already in the fleet* (it 404s on
-   an unregistered one). Still untested — write tests or drop the modal, but do not treat it
-   as the new-machine path.
-- Update local agents to v0.6.0 (per-agent update button on Agents page — they never
-  auto-update).
-- Ship the dashboard fixes to users: the coordinator self-update pulls the binary from
-  the GitHub release, so the redesign only reaches other installs via `gh release upload
-  v0.6.0 --clobber` of a fresh coordinator, or a v0.6.1 cut.
-- `tasks/release-hygiene/PLAN.md` steps 2–5: merge branch to main, re-point v0.6.0
-  tag (currently on orphaned commit 637c33b), delete poison tags (`v5.01`!) and stale
-  v1.x releases, add `scripts/publish-release.ps1`.
-- Minor leftover: navbar `v-if` guard for empty version pill (cosmetic flash, skipped
-  by Deepseek); `GET /api/agents` returned a one-off 500 during verification — glance
-  at coordinator log if it recurs.
+1. **Re-enroll `SMILOW3FLSP001`** (offline since 06-11). Enroll Agent, then run the script
+   elevated on that box. It has no per-agent token row, so it is the last machine that could
+   still be on the admin token.
+2. **Run `scripts/repair-service-env.ps1`** (elevated). The live service has no `Environment`
+   registry value, so `ARCVAULT_JWT_SECRET` / `ARCVAULT_CREDENTIAL_KEY` are never injected.
+   Full diagnosis and the two-pass procedure are in `tasks/security-hardening/STATE.md`.
+3. **Rebuild the installer .exe** — the one on disk is 07-19 and predates the per-agent token
+   minting, the registry-shape fix and the cert handling. Then `gh release upload ... --clobber`
+   (needs kren; the permission classifier blocks the outward upload — run it via `!`).
+4. **Prune the 26 legacy `bootstrap` tokens** once every machine has been re-enrolled. Left in
+   place deliberately: `SMILOW3FLSP001` has no per-agent token, so one of them may be its only
+   credential. Per-agent duplicates now clear themselves at registration.
+5. `tasks/release-hygiene/PLAN.md` steps 2-5: merge to main, re-point the v0.6.0 tag (currently
+   on orphaned commit 637c33b), delete poison tags (`v5.01`, the fake v0.7.0-v1.2.0), add
+   `scripts/publish-release.ps1`.
+6. KREN ASK (07-17) — DOWNLOAD INSTALLER BUTTON. `installer_dir` is still absent from
+   `C:\ArcVault\config.json`, so `/downloads/installer` 404s. It must point at
+   `installer\windows\dist` (per `bf4a272`); the older note in this file said root `dist\`,
+   which that commit deleted.
+7. AGENT TOKEN GENERATOR — **superseded for new machines**, which go through Enroll Agent.
+   `POST /api/agents/{id}/token` + `AgentTokenModal.vue` remain for re-tokenizing an agent
+   already in the fleet (it 404s on one that is not). Still untested, but it no longer
+   disturbs a running agent (see `984dd1d`).
+8. Update agents to v0.6.0 — `SRB3FLPC010` is on v0.5.0. Per-agent update button; agents never
+   auto-update.
 
 ## Open questions
 - Should the stale v1.x releases be deleted or archived somewhere first? (destructive —
