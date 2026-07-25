@@ -90,8 +90,8 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
 - USER-CONFIRMED (2026-07-19): kren logged in on the live dashboard and it stays up while
   navigating — the fast relog is resolved. (Did NOT run the planned 50-request concurrency
   burst; kren's own click-through was enough.) Regression guard: coordinator/db/dsn_test.go.
-- NOT committed yet (kren's call): coordinator/db/db.go, coordinator/db/dsn_test.go,
-  installer/windows/arcvault_installer.py, and this STATE.md.
+- COMMITTED 2026-07-24 as `45e376d` (db.go + dsn_test.go) and `04763b4` (the installer's
+  ARCVAULT_JWT_SECRET persistence).
 - SEPARATE ISSUE spotted in the log (not the relog bug): a steady flood of
   `http: TLS handshake error from 192.168.68.64:*: remote error: tls: bad certificate`
   every ~10-30s — a LAN client/agent that doesn't trust the self-signed cert. Noise for now.
@@ -130,15 +130,27 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
   all green; full-stack rebuild-and-restart deployed (coordinator v0.6.0 RUNNING, sanity 12/0/2);
   live `/api/agents` verified real versions. REMAINING: visual browser confirm of the drift badges
   needs kren to log in (no creds on file; login screen reached, can't proceed further).
-- NOT committed yet (kren's call): Agents.vue, utils/format.js, utils/format.test.js, backend.md,
-  federation_messages.go, federation_hub.go, federation_test.go, this STATE.md.
+- COMMITTED 2026-07-24 as `4706ef9` (Agents.vue, format.js + format.test.js, backend.md,
+  federation_messages.go, federation_hub.go, federation_test.go).
 
 ## In-progress
+- **NOT DEPLOYED.** All 8 commits above are branch-only. `.\scripts\rebuild-and-restart.ps1`.
+  The installer .exe on disk (7/19) also predates the Phase-3 token + cert changes, so it must
+  be rebuilt before it is handed to anyone.
 - BLOCKED (needs kren): `gh release upload v0.6.0 installer/windows/dist/ArcVault-Setup-0.6.0-windows-amd64.exe --clobber`
-  — fresh installer built locally (7/19); permission classifier blocks the outward upload.
-  Run it via `!` in the prompt. (Installer isn't fetched by the auto-updater — safe to clobber.)
+  — permission classifier blocks the outward upload. Run it via `!` in the prompt. (Installer
+  isn't fetched by the auto-updater — safe to clobber.) Rebuild the .exe first, per above.
 - Left uncommitted (kren's call): `.agents/` + `skills-lock.json` (hallmark skill toolchain),
   `tasks/security-hardening/PLAN-review-fixes.md` (unrelated prior task).
+
+## Verification debts — things NOT proven, despite green tests
+- **Enroll Agent has never been clicked.** No dashboard credentials on file; the login screen
+  is reachable and nothing past it. Same for the stale/update version badges from `4706ef9`.
+- **The installer's GUI path has never been run.** `do_install` was reordered and
+  `write_agent_config` changed; needs a scratch-box test of BOTH a coordinator+agent install
+  and an agent-only install (the two paths now diverge on cert handling).
+- Phase 3's minting is only argued correct from reading `CreateAgentTokenCommand`; the
+  `coordinator.exe create-agent-token` shell-out has not been exercised from the installer.
 
 ## Done (2026-07-17 session, cont'd) — agent push-update fixes
 - KREN ASK #2 RESOLVED: coordinator→agent push-update pipeline already fully exists (HTTP trigger
@@ -181,33 +193,65 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
   - VERIFIED via rebuild-and-restart.ps1: both services RUNNING, sanity 13/0/0, CLEAN agent boot
     (WS connected → Registered → Heartbeat OK, no 404/401). Agent online in /api/agents. NOT committed.
 
-## Next chat — NEW ISSUE (kren, 2026-07-19): agent "out of date" detection for other machines
-- SYMPTOM: dashboard/coordinator cannot detect that agents on OTHER machines are out of
-  date. The local agent shows fine; remote agents' version-staleness isn't surfaced.
-- NOT yet investigated. Starting points to check next session:
-  - Agents report `version` on register/heartbeat (business/agents.go, agent/heartbeat).
-    Confirm remote agents actually send a version and it's stored/updated per heartbeat.
-  - How the UI decides "update available" per agent (Agents.vue + /api/agents payload):
-    does it compare agent.version against the latest release / coordinator version, or
-    only against the local agent? Likely compares wrong baseline or version is empty/stale.
-  - The TLS "bad certificate" flood from 192.168.68.64 (below) may be the SAME remote agent
-    failing to connect at all — if it can't reach the coordinator, its version never updates,
-    so it can't be flagged out-of-date. Check if that IP is the "other" agent first.
-  - Agents never auto-update (per-agent update button only); staleness detection is what
-    tells the operator to click it.
+## Done (2026-07-24 session) — 8 commits on security/hardening-v0.6.0, NONE DEPLOYED
+Started by committing the backlog above, then followed the admin-token thread it exposed.
+
+- `45e376d` SQLite pragma DSN fix + `db/dsn_test.go` (see the 2026-07-19 entry above).
+- `4706ef9` version-staleness detection (see the 2026-07-19 entry above).
+- `04763b4` installer persists `ARCVAULT_JWT_SECRET` to the service registry Environment.
+- `2ad940a` **Enroll Agent** flow. Replaced an uncommitted "reveal the admin token" button
+  (which would have undone security-hardening Phase 2, deliberately removed 2026-07-08 as an
+  XSS-exfil path) with `GET /api/admin/bootstrap.ps1` + a hostname prompt → a
+  `bootstrap:<hostname>` token with a 1-hour expiry. `?hostname=` validated to `[A-Za-z0-9.-]`
+  / 253 chars, since it is persisted as the token's `agent_id` and a `:` could forge a role
+  prefix. Restored the per-agent `AgentTokenModal` the admin-token work had deleted.
+- `4ac5ce5` **security-hardening Phase 3.** Installer no longer does
+  `agent_token = admin_token`; co-installs mint a real per-agent token via
+  `coordinator.exe create-agent-token`. Forced an ordering change in `do_install`. Phase 4's
+  removal is gated on a new once-per-IP `[auth] DEPRECATED` log — details and the removal
+  criterion are in `tasks/security-hardening/STATE.md`.
+- `361e10a` **Fresh installs served cleartext HTTP on 443.** `tlscert.Generate` was only
+  called by `coordinator init`/`regen-cert`, which nothing in the install path calls, so
+  `Server.Start()` saw empty cert paths and fell through to `ListenAndServe` while the
+  installer, dashboard and agents all used `https://`. `tlscert.EnsureExists` already existed
+  for this with **zero callers**; now wired into `StartCommandWithContext`. Idempotent, fatal
+  only in production. Verified live on port 18443: generated the pair, logged HTTPS, `/health`
+  200 over TLS, cleartext request rejected 400. No-op on kren's box (cert paths already set).
+- `7ac0537` Deleted the bootstrap cert thumbprint. It was computed as sha1-over-PEM (Windows
+  thumbprints are sha1-over-DER — measured: PowerShell agrees with the DER value) **and** was
+  never compared by the script; real pinning is `curl --cacert` against the embedded PEM.
+  Also repaired two stale test suites that were already red on this branch: `tlscert` (4 tests
+  fed PEM to a DER parser) and `bootstrap`'s `crossEdition` test (asserted an abandoned
+  `Invoke-WebRequest` design; rewritten to assert `--cacert`/`--fail`/TLS 1.2/cert-first
+  ordering, and that verification-bypass strings stay ABSENT).
+- `9a2bdd3` fallow audit of `dashboard/`: fixed a `vi.mock` path that resolved nowhere and was
+  therefore a silent no-op (`Login.test.js` mocked `../../composables/useAuth.js`; proven both
+  ways with a throwing probe), and removed `motion-v` — in `dependencies` with zero source
+  imports, only two dead `vi.mock` blocks. −128 lines.
+
+- TEST STATUS: whole Go suite green for the first time on this branch (11 packages);
+  vitest 80/80; `npm run build` clean. `-race` unavailable locally (no gcc).
+- RESOLVED from the 2026-07-19 list: remote agent version-staleness (`4706ef9`). The
+  192.168.68.64 `tls: bad certificate` flood is **still open** and is NOT the fresh-install
+  cert bug — a coordinator serving plain HTTP cannot emit that client-side TLS alert.
 
 ## Next
-- Commit the 1067 fixes (agent/main.go, agent/heartbeat/heartbeat.go, coordinator/main.go,
-  scripts/rebuild-and-restart.ps1).
-- KREN ASK (2026-07-17) #1 — DOWNLOAD INSTALLER BUTTON. Fixed in config.json:
-  set `installer_dir` to `C:\Projects\ArcVault2.0\dist` (where the built
-  ArcVault-Setup-0.6.0-windows-amd64.exe lives). Verify after coordinator restart.
-- KREN ASK (2026-07-17) #3 — AGENT TOKEN GENERATOR (restoration from pre-5.0).
-  Missing UI feature: 'Get Token' button in Agents view was removed. Operators
-  need to generate tokens for new machine installations. Skeleton code done
-  (commit 46ffa2f): POST /api/agents/{id}/token endpoint + AgentTokenModal.vue +
-  button in Agents.vue. Both builds clean (coordinator, dashboard). Plan at
-  ~/.claude/plans/agent-token-generator.md. Next: write tests, then manual e2e.
+1. **Deploy and verify** — `.\scripts\rebuild-and-restart.ps1`, then clear the verification
+   debts above (Enroll Agent, version badges, a scratch-box install).
+2. **Watch `coordinator-service.log` for `[auth] DEPRECATED`** after deploying. Each host that
+   appears is still using the admin token as its agent credential; re-enroll it via Enroll
+   Agent. When the line stops appearing, security-hardening Phase 4 becomes a one-line delete.
+3. 192.168.68.64 `tls: bad certificate` flood — still unexplained. Now that agent-only
+   installs no longer write a dangling `ca_cert_file`, re-enrolling that host via Enroll Agent
+   (which embeds the cert) is the cheapest test of whether it was a trust-material problem.
+4. KREN ASK (2026-07-17) #1 — DOWNLOAD INSTALLER BUTTON. `installer_dir` in config.json must
+   point at `installer\windows\dist` (per `bf4a272`); the old note here said root `dist\`,
+   which `bf4a272` deleted. Verify after the next coordinator restart.
+5. AGENT TOKEN GENERATOR (was KREN ASK 2026-07-17 #3) — **superseded for its actual use case.**
+   New machines now go through Enroll Agent; `POST /api/agents/{id}/token` +
+   `AgentTokenModal.vue` remain for *re-tokenizing an agent already in the fleet* (it 404s on
+   an unregistered one). Still untested — write tests or drop the modal, but do not treat it
+   as the new-machine path.
 - Update local agents to v0.6.0 (per-agent update button on Agents page — they never
   auto-update).
 - Ship the dashboard fixes to users: the coordinator self-update pulls the binary from
@@ -223,6 +267,17 @@ poison tags gone) and make the dashboard's version display/update flow trustwort
 ## Open questions
 - Should the stale v1.x releases be deleted or archived somewhere first? (destructive —
   needs kren's explicit go-ahead)
+- `ensureTLSMaterial` failure is **fatal in production** (`361e10a`) on the reasoning that
+  cleartext agent tokens are worse than a refusal to start. That is a new route to a
+  service-start failure, on a project that already spent a session on Windows error 1067.
+  Downgrade to a warning? Kren's call.
+- Dashboard: delete `Sparkline.vue` and `orbit/OrbitField.vue`, or keep them as intentional
+  placeholders? `Sparkline` looks like a leftover from the Fleet Console decision to ship
+  without per-agent sparklines. Deleting `OrbitField` also means dropping its now-dead stub in
+  `Login.test.js:52`. Related: the page-header block is duplicated 4× across views.
+- `dashboard/vite.config.js` `emptyOutDir` has been `false` since the initial commit with no
+  recorded reason. An uncommitted change flipping it to `true` was reverted this session
+  because nothing explains the original choice and no test covers it. Which is correct?
 
 ## File map
 - tasks/release-hygiene/PLAN.md — 5-step release cleanup plan (step 1 done)

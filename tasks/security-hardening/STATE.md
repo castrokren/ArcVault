@@ -39,7 +39,10 @@ All deployed to prod (coordinator.exe built 12:32:47, PID restarted 12:32:51) an
 - **PUT vs PATCH fix (2026-07-13).** `handleUpdateUserRole` was checking `MethodPatch` but the route was registered as `PUT`. Fixed the handler to check `MethodPut`. Before this fix, the endpoint always returned 405 (Method Not Allowed).
 
 ## In-progress
-- Nothing. Working tree clean, `main` == deployed behavior.
+- **2026-07-24: `main` is NO LONGER == deployed behavior.** Phase 3 plus the two findings below
+  sit on `security/hardening-v0.6.0`, undeployed. Re-run `.\scripts\rebuild-and-restart.ps1`
+  and re-verify against the live API before trusting anything in this file as prod behavior.
+- Phase 4's removal is gated on the `[auth] DEPRECATED` log going quiet — see Next #1.
 
 ## Next
 Ordered by value:
@@ -103,5 +106,13 @@ A negative control proved the test *could* fail. It did not prove the test measu
 - `coordinator/business/users.go` — min-length-8 check on password (NEW: secondary guard)
 - `C:\ArcVault\` — live deployment (config.json, arcvault.db; service-run.bat deleted 2026-07-08)
 
-## Pre-existing test failures (NOT caused by this work)
-`internal/tlscert` (5 tests, `x509: malformed certificate`) and `internal/bootstrap` (`TestGenerateScript_crossEdition`). Confirmed failing identically on a clean `git stash` of HEAD. Unrelated — do not chase them as regressions.
+## Pre-existing test failures — RESOLVED 2026-07-24 (`7ac0537`)
+Both suites noted here as "unrelated, do not chase" were stale tests, not code defects, and are now green. The whole Go suite passes (11 packages).
+
+- `internal/tlscert` (4 tests, `x509: malformed certificate`): they fed `ReadCertPEM`'s output straight to `x509.ParseCertificates`. `ReadCertPEM` returns **PEM**; `ParseCertificates` wants **DER**. The missing step was `pem.Decode` → `block.Bytes`. Five copies of the block collapsed into one `parseCertFile` helper. `ReadCertPEM`'s doc comment claimed it returned DER, which is what misled them — corrected, since `server/bootstrap_handler.go` reads the same function.
+- `internal/bootstrap` (`TestGenerateScript_crossEdition`): asserted `PSEdition` branching, `-SkipCertificateCheck` and `ServerCertificateValidationCallback`, all from an abandoned `Invoke-WebRequest` design (PS 5.1's HttpWebRequest could not survive this server's TLS renegotiation, so the script moved to `curl.exe` and needs no edition branch). Rewritten as `TestGenerateScript_pinsTrustToEmbeddedCert`: asserts `--cacert`, `--fail`, forced TLS 1.2, cert-written-before-download ordering, and that the verification-bypass strings stay **absent**. The old test protected nothing while looking like it protected the download path.
+
+## Also 2026-07-24 — two security findings outside the numbered phases
+
+- **Fresh installs served cleartext HTTP on 443** (`361e10a`). `tlscert.Generate` was only called by `coordinator init` / `regen-cert`, and nothing in the install path calls either; the installer writes a `config.json` with no `cert_file`/`key_file`, so `Server.Start()` took the empty-path branch and fell through to `ListenAndServe` while the installer, dashboard and agents all addressed it as `https://`. Agent tokens and JWTs would cross the wire in the open. `tlscert.EnsureExists` already existed for exactly this and had **zero callers**; now wired into `StartCommandWithContext` (covers `start` and `run-service`, not just the GUI installer). Idempotent — regenerating would break agents pinning the old cert. Verified live on port 18443 rather than by unit test alone: generated the pair, logged HTTPS, `/health` 200 over TLS, cleartext request rejected 400. No-op on the live box, whose config already has both paths.
+- **Bootstrap cert thumbprint was wrong AND dead** (`7ac0537`). Computed as sha1-over-PEM; a Windows thumbprint is sha1-over-DER (measured — PowerShell's `X509Certificate2.Thumbprint` matches the DER value). It was also never compared by the script: `grep -c PinnedThumb` was 1, its own assignment. Real pinning is `curl --cacert` against the embedded PEM, which validates the certificate rather than matching a fingerprint. Deleted rather than repaired — a wrong value that reads as load-bearing is worse than no value.

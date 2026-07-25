@@ -1,6 +1,6 @@
 # CONTEXT — ArcVault 2.0
 
-Last updated: 2026-07-22
+Last updated: 2026-07-24
 
 ## Current version
 **v0.6.0** (single source of truth: `VERSION` file, flows through ldflags via
@@ -48,11 +48,29 @@ own `CONTEXT.md` — see `coordinator/CONTEXT.md`, `agent/CONTEXT.md`, `dashboar
 - `tasks/<phase>/STATE.md` is updated with Done / In-progress / Next / Open questions before
   the session ends.
 
+## Agent enrollment — the one flow to know
+New machines are enrolled from the dashboard's **Enroll Agent** button (Agents view), which
+downloads `GET /api/admin/bootstrap.ps1`. That mints a `bootstrap:<hostname>` token with a
+**1-hour expiry** and embeds it, plus the coordinator cert, in an install script.
+
+The admin token is **not** an agent credential. It is fleet-wide, never expires, and cannot
+be revoked for one machine. `acceptMachineToken` (`coordinator/server/server.go`) still
+accepts it so pre-2026-07-24 agents keep working, and logs
+`[auth] DEPRECATED: <ip> authenticated with the admin token` once per host. **That log is the
+migration checklist** — when it goes quiet, the `isAdminToken` branch can be deleted. See
+`tasks/security-hardening/STATE.md` Phase 3/4.
+
 ## Open items / next actions
-- Release hygiene tracked in `tasks/release-hygiene/STATE.md` — dashboard version-display
-  fixes and agent version-staleness detection landed on `security/hardening-v0.6.0`; awaiting
-  browser verification of the stale/update badges and a decision on committing the staged
-  changes.
+- **Not deployed.** Eight commits sit on `security/hardening-v0.6.0` (SQLite WAL fix, version
+  staleness, bootstrap enrollment, per-agent installer tokens, TLS-on-first-start, dead
+  thumbprint removal, dashboard test/dep cleanup). Run `.\scripts\rebuild-and-restart.ps1`.
+- **Needs a human in a browser:** the Enroll Agent form and the stale/update version badges
+  have never been clicked against a live coordinator (no credentials on file).
+- **Needs a scratch-box install:** the installer's GUI path changed (mint order, cert wait);
+  verify a real coordinator+agent install and an agent-only install before cutting a release.
+- Release hygiene tracked in `tasks/release-hygiene/STATE.md` — steps 2-5 (merge to main,
+  re-point the v0.6.0 tag, delete poison tags incl. `v5.01`, add `publish-release.ps1`) are
+  still untouched.
 - Security hardening tracked in `tasks/security-hardening/` (see `PLAN-review-fixes.md`).
-- This CONTEXT.md restructure itself (see `REFERENCES.md` for naming conventions, root
-  CLAUDE.md for the routing table).
+- Dashboard cleanup awaiting a decision: two unused components (`Sparkline.vue`,
+  `orbit/OrbitField.vue`) and a 4× duplicated page header — see `dashboard/CONTEXT.md`.

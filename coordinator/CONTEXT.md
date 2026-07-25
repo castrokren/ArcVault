@@ -1,6 +1,6 @@
 # CONTEXT — coordinator
 
-Last updated: 2026-07-22
+Last updated: 2026-07-24
 
 ## What happens here
 The hub of ArcVault's hub-and-spoke architecture. A Go HTTPS server (default port 443)
@@ -35,6 +35,25 @@ Handlers never touch `db/` directly — they call `business/`, which calls `db/`
 - `tests/` — integration tests
 
 ## Standards / rules specific to this workspace
+- **The SQLite driver is `modernc.org/sqlite`, whose DSN pragma syntax is
+  `?_pragma=name(value)`.** mattn/go-sqlite3-style keys (`_busy_timeout=`, `_journal_mode=`)
+  are **silently ignored** — the project ran without WAL or a busy timeout for its entire
+  history because of this, which made every concurrent request a SQLITE_BUSY candidate and
+  (revocation checks being fail-closed) logged users out on tab clicks. `db/dsn_test.go`
+  pins the syntax; do not "tidy" the DSN.
+- **TLS material is generated on start, not only by `coordinator init`.**
+  `ensureTLSMaterial` (`cmd/commands.go`) defaults `cert_file`/`key_file` to `cert.pem` /
+  `key.pem` beside the executable and calls `tlscert.EnsureExists`. It is idempotent on
+  purpose — regenerating would break every agent pinning the old cert. Failure is fatal only
+  when `environment = production`, because falling through to `ListenAndServe` serves agent
+  tokens and JWTs in cleartext (which is exactly what fresh installs used to do).
+- **All machine-token auth goes through `acceptMachineToken`** (`server/server.go`), shared by
+  `authMiddleware`, `agentOrViewerRoute`, `agentOrOperatorRoute`, `agentOrAdminRoute`. Add a
+  new agent-facing route → route it through that helper, never re-inline the token checks.
+  Its `isAdminToken` branch is deprecated; see root `CONTEXT.md` for the removal gate.
+- **`tlscert.ReadCertPEM` returns PEM, not DER**, despite what an older doc comment claimed.
+  Callers needing DER (`x509.ParseCertificate`, a Windows-style SHA-1 thumbprint) must
+  `pem.Decode` first and use `block.Bytes`.
 - **Password complexity:** min 8 chars, uppercase, lowercase, digit, special character —
   enforced in `validatePasswordStrength()` (`server/auth.go`) and mirrored in
   `business/users.go`.
