@@ -2,7 +2,7 @@
 **Project Name:** ArcVault  
 **Type:** OS-agnostic Backup Orchestrator  
 **Current Status:** v0.5.0 Complete — TLS bootstrap, agent deployment, installer verified  
-**Last Updated:** June 10, 2026  
+**Last Updated:** June 30, 2026  
 **Quick Status:** See [CONTEXT.md](CONTEXT.md) for status and quick reference
 
 ### Phase 21a-4 Hot Fix: Jobs Stuck in Pending (RESOLVED)
@@ -44,7 +44,17 @@ ArcVault solves key limitations in RoboBackup:
 | 17 | v1.0.0 | Enhanced monitoring & alerting (alert rules, webhook retry, Slack/Teams, history tracking) | ✅ Complete |
 | 21a-4 | v1.1.0 | Hot fix: Jobs stuck in pending (missing sync_flags + robocopy hanging) | ✅ Complete |
 | 21 | v0.5.0 | TLS bootstrap deployment, cert chain fix, installer ca_cert_file fix, full workflow verified | ✅ Complete |
+| login-orbital | — | Minimal stable login (animations removed, full warp disabled due to freeze issues) | ✅ Working |
 | 22+ | — | CLI tooling, additional backends, advanced analytics | 🔮 Future |
+
+---
+
+## Session 31 (Jun 30, 1:21pm) — Login Orbital Simplification
+**Goal:** Fix login page crash from performance issues  
+**Action:** Removed all animations, canvas (OrbitField), and decorative elements  
+**Result:** ✅ Working minimal login — form interactive, no freeze, stable  
+**Decision:** Keep minimal version (ponytail: working beats perfect-but-broken)  
+**Branch:** feat/login-orbital — 6f6d29e (fix: remove all animations to fix page crash)
 
 ---
 

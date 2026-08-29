@@ -634,8 +634,4 @@ func TestFedAPI_RequiresAdminToken(t *testing.T) {
 	}
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
 
-func strPtr(s string) *string {
-	return &s
-}

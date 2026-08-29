@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"arcvault/coordinator/business"
 	"arcvault/coordinator/db"
 
 	"github.com/robfig/cron/v3"
@@ -81,6 +82,9 @@ func (s *Server) handleListTemplates(w http.ResponseWriter, r *http.Request) {
 
 // handleCreateTemplate handles POST /api/templates
 func (s *Server) handleCreateTemplate(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
+
 	var input struct {
 		ID       string `json:"id"`
 		Name     string `json:"name"`
@@ -91,32 +95,39 @@ func (s *Server) handleCreateTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.create", ip, false, strPtr("template"), nil, strPtr("invalid JSON"))
 		return
 	}
 
 	// validation
 	if input.ID == "" {
 		http.Error(w, "id is required", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.create", ip, false, strPtr("template"), nil, strPtr("id is required"))
 		return
 	}
 	if input.Name == "" {
 		http.Error(w, "name is required", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.create", ip, false, strPtr("template"), nil, strPtr("name is required"))
 		return
 	}
 	if input.AgentID == "" {
 		http.Error(w, "agent_id is required", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.create", ip, false, strPtr("template"), nil, strPtr("agent_id is required"))
 		return
 	}
 	if input.Command == "" {
 		http.Error(w, "command is required", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.create", ip, false, strPtr("template"), nil, strPtr("command is required"))
 		return
 	}
 	if input.Schedule == "" {
 		http.Error(w, "schedule is required", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.create", ip, false, strPtr("template"), nil, strPtr("schedule is required"))
 		return
 	}
 	if _, err := cron.ParseStandard(input.Schedule); err != nil {
 		http.Error(w, "invalid cron expression: "+err.Error(), http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.create", ip, false, strPtr("template"), nil, strPtr("invalid cron expression: "+err.Error()))
 		return
 	}
 
@@ -125,6 +136,7 @@ func (s *Server) handleCreateTemplate(w http.ResponseWriter, r *http.Request) {
 	s.db.Conn().QueryRow(`SELECT COUNT(*) > 0 FROM agents WHERE id = ?`, input.AgentID).Scan(&agentExists)
 	if !agentExists {
 		http.Error(w, "agent not found", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.create", ip, false, strPtr("template"), nil, strPtr("agent not found"))
 		return
 	}
 
@@ -146,9 +158,11 @@ func (s *Server) handleCreateTemplate(w http.ResponseWriter, r *http.Request) {
 		// SQLite UNIQUE constraint violation
 		if strings.Contains(err.Error(), "UNIQUE") {
 			http.Error(w, "template id already exists", http.StatusConflict)
+			s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.create", ip, false, strPtr("template"), &input.ID, strPtr("template id already exists"))
 			return
 		}
 		http.Error(w, "failed to create template", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.create", ip, false, strPtr("template"), &input.ID, strPtr(err.Error()))
 		return
 	}
 
@@ -160,8 +174,11 @@ func (s *Server) handleCreateTemplate(w http.ResponseWriter, r *http.Request) {
 	created, err := s.db.GetTemplate(t.ID)
 	if err != nil || created == nil {
 		http.Error(w, "failed to fetch created template", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.create", ip, false, strPtr("template"), &input.ID, strPtr("failed to fetch created template"))
 		return
 	}
+
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.create", ip, true, strPtr("template"), &input.ID, nil)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -188,15 +205,19 @@ func (s *Server) handleGetTemplate(w http.ResponseWriter, r *http.Request) {
 
 // handleUpdateTemplate handles PUT /api/templates/{id}
 func (s *Server) handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
 	id := r.PathValue("id")
 
 	existing, err := s.db.GetTemplate(id)
 	if err != nil {
 		http.Error(w, "failed to query template", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.update", ip, false, strPtr("template"), &id, strPtr(err.Error()))
 		return
 	}
 	if existing == nil {
 		http.Error(w, "template not found", http.StatusNotFound)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.update", ip, false, strPtr("template"), &id, strPtr("template not found"))
 		return
 	}
 
@@ -209,6 +230,7 @@ func (s *Server) handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.update", ip, false, strPtr("template"), &id, strPtr("invalid JSON"))
 		return
 	}
 
@@ -226,6 +248,7 @@ func (s *Server) handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
 	if input.Schedule != nil {
 		if _, err := cron.ParseStandard(*input.Schedule); err != nil {
 			http.Error(w, "invalid cron expression: "+err.Error(), http.StatusBadRequest)
+			s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.update", ip, false, strPtr("template"), &id, strPtr("invalid cron expression: "+err.Error()))
 			return
 		}
 		updated.Schedule = *input.Schedule
@@ -236,6 +259,7 @@ func (s *Server) handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.db.UpdateTemplate(updated); err != nil {
 		http.Error(w, "failed to update template", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.update", ip, false, strPtr("template"), &id, strPtr(err.Error()))
 		return
 	}
 
@@ -243,21 +267,27 @@ func (s *Server) handleUpdateTemplate(w http.ResponseWriter, r *http.Request) {
 		// non-fatal
 	}
 
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.update", ip, true, strPtr("template"), &id, nil)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(s.templateToResponse(updated))
 }
 
 // handleDeleteTemplate handles DELETE /api/templates/{id}
 func (s *Server) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
 	id := r.PathValue("id")
 
 	existing, err := s.db.GetTemplate(id)
 	if err != nil {
 		http.Error(w, "failed to query template", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.delete", ip, false, strPtr("template"), &id, strPtr(err.Error()))
 		return
 	}
 	if existing == nil {
 		http.Error(w, "template not found", http.StatusNotFound)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.delete", ip, false, strPtr("template"), &id, strPtr("template not found"))
 		return
 	}
 
@@ -265,27 +295,36 @@ func (s *Server) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.db.DeleteTemplate(id); err != nil {
 		http.Error(w, "failed to delete template", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.delete", ip, false, strPtr("template"), &id, strPtr(err.Error()))
 		return
 	}
+
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.delete", ip, true, strPtr("template"), &id, nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleRunTemplateNow handles POST /api/templates/{id}/run
 func (s *Server) handleRunTemplateNow(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
 	id := r.PathValue("id")
 
 	t, err := s.db.GetTemplate(id)
 	if err != nil {
 		http.Error(w, "failed to query template", http.StatusInternalServerError)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.run", ip, false, strPtr("template"), &id, strPtr(err.Error()))
 		return
 	}
 	if t == nil {
 		http.Error(w, "template not found", http.StatusNotFound)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.run", ip, false, strPtr("template"), &id, strPtr("template not found"))
 		return
 	}
 
 	s.fireTemplate(*t)
+
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "template.run", ip, true, strPtr("template"), &id, nil)
 
 	w.WriteHeader(http.StatusAccepted)
 }

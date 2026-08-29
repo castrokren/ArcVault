@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"arcvault/coordinator/business"
 	"arcvault/coordinator/updater"
 )
 
@@ -76,6 +77,8 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 
 // handleApplyUpdate starts the update process.
 func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
 	w.Header().Set("Content-Type", "application/json")
 
 	// Check if update is already running
@@ -103,9 +106,22 @@ func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
 		"status": "update started",
 	})
 
+	s.auditService.LogAction(
+		&claims.UserID, claims.Username, claims.Role,
+		"coordinator.update", ip, true,
+		strPtr("coordinator"), nil,
+		strPtr("triggered coordinator update"),
+	)
+
 	go func() {
 		if err := performUpdate(currentVersion, s); err != nil {
 			log.Printf("Update failed: %v", err)
+			s.auditService.LogAction(
+				&claims.UserID, claims.Username, claims.Role,
+				"coordinator.update", ip, false,
+				strPtr("coordinator"), nil,
+				strPtr(err.Error()),
+			)
 		}
 	}()
 }

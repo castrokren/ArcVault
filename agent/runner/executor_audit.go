@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -17,7 +18,7 @@ import (
 //   - No commands are rejected
 //
 // The auditor callback is called after execution to log the result.
-func ExecutorWithAudit(job Job, report ProgressFunc, auditor CommandAuditor, agentID string) (exitCode int, output string) {
+func ExecutorWithAudit(ctx context.Context, job Job, report ProgressFunc, auditor CommandAuditor, agentID string) (exitCode int, output string) {
 	// Extract program name from command
 	programName := ExtractProgramName(job.Command)
 	isWhitelisted := IsWhitelisted(programName)
@@ -38,7 +39,7 @@ func ExecutorWithAudit(job Job, report ProgressFunc, auditor CommandAuditor, age
 	auditCtx.JobID = &job.ID
 
 	// Execute the command using RealExecutor
-	exitCode, output = RealExecutor(job, report)
+	exitCode, output = RealExecutor(ctx, job, report)
 
 	// In audit mode, log result as success (command executed)
 	auditCtx.AuditResult = fmt.Sprintf("executed: exit_code=%d, output_len=%d", exitCode, len(output))

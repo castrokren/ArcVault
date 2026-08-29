@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import Jobs from './Jobs.vue'
@@ -10,7 +11,9 @@ vi.mock('../api.js', () => ({
   deleteJob: vi.fn(() => Promise.resolve()),
   getFederationJobs: vi.fn(() => Promise.resolve({ jobs: [], stale: false })),
   getAgents: vi.fn(() => Promise.resolve({ agents: [{ id: 'agent-1', name: 'Agent 1' }] })),
-  getGroups: vi.fn(() => Promise.resolve({ groups: [] }))
+  getGroups: vi.fn(() => Promise.resolve({ groups: [] })),
+  getToken: vi.fn(() => 'mock-token'),
+  getJobRuns: vi.fn(() => Promise.resolve({ data: [] }))
 }))
 
 // Mock composition API inject
@@ -26,6 +29,7 @@ describe('Jobs.vue Integration with SyncFlagsBuilder', () => {
   let wrapper
 
   beforeEach(async () => {
+    vi.clearAllMocks()
     wrapper = mount(Jobs, {
       global: {
         stubs: {

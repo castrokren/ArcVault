@@ -136,6 +136,14 @@
           <td>{{ formatDate(job.created_at) }}</td>
           <td v-if="!selectedSite">
             <button class="action-btn" @click="viewLogs(job.id)">Logs</button>
+            <button
+              v-if="(job.status === 'pending' || job.status === 'running') && auth.hasRole('operator')"
+              class="cancel-btn"
+              :disabled="cancellingJobId === job.id"
+              @click="cancelJob(job)"
+            >
+              {{ cancellingJobId === job.id ? 'Canceling...' : 'Cancel' }}
+            </button>
             <button class="danger-sm" @click="removeJob(job.id)">Delete</button>
           </td>
         </tr>
@@ -156,7 +164,7 @@
       <div class="modal">
         <div class="modal-header">
           <h3>Job Logs: {{ logsJobName }}</h3>
-          <button class="close-btn" @click="showLogsModal = false">✕</button>
+          <button class="modal-close" @click="showLogsModal = false">×</button>
         </div>
         <div class="modal-body">
           <div v-if="logsLoading" class="skeleton-group" aria-busy="true">
@@ -185,7 +193,8 @@
 
 <script setup>
 import { ref, computed, onMounted, watch, inject } from 'vue'
-import { getJobs, createJob as apiCreateJob, deleteJob, getFederationJobs, getAgents, getGroups, getJobRuns, getToken } from '../api'
+import { getJobs, createJob as apiCreateJob, deleteJob, cancelJob as apiCancelJob, getFederationJobs, getAgents, getGroups, getJobRuns, getToken } from '../api'
+import { useAuth } from '../composables/useAuth'
 import { formatDate, fmtStaleTime } from '../utils/format.js'
 import Pagination from '../components/Pagination.vue'
 import ScheduleBuilder from '../components/ScheduleBuilder.vue'
@@ -195,6 +204,9 @@ import { useFederationLag } from '../composables/useFederationLag.js'
 const props = defineProps(['lastEvent'])
 
 const selectedSite = inject('selectedSite', ref(null))
+
+const { hasRole } = useAuth()
+const auth = useAuth()
 
 const result = ref({ data: [], total: 0, page: 1, pages: 0, limit: 25 })
 const fedJobs = ref([])
@@ -221,7 +233,7 @@ const groups = ref([])
 const credentials = ref([])
 const filteredCredentials = ref([])
 
-const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', credential_profile_id: '', sync_flags: { mirror: false, max_age: null, min_age: null, max_size: null, exclude_files: [], exclude_dirs: [] } })
+const form = ref({ dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', credential_profile_id: '', sync_flags: {} })
 
 // Logs modal state
 const showLogsModal = ref(false)
@@ -340,9 +352,23 @@ async function createJob() {
     if (!payload.schedule) delete payload.schedule
     if (form.value.dispatchMode === 'agent') delete payload.group_id
     if (form.value.dispatchMode === 'group') delete payload.agent_id
+    // Strip null/empty/false values from sync_flags
+    if (payload.sync_flags) {
+      const cleaned = {}
+      for (const [key, value] of Object.entries(payload.sync_flags)) {
+        const keep = value !== null && value !== false && value !== '' &&
+          !(Array.isArray(value) && value.length === 0)
+        if (keep) cleaned[key] = value
+      }
+      if (Object.keys(cleaned).length === 0) {
+        delete payload.sync_flags
+      } else {
+        payload.sync_flags = cleaned
+      }
+    }
 
     await apiCreateJob(payload)
-    form.value = { dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', sync_flags: { mirror: false, max_age: null, min_age: null, max_size: null, exclude_files: [], exclude_dirs: [] } }
+    form.value = { dispatchMode: 'agent', agent_id: '', group_id: '', name: '', source_path: '', dest_path: '', schedule: '', sync_flags: {} }
     showForm.value = false
     page.value = 1
     await load()
@@ -360,6 +386,26 @@ async function removeJob(id) {
     await load()
   } catch (e) {
     error.value = e.message
+  }
+}
+
+const cancellingJobId = ref(null)
+
+async function cancelJob(job) {
+  if (!confirm(`Are you sure you want to cancel job "${job.name}"?`)) return
+  cancellingJobId.value = job.id
+  try {
+    const response = await apiCancelJob(job.id)
+    if (!response.ok) {
+      const text = await response.text()
+      alert(`Failed to cancel job: ${text}`)
+      return
+    }
+    await load()
+  } catch (err) {
+    alert(`Failed to cancel job: ${err}`)
+  } finally {
+    cancellingJobId.value = null
   }
 }
 
@@ -426,265 +472,71 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.page-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; }
-.page-header h1 { margin: 0; flex: 1; }
-.page-header button {
-  padding: 0.4rem 1rem;
-  background: #4f8ef7;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.stale-banner {
-  background: rgba(255, 167, 38, 0.12);
-  border: 1px solid rgba(255, 167, 38, 0.4);
-  color: #ffa726;
-  padding: 0.5rem 0.85rem;
-  border-radius: 4px;
-  font-size: 0.85rem;
-  margin-bottom: 1rem;
-}
-
-.form-card {
-  background: #1e1e2e;
-  border: 1px solid #333;
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-}
-.form-card h3 { margin: 0 0 1rem; }
-
-.dispatch-mode {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-}
-
-.dispatch-mode label { color: #aaa; font-size: 0.9rem; }
-
-.mode-buttons {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.mode-btn {
-  flex: 1;
-  padding: 0.6rem 1rem;
-  background: #333;
-  color: #aaa;
-  border: 1px solid #444;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: all 0.2s;
-}
-
-.mode-btn:hover {
-  background: #404040;
-  border-color: #555;
-}
-
-.mode-btn.active {
-  background: #4f8ef7;
-  color: #fff;
-  border-color: #4f8ef7;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: 160px 1fr;
-  gap: 0.6rem 1rem;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-.form-grid label { color: #aaa; font-size: 0.9rem; }
-.form-grid input,
-.form-grid select {
-  padding: 0.4rem 0.6rem;
-  border-radius: 4px;
-  border: 1px solid #444;
-  background: #111;
-  color: #fff;
-  font-size: 0.9rem;
-}
-
-.form-grid select {
-  cursor: pointer;
-}
-
-.form-grid input:focus,
-.form-grid select:focus {
-  outline: none;
-  border-color: #4f8ef7;
-  box-shadow: 0 0 0 2px rgba(79, 142, 247, 0.1);
-}
-.optional { color: #666; font-size: 0.8rem; }
+/* Jobs-specific styles using global design tokens.
+   Global token-driven classes from style.css handle: .page-header, .form-card,
+   .form-grid, .dispatch-mode, .mode-btn, .table, .badge, .chip, .search-input,
+   .filters, .error, .empty, .modal-overlay, .modal, .modal-header, .modal-body,
+   .modal-footer, .modal-close, .mono, .danger-sm. */
 
 .sync-flags-row {
   margin-bottom: 1rem;
 }
 
-.form-actions { display: flex; gap: 0.5rem; }
-button.primary {
-  padding: 0.4rem 1.2rem;
-  background: #4caf50;
-  color: #fff;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.error { color: #e55; margin: 0.5rem 0; }
-.empty { color: #888; margin: 2rem 0; }
-
-.filters { margin-bottom: 1.5rem; }
-
-.search-input {
-  width: 100%;
-  padding: 0.5rem 0.75rem;
-  margin-bottom: 1rem;
-  border-radius: 4px;
-  border: 1px solid #2a2a3e;
-  background: #0f0f1a;
-  color: #fff;
-  font-size: 0.95rem;
-}
-
-.search-input:focus {
-  outline: none;
-  border-color: #4f8ef7;
-  box-shadow: 0 0 0 2px rgba(79, 142, 247, 0.1);
-}
-
-.filter-chips { display: flex; gap: 0.5rem; flex-wrap: wrap; }
-
-.chip {
-  padding: 0.4rem 1rem;
-  border-radius: 999px;
-  border: 1px solid #2a2a3e;
-  background: transparent;
-  color: #aaa;
-  cursor: pointer;
-  font-size: 0.85rem;
-  transition: all 0.2s;
-}
-
-.chip:hover { border-color: #4f8ef7; color: #4f8ef7; }
-.chip.active { background: #4f8ef7; border-color: #4f8ef7; color: #fff; }
-
-.table { width: 100%; border-collapse: collapse; }
-.table th, .table td {
-  text-align: left;
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid #2a2a3e;
-}
-.table th { color: #888; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; }
-.mono { font-family: monospace; font-size: 0.85rem; }
-
-.badge {
-  display: inline-block;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-.badge.pending   { background: #2a2a1a; color: #f0b429; }
-.badge.running   { background: #1a2a3a; color: #4f8ef7; }
-.badge.completed { background: #1a3a1a; color: #4caf50; }
-.badge.failed    { background: #3a1a1a; color: #e55; }
-
-button.danger-sm {
-  padding: 0.2rem 0.6rem;
-  background: #3a1a1a;
-  color: #e55;
-  border: 1px solid #e55;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-
+/* Table action buttons — Jobs-specific */
 .action-btn {
-  padding: 0.2rem 0.6rem;
-  background: #1a3a4a;
-  color: #4f8ef7;
-  border: 1px solid #4f8ef7;
-  border-radius: 4px;
+  padding: 0.22rem 0.65rem;
+  background: var(--accent-2-dim);
+  border: 1px solid var(--accent-2-border);
+  border-radius: var(--radius-ctrl);
+  color: var(--accent-2);
   cursor: pointer;
-  font-size: 0.8rem;
-  transition: all 0.15s ease;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: filter 0.15s, transform 0.15s;
 }
-
 .action-btn:hover {
-  background: #2a4a5a;
-  color: #fff;
+  filter: brightness(1.15);
+  transform: translateY(-1px);
 }
 
-/* Logs Modal */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.7);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
+.cancel-btn {
+  padding: 0.22rem 0.65rem;
+  background: var(--bg-warning);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: var(--radius-ctrl);
+  color: var(--color-warning);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: filter 0.15s;
 }
+.cancel-btn:hover:not(:disabled) { filter: brightness(1.1); }
+.cancel-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* ponytail: cancelled/canceling badges not in global — keep here */
+:deep(.badge.canceling) { background: var(--bg-warning);  color: var(--color-warning); border-color: rgba(251,191,36,0.25); }
+:deep(.badge.cancelled) { background: var(--bg-elevated); color: var(--text-muted);    border-color: var(--border-default); }
+
+/* Logs modal — wider than global (900px vs 520px) */
 .modal {
-  background: #1e1e2e;
-  border: 1px solid #333;
-  border-radius: 8px;
-  width: 90%;
-  max-width: 900px;
-  max-height: 80vh;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
-}
-
-.modal-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1.5rem;
-  border-bottom: 1px solid #333;
-}
-
-.modal-header h3 {
-  margin: 0;
-  font-size: 1.1rem;
+  width: min(900px, 94vw);
+  max-height: 82vh;
 }
 
 .close-btn {
   background: none;
   border: none;
-  color: #888;
-  font-size: 1.5rem;
+  color: var(--text-muted);
+  font-size: 1.1rem;
   cursor: pointer;
-  padding: 0;
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  line-height: 1;
+  transition: color 0.15s, background 0.15s;
 }
-
-.close-btn:hover {
-  color: #fff;
-}
-
-.modal-body {
-  flex: 1;
-  overflow: auto;
-  padding: 1.5rem;
-}
+.close-btn:hover { color: var(--text-primary); background: var(--bg-card); }
 
 .logs-container {
   display: flex;
@@ -696,66 +548,49 @@ button.danger-sm {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
-  padding: 1rem;
-  background: #252535;
-  border-radius: 4px;
-  font-size: 0.9rem;
+  padding: 0.85rem 1rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-ctrl);
+  font-size: 0.85rem;
 }
+.run-info div { display: flex; flex-direction: column; gap: 0.25rem; }
+.run-info strong { color: var(--text-muted); font-size: 0.72rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; }
 
-.run-info div {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-}
-
-.run-info strong {
-  color: #aaa;
-}
-
-.exit-success {
-  color: #4caf50;
-  font-weight: 600;
-}
-
-.exit-fail {
-  color: #e55;
-  font-weight: 600;
-}
+.exit-success { color: var(--color-success); font-weight: 600; }
+.exit-fail    { color: var(--color-error);   font-weight: 600; }
 
 .logs-output {
-  background: #0f0f1a;
-  border: 1px solid #333;
-  border-radius: 4px;
-  padding: 1rem;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  max-height: 400px;
+  background: var(--bg-base);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-ctrl);
+  padding: 0.85rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  max-height: 420px;
   overflow: auto;
-  color: #ccc;
+  color: var(--text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
-.modal-footer {
-  padding: 1rem 1.5rem;
-  border-top: 1px solid #333;
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-}
-
 .modal-footer button.secondary {
+  display: inline-flex;
+  align-items: center;
   padding: 0.4rem 1rem;
-  background: #333;
-  color: #aaa;
-  border: 1px solid #444;
-  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-ctrl);
   cursor: pointer;
-  font-size: 0.9rem;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: background 0.15s, border-color 0.15s;
 }
-
 .modal-footer button.secondary:hover {
-  background: #404040;
-  color: #fff;
+  background: var(--bg-card);
+  border-color: var(--border-strong);
 }
 </style>

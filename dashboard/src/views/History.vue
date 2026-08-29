@@ -1,7 +1,8 @@
 <template>
   <div class="history-view">
-    <div class="history-header">
-      <h2 class="history-title">History</h2>
+    <div class="page-header">
+      <h1>History</h1>
+      <button @click="loadTableRuns" :disabled="runsLoading">{{ runsLoading ? 'Loading...' : 'Refresh' }}</button>
     </div>
 
     <!-- Stale data banner: federation site proxy data -->
@@ -15,25 +16,36 @@
 
     <!-- ── Visualization panels (local only) ─────────────── -->
     <!-- Stat cards (local only, fed from already-fetched runs) -->
-    <div v-if="!selectedSite && !tlLoading" class="history-stats history-section">
+    <div v-if="!selectedSite && !tlLoading" class="stat-grid history-section">
+      <!-- Total runs · bar chart -->
       <div class="stat-card">
-        <span class="stat-label">Recent Runs</span>
+        <span class="stat-label">Total Runs</span>
         <span class="stat-value">{{ statTotals.total }}</span>
-        <Sparkline class="stat-spark" :points="statBuckets.total" color="var(--accent-2)" />
+        <div class="bar-chart">
+          <span v-for="(h, i) in statBuckets.total" :key="i" :style="{ height: barPct(h, statBuckets.total) }"></span>
+        </div>
       </div>
+
+      <!-- Completed · area sparkline -->
       <div class="stat-card">
         <span class="stat-label">Completed</span>
         <span class="stat-value">{{ statTotals.completed }}</span>
-        <Sparkline class="stat-spark" :points="statBuckets.completed" color="var(--color-success)" />
+        <svg class="spark-area spark-success" viewBox="0 0 130 50" preserveAspectRatio="none">
+          <path class="area" :d="completedSpark.area" />
+          <polyline class="line" :points="completedSpark.line" />
+        </svg>
       </div>
-      <div class="stat-card">
-        <span class="stat-label">Failed</span>
-        <span class="stat-value">{{ statTotals.failed }}</span>
-        <Sparkline class="stat-spark" :points="statBuckets.failed" color="var(--color-error)" />
-      </div>
-      <div class="stat-card">
-        <span class="stat-label">Success Rate</span>
-        <span class="stat-value">{{ statTotals.rate }}</span>
+
+      <!-- Success Rate · donut -->
+      <div class="stat-card is-donut">
+        <div class="stat-body">
+          <span class="stat-label">Success Rate</span>
+          <span class="stat-value">{{ statTotals.rate }}</span>
+          <span class="stat-sub">{{ statTotals.failed }} failed</span>
+        </div>
+        <div class="donut" :style="{ '--pct': statRateNum }">
+          <div class="donut-hole">{{ statRateNum }}</div>
+        </div>
       </div>
     </div>
 
@@ -65,31 +77,32 @@
         <div class="table-filters" v-if="!selectedSite">
           <input
             v-model="search"
-            class="filter-input"
+            class="search-input"
             placeholder="search job / agent…"
             @input="onFilterChange"
           />
-          <select v-model="filterStatus" class="filter-select" @change="onFilterChange">
-            <option value="">All statuses</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
-            <option value="running">Running</option>
-          </select>
-          <button v-if="filterJobId || filterAgentId || filterStatus || search" class="btn-clear" @click="clearFilters">
-            ✕ clear
+          <div class="filter-chips">
+            <button v-for="s in ['', 'completed', 'failed', 'running']" :key="s"
+              class="chip" :class="{ active: filterStatus === s }"
+              @click="filterStatus = s; onFilterChange()">
+              {{ s || 'All' }}
+            </button>
+          </div>
+          <button v-if="filterJobId || filterAgentId || filterStatus || search" class="btn btn-ghost" @click="clearFilters">
+            ✕ Clear
           </button>
         </div>
       </div>
 
       <!-- active filter pills -->
-      <div v-if="!selectedSite && (filterJobId || filterAgentId)" class="filter-pills">
-        <span v-if="filterJobId" class="pill">
+      <div v-if="!selectedSite && (filterJobId || filterAgentId)" class="filter-chips" style="margin-bottom: 0.65rem;">
+        <span v-if="filterJobId" class="chip active" style="cursor: default;">
           job: {{ filterJobId }}
-          <button class="pill-x" @click="onSelectJob(null)">✕</button>
+          <button class="chip-x" @click="onSelectJob(null)" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;margin-left:0.25rem;font-size:0.7rem;">✕</button>
         </span>
-        <span v-if="filterAgentId" class="pill">
+        <span v-if="filterAgentId" class="chip active" style="cursor: default;">
           agent: {{ filterAgentId }}
-          <button class="pill-x" @click="onSelectAgent(null)">✕</button>
+          <button class="chip-x" @click="onSelectAgent(null)" style="background:none;border:none;color:inherit;cursor:pointer;padding:0;margin-left:0.25rem;font-size:0.7rem;">✕</button>
         </span>
       </div>
 
@@ -104,7 +117,7 @@
       </div>
 
       <div v-else class="table-wrap">
-        <table class="runs-table">
+        <table class="table">
           <thead>
             <tr>
               <th>Status</th>
@@ -124,7 +137,7 @@
               @click="selectRun(run)"
             >
               <td>
-                <span class="status-badge" :class="run.status">{{ run.status }}</span>
+                <span class="badge" :class="run.status">{{ run.status }}</span>
               </td>
               <td class="run-job">{{ run.job_name || run.job_id }}</td>
               <td class="run-agent">{{ run.agent_hostname || run.agent_id }}</td>
@@ -144,7 +157,7 @@
             <span class="detail-subtitle">Run on {{ selectedRun.agent_hostname || selectedRun.agent_id }} · {{ fmtTime(selectedRun.started_at) }}</span>
           </div>
           <div class="detail-header-right">
-            <span class="status-badge" :class="selectedRun.status">{{ selectedRun.status }}</span>
+            <span class="badge" :class="selectedRun.status">{{ selectedRun.status }}</span>
             <button class="detail-close" @click="selectedRun = null">✕</button>
           </div>
         </div>
@@ -204,7 +217,6 @@
 import JobTimeline from '../components/JobTimeline.vue'
 import AgentRunChart from '../components/AgentRunChart.vue'
 import Pagination from '../components/Pagination.vue'
-import Sparkline from '../components/Sparkline.vue'
 import { getJobRuns, getFederationHistory } from '../api'
 import { fmtStaleTime } from '../utils/format.js'
 import { inject, ref } from 'vue'
@@ -212,7 +224,7 @@ import { useFederationLag } from '../composables/useFederationLag.js'
 
 export default {
   name: 'HistoryView',
-  components: { JobTimeline, AgentRunChart, Pagination, Sparkline },
+  components: { JobTimeline, AgentRunChart, Pagination },
 
   setup() {
     const selectedSite = inject('selectedSite', ref(null))
@@ -310,6 +322,19 @@ export default {
         failed,
         rate: done ? Math.round((completed / done) * 100) + '%' : '—'
       }
+    },
+
+    statRateNum() {
+      const completed = this.tlRuns.filter(r => r.status === 'completed').length
+      const failed = this.tlRuns.filter(r => r.status === 'failed').length
+      const done = completed + failed
+      return done ? Math.round((completed / done) * 100) : 0
+    },
+
+    completedSpark() {
+      const data = this.statBuckets.completed
+      if (!data || data.length < 2) return { line: '', area: '' }
+      return this.buildSpark(data)
     },
 
     agentChartData() {
@@ -415,6 +440,27 @@ export default {
       }
     },
 
+    barPct(v, arr) {
+      const max = Math.max(...arr, 1)
+      return Math.round((v / max) * 100) + '%'
+    },
+
+    buildSpark(data, w = 130, h = 50, pad = 6) {
+      const max = Math.max(...data), min = Math.min(...data)
+      const span = max - min || 1
+      const step = w / (data.length - 1)
+      const pts = data.map((v, i) => {
+        const x = Math.round(i * step)
+        const y = Math.round(pad + (h - pad * 2) * (1 - (v - min) / span))
+        return [x, y]
+      })
+      const line = pts.map(p => p.join(',')).join(' ')
+      const area = `M${pts[0][0]},${pts[0][1]} ` +
+        pts.slice(1).map(p => `L${p[0]},${p[1]}`).join(' ') +
+        ` L${w},${h} L0,${h} Z`
+      return { line, area }
+    },
+
     onSelectJob(jobId) { this.filterJobId = jobId; this.loadTableRuns() },
     onSelectAgent(agentId) { this.filterAgentId = agentId; this.loadTableRuns() },
     onFilterChange() { this.loadTableRuns(1) },
@@ -459,25 +505,18 @@ export default {
 </script>
 
 <style scoped>
-/* stale-banner covered globally */
+/* Global classes handle: .page-header, .table, .badge, .search-input,
+   .filter-chips, .chip, .btn-ghost, .stale-banner, .stat-card.
+   Only History-specific layout and the detail panel remain below. */
 
 .history-view { max-width: 1280px; margin: 0 auto; }
-.history-header { margin-bottom: 1.25rem; }
-.history-title {
-  font-family: var(--font-display);
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  letter-spacing: -0.01em;
-}
-
 .history-section { margin-bottom: 1.1rem; }
 
-.history-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 0.9rem;
-}
+/* .history-stats replaced by global .stat-grid (charts.css) */
+
+/* Completed sparkline — success green instead of default accent */
+.spark-success .area { fill: color-mix(in oklab, var(--color-success) 6%, transparent); }
+.spark-success .line { stroke: var(--color-success); }
 
 .section-label {
   font-family: var(--font-body);
@@ -491,7 +530,7 @@ export default {
 .history-table-card {
   background: var(--bg-card);
   border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 1.1rem 1.25rem 1rem;
 }
 
@@ -511,148 +550,24 @@ export default {
   margin-left: auto;
 }
 
-.filter-input,
-.filter-select {
-  background: var(--bg-input);
-  border: 1px solid var(--border-default);
-  border-radius: 5px;
-  color: var(--text-primary);
-  font-family: var(--font-body);
-  font-size: 0.82rem;
-  padding: 0.3rem 0.65rem;
-  outline: none;
-  transition: border-color 0.15s;
-}
-.filter-input:focus,
-.filter-select:focus { border-color: var(--accent); }
-.filter-input { width: 185px; }
-
-.btn-clear {
-  background: none;
-  border: 1px solid var(--border-default);
-  border-radius: 5px;
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: 0.78rem;
-  padding: 0.3rem 0.65rem;
-  cursor: pointer;
-  transition: color 0.12s, border-color 0.12s;
-}
-.btn-clear:hover { color: var(--color-error); border-color: var(--color-error); }
-
-.filter-pills { display: flex; gap: 0.5rem; margin-bottom: 0.65rem; }
-.pill {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  background: var(--accent-dim);
-  border: 1px solid var(--accent-border);
-  border-radius: 20px;
-  padding: 0.2rem 0.65rem;
-  font-family: var(--font-body);
-  font-size: 0.75rem;
-  color: var(--accent);
-}
-.pill-x {
-  background: none;
-  border: none;
-  color: var(--accent);
-  font-size: 0.7rem;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
-}
-
-.table-loading {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: 0.82rem;
-  padding: 1.25rem 0;
-}
-.tl-loading-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: blink 1s step-start infinite;
-  flex-shrink: 0;
-}
-@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.15; } }
-
-.table-empty {
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  padding: 1.5rem 0;
-  text-align: center;
+.table-filters .search-input {
+  width: 185px;
+  margin-bottom: 0;
 }
 
 .table-wrap { overflow-x: auto; }
 
-.runs-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-}
-.runs-table th {
-  text-align: left;
-  padding: 0.5rem 0.65rem;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border-default);
-}
-.runs-table td {
-  padding: 0.55rem 0.65rem;
-  border-bottom: 1px solid var(--border-subtle);
-  vertical-align: middle;
-}
+.run-row { cursor: pointer; }
 .run-row:last-child td { border-bottom: none; }
 .run-row:hover td      { background: var(--bg-elevated); }
-.run-row.failed td     { background: rgba(255, 92, 122, 0.02); }
-
-.run-job               { color: var(--text-primary); font-weight: 500; }
-.run-agent             { color: var(--text-muted); font-size: 0.82rem; }
-.run-time, .run-dur    { color: var(--text-muted); white-space: nowrap; }
-.run-exit              { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.8rem; }
-.exit-nonzero          { color: var(--color-error); font-weight: 600; }
-
-.run-row               { cursor: pointer; }
+.run-row.failed td     { background: var(--bg-error); }
 .run-row.run-selected td { background: var(--accent-dim); }
-
-/* Use global .badge where possible; status-badge is an alias kept for this view */
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.2rem 0.55rem;
-  border-radius: 4px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-.status-badge.completed { background: var(--bg-success); color: var(--color-success); }
-.status-badge.failed    { background: var(--bg-error);   color: var(--color-error);   }
-.status-badge.running   { background: var(--bg-running); color: var(--color-running); }
-
-.btn-output {
-  background: none;
-  border: 1px solid var(--border-default);
-  border-radius: 4px;
-  color: var(--text-muted);
-  font-family: var(--font-body);
-  font-size: 0.78rem;
-  padding: 0.2rem 0.6rem;
-  cursor: pointer;
-  transition: color 0.1s, border-color 0.1s;
-}
-.btn-output:hover { color: var(--accent); border-color: var(--accent-border); }
+.run-job   { color: var(--text-primary); font-weight: 500; }
+.run-agent { color: var(--text-muted); font-size: 0.82rem; }
+.run-time,
+.run-dur   { color: var(--text-muted); white-space: nowrap; }
+.run-exit  { color: var(--text-muted); font-family: var(--font-mono); font-size: 0.8rem; }
+.exit-nonzero { color: var(--color-error); font-weight: 600; }
 
 .table-pagination { margin-top: 0.85rem; }
 
@@ -660,7 +575,7 @@ export default {
 .detail-panel {
   margin-top: 0.75rem;
   border: 1px solid var(--accent-border);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   background: var(--bg-card);
   overflow: hidden;
 }
@@ -675,24 +590,9 @@ export default {
   gap: 0.75rem;
 }
 
-.detail-title-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
-.detail-job-name {
-  font-family: var(--font-body);
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.detail-subtitle {
-  font-family: var(--font-body);
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
+.detail-title-block { display: flex; flex-direction: column; gap: 0.2rem; }
+.detail-job-name { font-weight: 600; color: var(--text-primary); }
+.detail-subtitle { font-size: 0.75rem; color: var(--text-muted); }
 
 .detail-header-right {
   display: flex;
@@ -730,7 +630,6 @@ export default {
 .detail-stat:last-child { border-right: none; }
 
 .detail-stat-label {
-  font-family: var(--font-body);
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -738,11 +637,7 @@ export default {
   color: var(--text-muted);
 }
 
-.detail-stat-value {
-  font-family: var(--font-body);
-  font-size: 0.85rem;
-  color: var(--text-primary);
-}
+.detail-stat-value { font-size: 0.85rem; color: var(--text-primary); }
 
 .detail-paths {
   display: flex;
@@ -752,12 +647,7 @@ export default {
   flex-wrap: wrap;
 }
 
-.detail-path-item {
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-
+.detail-path-item { display: flex; flex-direction: column; gap: 0.2rem; }
 .detail-path {
   font-family: var(--font-mono);
   font-size: 0.78rem;

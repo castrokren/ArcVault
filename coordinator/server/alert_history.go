@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"arcvault/coordinator/business"
 	"arcvault/coordinator/db"
 )
 
@@ -29,10 +30,14 @@ func (s *Server) handleListAlertHistory(w http.ResponseWriter, r *http.Request) 
 
 // handleRetryAlert manually retries sending an alert (admin)
 func (s *Server) handleRetryAlert(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
+
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		http.Error(w, "invalid id", http.StatusBadRequest)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "alert_rule.retry", ip, false, strPtr("alert_rule"), nil, strPtr("invalid id"))
 		return
 	}
 
@@ -44,6 +49,9 @@ func (s *Server) handleRetryAlert(w http.ResponseWriter, r *http.Request) {
 	// 4. Update the history status
 
 	log.Printf("[alert_history] retry requested for alert %d", id)
+
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "alert_rule.retry", ip, true, strPtr("alert_rule"), &idStr, nil)
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":     id,

@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"testing"
 )
 
@@ -22,7 +23,7 @@ func TestRealExecutor_LogsCommandExecution(t *testing.T) {
 	}
 
 	// Execute with audit logging
-	_, _ = ExecutorWithAudit(job, Noop, mockAuditor, "test-agent-1")
+	_, _ = ExecutorWithAudit(context.Background(), job, Noop, mockAuditor, "test-agent-1")
 
 	// Verify the audit context was populated
 	if capturedCtx.CommandString != "rsync -a /src /dest" {
@@ -68,7 +69,7 @@ func TestAuditModeLogs_DoesNotReject(t *testing.T) {
 	}
 
 	// In audit mode, this should still execute (not reject)
-	_, _ = ExecutorWithAudit(job, Noop, mockAuditor, "test-agent-1")
+	_, _ = ExecutorWithAudit(context.Background(), job, Noop, mockAuditor, "test-agent-1")
 
 	// Should have logged the command
 	if len(auditLog) != 1 {

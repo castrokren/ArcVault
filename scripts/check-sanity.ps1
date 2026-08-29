@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # check-sanity.ps1
 # Smoke-test ArcVault to catch the three recurring regressions:
 #

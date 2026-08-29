@@ -17,8 +17,14 @@ func dialTestWS(t *testing.T, s *Server) (*websocket.Conn, *httptest.Server) {
 	ts := httptest.NewServer(s.router)
 	url := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
 
+	jwtToken, err := GenerateJWT(1, "admin", "admin", false, s.cfg.JWTSecret)
+	if err != nil {
+		ts.Close()
+		t.Fatalf("failed to generate JWT: %v", err)
+	}
+
 	conn, _, err := websocket.DefaultDialer.Dial(url, http.Header{
-		"Authorization": []string{authHeader()},
+		"Authorization": []string{"Bearer " + jwtToken},
 	})
 	if err != nil {
 		ts.Close()
@@ -69,8 +75,12 @@ func TestHub_broadcastDeliveredToMultipleClients(t *testing.T) {
 	defer conn1.Close()
 
 	url := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
+	jwtToken2, err := GenerateJWT(2, "admin", "admin", false, s.cfg.JWTSecret)
+	if err != nil {
+		t.Fatalf("failed to generate JWT: %v", err)
+	}
 	conn2, _, err := websocket.DefaultDialer.Dial(url, http.Header{
-		"Authorization": []string{authHeader()},
+		"Authorization": []string{"Bearer " + jwtToken2},
 	})
 	if err != nil {
 		t.Fatalf("failed to connect second client: %v", err)

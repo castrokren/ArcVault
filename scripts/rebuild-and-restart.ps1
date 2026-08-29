@@ -1,4 +1,4 @@
-# ArcVault Rebuild & Restart Script
+﻿# ArcVault Rebuild & Restart Script
 # Run from an Admin PowerShell in C:\Projects\ArcVault2.0
 # Usage: .\rebuild-and-restart.ps1
 
@@ -202,7 +202,7 @@ if ((Test-Path $agentConfigPath) -and (Test-Path $coordConfigPath)) {
         $resp = Invoke-RestMethod -Uri "$coordBase/api/agent-tokens" `
             -Method POST `
             -Headers @{ Authorization = "Bearer $adminToken"; "Content-Type" = "application/json" } `
-            -Body (@{ agent_id = $agentId } | ConvertTo-Json) -TimeoutSec 5
+            -Body (@{ agent_id = $agentId } | ConvertTo-Json) -TimeoutSec 5 -SkipCertificateCheck
 
         $newToken = $resp.token
         # Update auth_token in agent-config.yaml in-place.
@@ -225,7 +225,7 @@ sc.exe start arcvault-agent
 Start-Sleep -Seconds 4
 
 $token  = (Get-Content $coordConfigPath -ErrorAction SilentlyContinue | ConvertFrom-Json -ErrorAction SilentlyContinue).admin_token
-$agents = Invoke-RestMethod -Uri "$coordBase/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -ErrorAction SilentlyContinue
+$agents = Invoke-RestMethod -Uri "$coordBase/api/agents" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5 -SkipCertificateCheck -ErrorAction SilentlyContinue
 
 if ($agents -and $agents.data.Count -gt 0) {
     $agentCount = $agents.data.Count

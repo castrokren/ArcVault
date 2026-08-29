@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git log *)",
+      "Bash(git diff *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(git worktree list)",
+      "Bash(git rev-parse *)",
+      "Bash(git describe *)",
+      "Bash(gh pr *)",
+      "Bash(gh issue *)",
+      "Bash(gh api *)",
+      "Bash(ls *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(go test *)",
+      "Bash(go build *)",
+      "Bash(go run *)",
+      "Bash(go mod *)",
+      "Bash(npm run *)"
+    ]
+  },
+  "hooks": {
+    "session:end": [
+      {
+        "command": "node",
+        "args": [".claude/hooks/cost-tracker.js"]
+      }
+    ]
+  }
+}

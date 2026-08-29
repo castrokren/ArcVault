@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="700" viewBox="0 0 900 700">
+<defs>
+  <style>
+    text { font-family: 'Segoe UI', Helvetica, Arial, sans-serif; }
+    .title { font-size: 16px; font-weight: 600; fill: #2C2C2A; }
+    .label { font-size: 12px; font-weight: 500; fill: #2C2C2A; }
+    .small { font-size: 11px; fill: #5F5E5A; }
+    .component { stroke: #222638; stroke-width: 1; }
+    .lock { fill: #00d4aa; }
+    .danger { fill: #ff4d6d; }
+    .success { fill: #10b981; }
+  </style>
+
+  <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="3" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0 0 L10 3 L0 6 Z" fill="#10b981"/>
+  </marker>
+
+  <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="3" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M0 0 L10 3 L0 6 Z" fill="#ff4d6d"/>
+  </marker>
+</defs>
+
+<rect width="900" height="700" fill="#faf9f5"/>
+
+<!-- Title -->
+<text class="title" x="450" y="30" text-anchor="middle">Agent Certificate Pinning Flow</text>
+<text class="small" x="450" y="48" text-anchor="middle">How agents validate coordinator identity to prevent MITM attacks</text>
+
+<!-- ==================== STEP 1: REGISTRATION ==================== -->
+<g id="step1">
+  <text class="label" x="40" y="80" fill="#0F6E56">① Registration (First Time)</text>
+
+  <!-- Coordinator -->
+  <rect x="60" y="100" width="120" height="60" rx="4" fill="#E1F5EE" class="component"/>
+  <text class="small" x="120" y="120" text-anchor="middle">Coordinator</text>
+  <text class="small" x="120" y="135" text-anchor="middle">cert.pem</text>
+  <circle cx="155" cy="115" r="6" class="lock"/>
+
+  <!-- Arrow down -->
+  <path d="M 120 160 L 120 200" stroke="#10b981" stroke-width="2" fill="none" marker-end="url(#arrowGreen)"/>
+  <rect x="50" y="175" width="140" height="20" rx="3" fill="#d1fae5" stroke="#10b981" stroke-width="0.5"/>
+  <text class="small" x="120" y="187" text-anchor="middle" fill="#065f46">POST /api/agents/register</text>
+
+  <!-- Agent -->
+  <rect x="60" y="220" width="120" height="60" rx="4" fill="#EEEDFE" class="component"/>
+  <text class="small" x="120" y="240" text-anchor="middle">Agent</text>
+  <text class="small" x="120" y="255" text-anchor="middle">(Fresh install)</text>
+
+  <!-- Arrow right -->
+  <path d="M 180 250 L 280 250" stroke="#10b981" stroke-width="2" fill="none" marker-end="url(#arrowGreen)"/>
+
+  <!-- Certificate file -->
+  <rect x="290" y="220" width="140" height="60" rx="4" fill="#FEF3C7" stroke="#f59e0b" stroke-width="1"/>
+  <text class="small" x="360" y="240" text-anchor="middle" fill="#b45309">coordinator.crt</text>
+  <text class="small" x="360" y="255" text-anchor="middle" fill="#5F5E5A">(PEM format)</text>
+  <circle cx="415" cy="235" r="6" class="lock"/>
+</g>
+
+<!-- ==================== STEP 2: CERTIFICATE STORAGE ==================== -->
+<g id="step2">
+  <text class="label" x="40" y="330" fill="#0F6E56">② Certificate Storage</text>
+
+  <!-- Storage path -->
+  <rect x="60" y="350" width="370" height="80" rx="4" fill="#f0fdf4" stroke="#22c55e" stroke-width="1"/>
+  <text class="label" x="80" y="375" fill="#15803d">C:\ArcVault-Agent\coordinator.crt</text>
+
+  <text class="small" x="80" y="395" fill="#5F5E5A">• Certificate never changes (unless regenerated)</text>
+  <text class="small" x="80" y="410" fill="#5F5E5A">• Persisted to disk on first registration</text>
+  <text class="small" x="80" y="425" fill="#5F5E5A">• Validated on every HTTPS/WSS connection</text>
+
+  <!-- Arrow to connection validation -->
+  <path d="M 245 430 L 245 480" stroke="#10b981" stroke-width="2" fill="none" marker-end="url(#arrowGreen)"/>
+</g>
+
+<!-- ==================== STEP 3: CONNECTION VALIDATION ==================== -->
+<g id="step3">
+  <text class="label" x="40" y="510" fill="#0F6E56">③ Every Connection: Validate Certificate</text>
+
+  <!-- Coordinator -->
+  <rect x="60" y="530" width="110" height="70" rx="4" fill="#E1F5EE" class="component"/>
+  <text class="small" x="115" y="555" text-anchor="middle">Coordinator</text>
+  <text class="small" x="115" y="572" text-anchor="middle">presents cert</text>
+
+  <!-- HTTPS connection -->
+  <path d="M 170 565 L 280 565" stroke="#00d4aa" stroke-width="2" fill="none"/>
+  <text class="small" x="220" y="560" text-anchor="middle" fill="#2C2C2A">HTTPS/TLS</text>
+
+  <!-- Agent validation -->
+  <rect x="290" y="530" width="160" height="70" rx="4" fill="#EEEDFE" class="component"/>
+  <text class="small" x="370" y="555" text-anchor="middle">Agent TLS Validation</text>
+  <text class="small" x="370" y="572" text-anchor="middle">Compares cert against</text>
+  <text class="small" x="370" y="587" text-anchor="middle">coordinator.crt</text>
+
+  <!-- Match/Reject -->
+  <g id="match">
+    <path d="M 450 565 L 550 545" stroke="#10b981" stroke-width="2" fill="none" marker-end="url(#arrowGreen)"/>
+    <rect x="560" y="525" width="100" height="40" rx="4" fill="#d1fae5" stroke="#10b981" stroke-width="1"/>
+    <text class="label" x="610" y="550" text-anchor="middle" fill="#065f46">✓ MATCH</text>
+  </g>
+
+  <g id="reject">
+    <path d="M 450" y1="585" x2="550" y2="605" stroke="#ff4d6d" stroke-width="2" fill="none" marker-end="url(#arrowRed)"/>
+    <rect x="560" y="595" width="100" height="40" rx="4" fill="#fee2e2" stroke="#ff4d6d" stroke-width="1"/>
+    <text class="label" x="610" y="620" text-anchor="middle" fill="#7f1d1d">✗ REJECT</text>
+  </g>
+</g>
+
+<!-- ==================== SECURITY BENEFITS ==================== -->
+<g id="benefits">
+  <text class="label" x="40" y="670" fill="#0F6E56">Why Certificate Pinning?</text>
+
+  <!-- Benefit 1 -->
+  <rect x="40" y="685" width="270" height="60" rx="3" fill="#dbeafe" stroke="#3b82f6" stroke-width="0.5"/>
+  <text class="small" x="175" y="705" text-anchor="middle" fill="#1e40af" font-weight="600">Prevents MITM Attacks</text>
+  <text class="small" x="175" y="720" text-anchor="middle" fill="#1e40af">Even if attacker compromises</text>
+  <text class="small" x="175" y="733" text-anchor="middle" fill="#1e40af">system root CA</text>
+
+  <!-- Benefit 2 -->
+  <rect x="320" y="685" width="270" height="60" rx="3" fill="#d1fae5" stroke="#10b981" stroke-width="0.5"/>
+  <text class="small" x="455" y="705" text-anchor="middle" fill="#065f46" font-weight="600">Verifies Coordinator Identity</text>
+  <text class="small" x="455" y="720" text-anchor="middle" fill="#065f46">Agent knows it's talking to</text>
+  <text class="small" x="455" y="733" text-anchor="middle" fill="#065f46">the correct coordinator</text>
+
+  <!-- Benefit 3 -->
+  <rect x="600" y="685" width="270" height="60" rx="3" fill="#fecaca" stroke="#ef4444" stroke-width="0.5"/>
+  <text class="small" x="735" y="705" text-anchor="middle" fill="#7f1d1d" font-weight="600">Automatic Rotation</text>
+  <text class="small" x="735" y="720" text-anchor="middle" fill="#7f1d1d">Re-registering downloads</text>
+  <text class="small" x="735" y="733" text-anchor="middle" fill="#7f1d1d">updated certificate</text>
+</g>
+
+</svg>

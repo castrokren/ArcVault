@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -332,6 +333,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.recordLoginFailure(r)
 		log.Printf("Login failed for username %q from %s", req.Username, r.RemoteAddr)
+		s.auditService.LogAction(nil, req.Username, "", "auth.login", business.ClientIP(r), false, nil, nil, strPtr("invalid credentials"))
 		// Return generic error to prevent user enumeration
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnauthorized)
@@ -343,11 +345,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Generate JWT token
 	token, err := GenerateJWT(user.ID, user.Username, user.Role, user.MustChangePassword, s.cfg.JWTSecret)
 	if err != nil {
+		s.auditService.LogAction(nil, req.Username, "", "auth.login", business.ClientIP(r), false, nil, nil, strPtr("token generation failed"))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "failed to generate token"})
 		return
 	}
+
+	s.auditService.LogAction(&user.ID, user.Username, user.Role, "auth.login", business.ClientIP(r), true, nil, nil, nil)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -376,6 +381,10 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 			expiry = claims.ExpiresAt.Time
 		}
 		_ = s.db.RevokeToken(claims.ID, expiry)
+	}
+
+	if claims != nil {
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "auth.logout", business.ClientIP(r), true, nil, nil, nil)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -444,6 +453,7 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 
 	// Use service to update password
 	if err := s.userService.UpdatePassword(claims.UserID, req.OldPassword, req.NewPassword); err != nil {
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "auth.change_password", business.ClientIP(r), false, strPtr("user"), nil, strPtr(err.Error()))
 		w.Header().Set("Content-Type", "application/json")
 		if err.Error() == "incorrect password" {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -453,6 +463,8 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
+
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "auth.change_password", business.ClientIP(r), true, strPtr("user"), nil, nil)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -602,11 +614,14 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request) {
 
 	user, err := s.userService.CreateUser(input)
 	if err != nil {
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "user.create", business.ClientIP(r), false, strPtr("user"), &req.Username, strPtr(err.Error()))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
+
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "user.create", business.ClientIP(r), true, strPtr("user"), &req.Username, nil)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -653,13 +668,24 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Look up target user before deletion for audit log
+	targetUser, _ := s.userService.GetUserByID(userID)
+	targetUsername := ""
+	if targetUser != nil {
+		targetUsername = targetUser.Username
+	}
+	idStr := strconv.Itoa(userID)
+
 	// Use service to delete user
 	if err := s.userService.DeleteUser(userID); err != nil {
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "user.delete", business.ClientIP(r), false, strPtr("user"), &idStr, strPtr(err.Error()))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "failed to delete user"})
 		return
 	}
+
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "user.delete", business.ClientIP(r), true, strPtr("user"), &idStr, strPtr("deleted user: "+targetUsername))
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -709,11 +735,16 @@ func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 
 	// Use service to update user role
 	if err := s.userService.UpdateUserRole(userID, req.Role); err != nil {
+		idStr := strconv.Itoa(userID)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "user.update_role", business.ClientIP(r), false, strPtr("user"), &idStr, strPtr(err.Error()))
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
 		return
 	}
+
+	idStr := strconv.Itoa(userID)
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "user.update_role", business.ClientIP(r), true, strPtr("user"), &idStr, strPtr("new role: "+req.Role))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -724,3 +755,5 @@ func (s *Server) handleUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 }
+
+func strPtr(s string) *string { return &s }

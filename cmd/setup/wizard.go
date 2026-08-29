@@ -30,6 +30,8 @@ type SetupConfig struct {
 	CoordinatorPort int
 	AdminToken      string
 	HTTPS           bool
+	Environment     string
+	AllowedOrigins  []string
 
 	// Agent config
 	CoordinatorURL string
@@ -39,9 +41,11 @@ type SetupConfig struct {
 
 // CoordinatorConfig represents the coordinator config.json structure
 type CoordinatorConfig struct {
-	Port  int    `json:"port"`
-	Token string `json:"admin_token"`
-	HTTPS bool   `json:"https,omitempty"`
+	Port           int      `json:"port"`
+	Token          string   `json:"admin_token"`
+	HTTPS          bool     `json:"https,omitempty"`
+	Environment    string   `json:"environment,omitempty"`
+	AllowedOrigins []string `json:"allowed_origins,omitempty"`
 }
 
 // AgentConfig represents the agent config.yaml structure
@@ -177,6 +181,31 @@ func gatherCoordinatorConfig(reader *bufio.Reader, config *SetupConfig) error {
 	httpsStr = strings.TrimSpace(strings.ToLower(httpsStr))
 	config.HTTPS = httpsStr == "y" || httpsStr == "yes"
 
+	// Environment
+	fmt.Print("Environment (development/production, default: development): ")
+	envStr, _ := reader.ReadString('\n')
+	envStr = strings.TrimSpace(strings.ToLower(envStr))
+	if envStr == "" {
+		envStr = "development"
+	}
+	config.Environment = envStr
+
+	// AllowedOrigins (required for production)
+	if config.Environment == "production" {
+		fmt.Print("Allowed origins (comma-separated, e.g. https://dashboard.example.com): ")
+		originsStr, _ := reader.ReadString('\n')
+		originsStr = strings.TrimSpace(originsStr)
+		if originsStr == "" {
+			return fmt.Errorf("allowed_origins is required in production mode")
+		}
+		for _, o := range strings.Split(originsStr, ",") {
+			o = strings.TrimSpace(o)
+			if o != "" {
+				config.AllowedOrigins = append(config.AllowedOrigins, o)
+			}
+		}
+	}
+
 	fmt.Println()
 	fmt.Println("Default login: admin / changeme")
 	fmt.Println("You will be prompted to change your password on first login.")
@@ -230,6 +259,10 @@ func reviewSummary(components Component, config *SetupConfig) error {
 		fmt.Printf("Component: Coordinator (server)\n")
 		fmt.Printf("Port: %d\n", config.CoordinatorPort)
 		fmt.Printf("HTTPS: %v\n", config.HTTPS)
+		fmt.Printf("Environment: %s\n", config.Environment)
+		if len(config.AllowedOrigins) > 0 {
+			fmt.Printf("Allowed Origins: %s\n", strings.Join(config.AllowedOrigins, ", "))
+		}
 		fmt.Printf("Default login: admin / changeme (change on first login)\n")
 
 	case ComponentAgent:
@@ -241,6 +274,10 @@ func reviewSummary(components Component, config *SetupConfig) error {
 		fmt.Printf("Component: Both (Coordinator + Agent)\n")
 		fmt.Printf("Coordinator Port: %d\n", config.CoordinatorPort)
 		fmt.Printf("HTTPS: %v\n", config.HTTPS)
+		fmt.Printf("Environment: %s\n", config.Environment)
+		if len(config.AllowedOrigins) > 0 {
+			fmt.Printf("Allowed Origins: %s\n", strings.Join(config.AllowedOrigins, ", "))
+		}
 		fmt.Printf("Default login: admin / changeme (change on first login)\n")
 		fmt.Printf("Agent ID: %s\n", config.AgentID)
 		fmt.Printf("Coordinator URL (Agent): %s\n", config.CoordinatorURL)
@@ -264,9 +301,11 @@ func writeConfigurations(components Component, config *SetupConfig, installPath 
 	// This is where the coordinator looks for config.json
 	if components == ComponentCoordinator || components == ComponentBoth {
 		coordConfig := CoordinatorConfig{
-			Port:  config.CoordinatorPort,
-			Token: config.AdminToken,
-			HTTPS: config.HTTPS,
+			Port:           config.CoordinatorPort,
+			Token:          config.AdminToken,
+			HTTPS:          config.HTTPS,
+			Environment:    config.Environment,
+			AllowedOrigins: config.AllowedOrigins,
 		}
 
 		configPath := filepath.Join(installPath, "config.json")

@@ -47,6 +47,7 @@ type Server struct {
 	jobService     *business.JobService
 	userService    *business.UserService
 	groupService   *business.GroupService
+	auditService   *business.AuditService
 	tokenCacheMu   sync.Mutex
 	tokenCache     map[string]tokenCacheEntry // token → validated entry
 	loginLimiterMu sync.Mutex
@@ -78,6 +79,7 @@ func NewWithFS(cfg *config.Config, database *db.DB, staticFS fs.FS) *Server {
 		jobService:    business.NewJobService(database),
 		userService:   business.NewUserService(database),
 		groupService:  business.NewGroupService(database),
+		auditService:  business.NewAuditService(database),
 		tokenCache:    make(map[string]tokenCacheEntry),
 		loginLimiters: make(map[string]*loginRateLimiter),
 	}
@@ -182,7 +184,7 @@ func (s *Server) Start() error {
 
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      corsMiddleware(s.cfg.AllowedOrigins)(s.router),
+		Handler:      s.requestAuditMiddleware(corsMiddleware(s.cfg.AllowedOrigins)(s.router)),
 		ReadTimeout:  60 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -382,6 +384,7 @@ func (s *Server) registerRoutes() {
 	s.router.HandleFunc("GET /api/audit/commands", s.viewerRoute(s.handleListAuditCommands))
 	s.router.HandleFunc("GET /api/audit/non-whitelisted-programs", s.viewerRoute(s.handleGetNonWhitelistedPrograms))
 	s.router.HandleFunc("GET /api/audit/stats", s.viewerRoute(s.handleGetAuditStats))
+	s.router.HandleFunc("GET /api/audit/user-actions", s.viewerRoute(s.handleListUserAuditLogs))
 
 	if s.staticFS != nil {
 		log.Printf("Serving embedded dashboard")
@@ -403,23 +406,32 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 				}
 			}
 
-			if origin != "" && allowed {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
-				w.Header().Set("Vary", "Origin")
-			} else if origin != "" && !allowed {
-				// Non-matching origin: don't set ACAO header — browser will block it.
+			// Case 1: Disallowed origin (non-empty and not in whitelist)
+			if origin != "" && !allowed {
 				if r.Method == http.MethodOptions {
 					w.WriteHeader(http.StatusForbidden)
 					return
 				}
+				// For non-OPTIONS requests, fall through without CORS headers
+				next.ServeHTTP(w, r)
+				return
 			}
 
+			// Case 2: Allowed origin (empty or in whitelist)
+			if origin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Vary", "Origin")
+			}
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+
+			// Handle preflight requests
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
+
+			// Process actual request
 			next.ServeHTTP(w, r)
 		})
 	}

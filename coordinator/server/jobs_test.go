@@ -515,7 +515,7 @@ func TestCancelJob_cancelRunningJobReturnsOK(t *testing.T) {
 	}
 }
 
-func TestCancelJob_cancelPendingJobReturnsBadRequest(t *testing.T) {
+func TestCancelJob_cancelPendingJobSucceeds(t *testing.T) {
 	s := newTestServer(t)
 
 	// Create a job (status will be "pending" by default)
@@ -527,20 +527,27 @@ func TestCancelJob_cancelPendingJobReturnsBadRequest(t *testing.T) {
 	s.router.ServeHTTP(rr, req)
 
 	var job Job
-	json.NewDecoder(rr.Body).Decode(&job)
+	if err := json.NewDecoder(rr.Body).Decode(&job); err != nil {
+		t.Fatalf("failed to decode created job: %v", err)
+	}
 	jobID := job.ID
 
-	// Try to cancel a pending job
+	// Cancel the pending job — should succeed
 	cancelReq := httptest.NewRequest(http.MethodPost, "/api/jobs/"+jobID+"/cancel", nil)
 	cancelReq.Header.Set("Authorization", authHeader())
 	cancelRR := httptest.NewRecorder()
 	s.router.ServeHTTP(cancelRR, cancelReq)
 
-	if cancelRR.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", cancelRR.Code)
+	if cancelRR.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", cancelRR.Code)
 	}
-	if !bytes.Contains(cancelRR.Body.Bytes(), []byte("not running")) {
-		t.Errorf("expected 'not running' error message, got: %s", cancelRR.Body.String())
+
+	var cancelled Job
+	if err := json.NewDecoder(cancelRR.Body).Decode(&cancelled); err != nil {
+		t.Fatalf("failed to decode cancelled job: %v", err)
+	}
+	if cancelled.Status != "cancelled" {
+		t.Errorf("expected status 'cancelled', got %q", cancelled.Status)
 	}
 }
 

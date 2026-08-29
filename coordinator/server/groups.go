@@ -57,12 +57,16 @@ func (s *Server) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
+
 	var req CreateGroupRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid request"})
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.create", ip, false, strPtr("group"), nil, strPtr("invalid request"))
 		return
 	}
 
@@ -71,6 +75,7 @@ func (s *Server) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.create", ip, false, strPtr("group"), nil, strPtr(err.Error()))
 		return
 	}
 
@@ -84,8 +89,12 @@ func (s *Server) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.create", ip, false, strPtr("group"), nil, strPtr(err.Error()))
 		return
 	}
+
+	groupIDStr := strconv.Itoa(group.ID)
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.create", ip, true, strPtr("group"), &groupIDStr, nil)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -137,11 +146,15 @@ func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
+
 	groupID, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid group id"})
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.update", ip, false, strPtr("group"), nil, strPtr("invalid group id"))
 		return
 	}
 
@@ -151,6 +164,8 @@ func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: "invalid request"})
+		groupIDStr := strconv.Itoa(groupID)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.update", ip, false, strPtr("group"), &groupIDStr, strPtr("invalid request"))
 		return
 	}
 
@@ -159,6 +174,8 @@ func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+		groupIDStr := strconv.Itoa(groupID)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.update", ip, false, strPtr("group"), &groupIDStr, strPtr(err.Error()))
 		return
 	}
 
@@ -172,8 +189,13 @@ func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(ErrorResponse{Error: err.Error()})
+		groupIDStr := strconv.Itoa(groupID)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.update", ip, false, strPtr("group"), &groupIDStr, strPtr(err.Error()))
 		return
 	}
+
+	groupIDStr := strconv.Itoa(group.ID)
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.update", ip, true, strPtr("group"), &groupIDStr, nil)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -193,11 +215,15 @@ func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
+
 	groupID, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid group id"})
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.delete", ip, false, strPtr("group"), nil, strPtr("invalid group id"))
 		return
 	}
 
@@ -205,8 +231,13 @@ func (s *Server) handleDeleteGroup(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": "failed to delete group"})
+		groupIDStr := strconv.Itoa(groupID)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.delete", ip, false, strPtr("group"), &groupIDStr, strPtr(err.Error()))
 		return
 	}
+
+	groupIDStr := strconv.Itoa(groupID)
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.delete", ip, true, strPtr("group"), &groupIDStr, nil)
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -219,11 +250,15 @@ func (s *Server) handleAddAgentToGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
+
 	groupID, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid group id"})
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.add_agent", ip, false, strPtr("group"), nil, strPtr("invalid group id"))
 		return
 	}
 
@@ -235,6 +270,8 @@ func (s *Server) handleAddAgentToGroup(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid request"})
+		groupIDStr := strconv.Itoa(groupID)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.add_agent", ip, false, strPtr("group"), &groupIDStr, strPtr("invalid request"))
 		return
 	}
 
@@ -242,8 +279,13 @@ func (s *Server) handleAddAgentToGroup(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		groupIDStr := strconv.Itoa(groupID)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.add_agent", ip, false, strPtr("group"), &groupIDStr, strPtr(err.Error()))
 		return
 	}
+
+	groupIDStr := strconv.Itoa(groupID)
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.add_agent", ip, true, strPtr("group"), &groupIDStr, strPtr("agent_id: "+req.AgentID))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -257,11 +299,15 @@ func (s *Server) handleRemoveAgentFromGroup(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
+
 	groupID, err := strconv.Atoi(r.PathValue("id"))
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "invalid group id"})
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.remove_agent", ip, false, strPtr("group"), nil, strPtr("invalid group id"))
 		return
 	}
 
@@ -271,8 +317,13 @@ func (s *Server) handleRemoveAgentFromGroup(w http.ResponseWriter, r *http.Reque
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		groupIDStr := strconv.Itoa(groupID)
+		s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.remove_agent", ip, false, strPtr("group"), &groupIDStr, strPtr(err.Error()))
 		return
 	}
+
+	groupIDStr := strconv.Itoa(groupID)
+	s.auditService.LogAction(&claims.UserID, claims.Username, claims.Role, "group.remove_agent", ip, true, strPtr("group"), &groupIDStr, strPtr("agent_id: "+agentID))
 
 	w.WriteHeader(http.StatusNoContent)
 }

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 
+	"arcvault/coordinator/business"
 	"arcvault/coordinator/updater"
 )
 
@@ -24,6 +25,9 @@ func (s *Server) handleRollbackAvailable(w http.ResponseWriter, r *http.Request)
 
 // handleRollback applies coordinator rollback.
 func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
+
 	// Check if rollback is available
 	available, err := updater.IsRollbackAvailable()
 	if err != nil || !available {
@@ -31,6 +35,12 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "no backup available for rollback",
 		})
+		s.auditService.LogAction(
+			&claims.UserID, claims.Username, claims.Role,
+			"coordinator.rollback", ip, false,
+			strPtr("coordinator"), nil,
+			strPtr("no backup available for rollback"),
+		)
 		return
 	}
 
@@ -38,6 +48,12 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 	exePath, err := getCoordinatorBinaryPath()
 	if err != nil {
 		http.Error(w, "failed to determine coordinator path", http.StatusInternalServerError)
+		s.auditService.LogAction(
+			&claims.UserID, claims.Username, claims.Role,
+			"coordinator.rollback", ip, false,
+			strPtr("coordinator"), nil,
+			strPtr(err.Error()),
+		)
 		return
 	}
 
@@ -62,11 +78,27 @@ func (s *Server) handleRollback(w http.ResponseWriter, r *http.Request) {
 			Pct:     100,
 			Message: err.Error(),
 		})
+		s.auditService.LogAction(
+			&claims.UserID, claims.Username, claims.Role,
+			"coordinator.rollback", ip, false,
+			strPtr("coordinator"), nil,
+			strPtr(err.Error()),
+		)
+		return
 	}
+
+	s.auditService.LogAction(
+		&claims.UserID, claims.Username, claims.Role,
+		"coordinator.rollback", ip, true,
+		strPtr("coordinator"), nil,
+		strPtr("triggered coordinator rollback"),
+	)
 }
 
 // handleAgentRollback sends rollback command to agent via WebSocket.
 func (s *Server) handleAgentRollback(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+	ip := business.ClientIP(r)
 	agentID := r.PathValue("id")
 	if agentID == "" {
 		http.Error(w, "missing agent id", http.StatusBadRequest)
@@ -82,6 +114,12 @@ func (s *Server) handleAgentRollback(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		http.Error(w, "agent not found", http.StatusNotFound)
+		s.auditService.LogAction(
+			&claims.UserID, claims.Username, claims.Role,
+			"agent.rollback", ip, false,
+			strPtr("agent"), &agentID,
+			strPtr(err.Error()),
+		)
 		return
 	}
 
@@ -90,6 +128,12 @@ func (s *Server) handleAgentRollback(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{
 			"error": "no backup available for agent rollback",
 		})
+		s.auditService.LogAction(
+			&claims.UserID, claims.Username, claims.Role,
+			"agent.rollback", ip, false,
+			strPtr("agent"), &agentID,
+			strPtr("no backup available for agent rollback"),
+		)
 		return
 	}
 
@@ -104,6 +148,13 @@ func (s *Server) handleAgentRollback(w http.ResponseWriter, r *http.Request) {
 		"status":   "rollback_initiated",
 		"agent_id": agentID,
 	})
+
+	s.auditService.LogAction(
+		&claims.UserID, claims.Username, claims.Role,
+		"agent.rollback", ip, true,
+		strPtr("agent"), &agentID,
+		strPtr("triggered agent rollback"),
+	)
 }
 
 // getCoordinatorBinaryPath returns the path of the coordinator executable.

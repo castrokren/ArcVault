@@ -2,7 +2,7 @@
 name: AI Framework Runtime
 category: system
 priority: critical
-last_updated: 2026-05-26
+last_updated: 2026-07-01
 stale_after_days: 90
 ---
 
@@ -23,6 +23,11 @@ Read this file completely before taking any action. Use the routing table below 
 | Files flagged as stale / session ending | `modules/maintenance.md` |
 | Creating or updating a skill file | `modules/skills.md` |
 | Managing task lifecycle | `modules/tasks.md` |
+| Go development | `rules/golang/` |
+| Dashboard (Vue) | `rules/typescript/` |
+| TDD workflow | `framework/skills/ecc-tdd-workflow/SKILL.md` |
+| Security review | `framework/skills/ecc-security-review/SKILL.md` |
+| Agentic engineering | `framework/skills/ecc-agentic-engineering/SKILL.md` |
 
 Multiple modules may be loaded for a single task. These entries are not mutually exclusive.
 

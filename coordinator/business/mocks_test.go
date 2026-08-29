@@ -284,6 +284,25 @@ func (m *mockJobDB) DeleteGroup(id int) error                                   
 func (m *mockJobDB) AddAgentToGroup(groupID int, agentID string) error            { return nil }
 func (m *mockJobDB) RemoveAgentFromGroup(groupID int, agentID string) error       { return nil }
 
+// -- CredentialProfileQueries (stub) --
+
+func (m *mockJobDB) CreateCredentialProfile(id, name, credType string, encryptedData []byte) error {
+	return nil
+}
+func (m *mockJobDB) GetCredentialProfile(id string) (*db.CredentialProfile, error)     { return nil, nil }
+func (m *mockJobDB) ListCredentialProfiles() ([]*db.CredentialProfile, error)          { return nil, nil }
+func (m *mockJobDB) DeleteCredentialProfile(id string) error                           { return nil }
+func (m *mockJobDB) HasJobsReferencingProfile(profileID string) (bool, error)          { return false, nil }
+func (m *mockJobDB) GetJobCredentialProfileID(jobID string) (string, error)            { return "", nil }
+func (m *mockJobDB) SnapshotJobRunCredentials(runID, credentialProfileID, credentialProfileName string) error {
+	return nil
+}
+
+func (m *mockJobDB) InsertUserAuditLog(ctx db.UserAuditLogContext) error { return nil }
+func (m *mockJobDB) ListUserAuditLogs(filter db.UserAuditLogFilter) ([]db.UserAuditLogEntry, int, error) {
+	return nil, 0, nil
+}
+
 // ----------------------------------------------------------------------------
 // mockUserQueries implements db.UserQueries for UserService tests
 // ----------------------------------------------------------------------------

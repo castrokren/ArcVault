@@ -106,6 +106,7 @@ func runAgent() {
 		Coordinators:   cfg.Coordinators,
 		AuthToken:      cfg.AuthToken,
 		CACertFile:     cfg.CACertFile,
+		Canceller:      r,
 	}
 	go wsClient.Start()
 

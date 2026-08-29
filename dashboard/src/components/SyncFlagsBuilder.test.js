@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SyncFlagsBuilder from './SyncFlagsBuilder.vue'
@@ -84,8 +85,7 @@ describe('SyncFlagsBuilder.vue', () => {
     })
 
     it('updates mirror flag when checkbox changes', async () => {
-      const checkbox = wrapper.find('#mirror')
-      await checkbox.trigger('input')
+      await wrapper.find('#mirror').setValue(true)
       await wrapper.vm.$nextTick()
       expect(wrapper.emitted('update:modelValue')).toBeTruthy()
       const emitted = wrapper.emitted('update:modelValue')[0][0]
@@ -185,8 +185,7 @@ describe('SyncFlagsBuilder.vue', () => {
     })
 
     it('generates robocopy command with mirror flag', async () => {
-      const checkbox = wrapper.find('#mirror')
-      await checkbox.trigger('input')
+      await wrapper.find('#mirror').setValue(true)
       await wrapper.vm.$nextTick()
       expect(wrapper.text()).toContain('/MIR')
     })
@@ -208,8 +207,7 @@ describe('SyncFlagsBuilder.vue', () => {
     })
 
     it('generates rsync command with delete flag', async () => {
-      const checkbox = wrapper.find('#mirror')
-      await checkbox.trigger('input')
+      await wrapper.find('#mirror').setValue(true)
       await wrapper.vm.$nextTick()
       expect(wrapper.text()).toContain('--delete')
     })

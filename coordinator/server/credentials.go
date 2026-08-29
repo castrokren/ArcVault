@@ -27,10 +27,13 @@ func (s *Server) loadCredentialKey() ([]byte, error) {
 
 // handleCreateCredentialProfile handles POST /api/credential-profiles
 func (s *Server) handleCreateCredentialProfile(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+
 	// Load encryption key (config takes priority over env var)
 	key, err := s.loadCredentialKey()
 	if err != nil {
 		http.Error(w, "encryption key not configured", http.StatusServiceUnavailable)
+		s.logAudit(r, claims, "credential.create", false, nil, nil)
 		return
 	}
 
@@ -42,12 +45,14 @@ func (s *Server) handleCreateCredentialProfile(w http.ResponseWriter, r *http.Re
 
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		s.logAudit(r, claims, "credential.create", false, nil, nil)
 		return
 	}
 
 	// Validate required fields
 	if input.Name == "" || input.Type == "" || input.Data == nil {
 		http.Error(w, "name, type, and data are required", http.StatusBadRequest)
+		s.logAudit(r, claims, "credential.create", false, nil, nil)
 		return
 	}
 
@@ -55,12 +60,14 @@ func (s *Server) handleCreateCredentialProfile(w http.ResponseWriter, r *http.Re
 	dataJSON, err := json.Marshal(input.Data)
 	if err != nil {
 		http.Error(w, "failed to serialize data", http.StatusBadRequest)
+		s.logAudit(r, claims, "credential.create", false, nil, nil)
 		return
 	}
 
 	encryptedData, err := credcrypto.Encrypt(key, dataJSON)
 	if err != nil {
 		http.Error(w, "encryption failed", http.StatusInternalServerError)
+		s.logAudit(r, claims, "credential.create", false, nil, nil)
 		return
 	}
 
@@ -69,6 +76,7 @@ func (s *Server) handleCreateCredentialProfile(w http.ResponseWriter, r *http.Re
 
 	if err := s.db.CreateCredentialProfile(id, input.Name, input.Type, encryptedData); err != nil {
 		http.Error(w, "failed to create credential profile", http.StatusInternalServerError)
+		s.logAudit(r, claims, "credential.create", false, nil, nil)
 		return
 	}
 
@@ -76,6 +84,7 @@ func (s *Server) handleCreateCredentialProfile(w http.ResponseWriter, r *http.Re
 	profile, err := s.db.GetCredentialProfile(id)
 	if err != nil {
 		http.Error(w, "failed to retrieve created profile", http.StatusInternalServerError)
+		s.logAudit(r, claims, "credential.create", false, strPtr("credential"), strPtr(id))
 		return
 	}
 
@@ -85,6 +94,8 @@ func (s *Server) handleCreateCredentialProfile(w http.ResponseWriter, r *http.Re
 		Type:      profile.Type,
 		CreatedAt: profile.CreatedAt.Format("2006-01-02T15:04:05Z"),
 	}
+
+	s.logAudit(r, claims, "credential.create", true, strPtr("credential"), strPtr(id))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -116,17 +127,20 @@ func (s *Server) handleListCredentialProfiles(w http.ResponseWriter, r *http.Req
 
 // handleDeleteCredentialProfile handles DELETE /api/credential-profiles/{id}
 func (s *Server) handleDeleteCredentialProfile(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
 	id := r.PathValue("id")
 
 	// Check if any jobs reference this profile
 	hasRefs, err := s.db.HasJobsReferencingProfile(id)
 	if err != nil {
 		http.Error(w, "failed to check job references", http.StatusInternalServerError)
+		s.logAudit(r, claims, "credential.delete", false, strPtr("credential"), strPtr(id))
 		return
 	}
 
 	if hasRefs {
 		http.Error(w, "credential profile is referenced by one or more jobs", http.StatusConflict)
+		s.logAudit(r, claims, "credential.delete", false, strPtr("credential"), strPtr(id))
 		return
 	}
 
@@ -134,8 +148,11 @@ func (s *Server) handleDeleteCredentialProfile(w http.ResponseWriter, r *http.Re
 	err = s.db.DeleteCredentialProfile(id)
 	if err != nil {
 		http.Error(w, "credential profile not found", http.StatusNotFound)
+		s.logAudit(r, claims, "credential.delete", false, strPtr("credential"), strPtr(id))
 		return
 	}
+
+	s.logAudit(r, claims, "credential.delete", true, strPtr("credential"), strPtr(id))
 
 	w.WriteHeader(http.StatusNoContent)
 }

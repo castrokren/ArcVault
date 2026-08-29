@@ -33,15 +33,19 @@ type agentResponse struct {
 }
 
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
+
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
+		s.logAudit(r, claims, "agent.register", false, strPtr("agent"), nil)
 		return
 	}
 
 	agent, err := s.agentService.RegisterAgent(req.AgentID, req.Hostname, req.OS, req.Arch, req.Version, s.coordinatorID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.logAudit(r, claims, "agent.register", false, strPtr("agent"), strPtr(req.AgentID))
 		return
 	}
 
@@ -64,6 +68,8 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	// Append to federation_events log for state sync.
 	s.db.AppendFederationEvent(s.coordinatorID, "agent_registered", string(payload))
+
+	s.logAudit(r, claims, "agent.register", true, strPtr("agent"), strPtr(req.AgentID))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
@@ -149,11 +155,13 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 // Cleans up tokens and group memberships on success.
 // Historical jobs are left intact (they retain run history).
 func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
+	claims := GetUserClaims(r)
 	agentID := r.PathValue("id")
 	if agentID == "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": "missing agent id"})
+		s.logAudit(r, claims, "agent.delete", false, strPtr("agent"), nil)
 		return
 	}
 
@@ -169,8 +177,11 @@ func (s *Server) handleDeleteAgent(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(statusCode)
 		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		s.logAudit(r, claims, "agent.delete", false, strPtr("agent"), strPtr(agentID))
 		return
 	}
+
+	s.logAudit(r, claims, "agent.delete", true, strPtr("agent"), strPtr(agentID))
 
 	w.WriteHeader(http.StatusNoContent)
 }

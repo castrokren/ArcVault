@@ -343,9 +343,7 @@ class ArcVaultInstaller:
             e.pack(side=tk.LEFT, padx=(8, 0), fill=tk.X, expand=True)
             return e
 
-        tk.Frame(frame, bg=_BG_BASE, height=18).pack()
-        port_var = row("Port:", width=10)
-        port_var.insert(0, "8080")
+        self.coordinator_port = 443
 
         tk.Label(frame,
                  text="Default login: admin / changeme  (you'll be prompted to change it on first login)",
@@ -361,11 +359,6 @@ class ArcVaultInstaller:
                  font=("Segoe UI", 9)).pack(anchor="w", padx=14, pady=10)
 
         def next_step():
-            try:
-                self.coordinator_port = int(port_var.get())
-            except ValueError:
-                messagebox.showerror("Invalid", "Port must be a number")
-                return
             self.admin_token = self.generate_token(32)
             if "agent" in self.components:
                 self.show_agent_config()
@@ -612,6 +605,7 @@ class ArcVaultInstaller:
             "database_path": str(self.COORD_DIR / "arcvault.db"),
             "credential_key": key,
             "environment": "production",
+            "allowed_origins": ["https://localhost"],
         }
         if existing_cert_file:
             config["cert_file"] = existing_cert_file
@@ -725,5 +719,17 @@ class ArcVaultInstaller:
             w.destroy()
 
 
+def _ensure_elevated():
+    """Re-launch with UAC elevation if not already admin."""
+    import ctypes
+    if ctypes.windll.shell32.IsUserAnAdmin():
+        return
+    ctypes.windll.shell32.ShellExecuteW(
+        None, "runas", sys.executable, " ".join(sys.argv), None, 1
+    )
+    sys.exit(0)
+
+
 if __name__ == "__main__":
+    _ensure_elevated()
     ArcVaultInstaller().run()

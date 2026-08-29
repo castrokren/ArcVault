@@ -550,6 +550,28 @@ CREATE TABLE IF NOT EXISTS job_runs (
 	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_command_audit_program ON command_audit_log(program_name)`)
 	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_command_audit_executed ON command_audit_log(executed_at)`)
 	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_command_audit_whitelist ON command_audit_log(is_whitelisted)`)
+	// Idempotent: add user_audit_log table for user action audit trail.
+	d.conn.Exec(`CREATE TABLE IF NOT EXISTS user_audit_log (
+		id            INTEGER PRIMARY KEY AUTOINCREMENT,
+		user_id       INTEGER,
+		username      TEXT NOT NULL DEFAULT '',
+		user_role     TEXT NOT NULL DEFAULT '',
+		action        TEXT NOT NULL,
+		resource_type TEXT,
+		resource_id   TEXT,
+		details       TEXT,
+		ip_address    TEXT NOT NULL DEFAULT '',
+		success       INTEGER NOT NULL DEFAULT 1,
+		request_method TEXT,
+		request_path  TEXT,
+		status_code   INTEGER,
+		latency_ms    INTEGER,
+		created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+	)`)
+	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_audit_log_action ON user_audit_log(action)`)
+	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_audit_log_user ON user_audit_log(user_id)`)
+	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_audit_log_created ON user_audit_log(created_at)`)
+	d.conn.Exec(`CREATE INDEX IF NOT EXISTS idx_user_audit_log_resource ON user_audit_log(resource_type, resource_id)`)
 	return nil
 }
 

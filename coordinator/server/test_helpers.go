@@ -48,6 +48,7 @@ func newTestServer(t *testing.T, opts ...TestServerOption) *Server {
 		customConfig: &config.Config{
 			Port:       8080,
 			AdminToken: "test-token",
+			JWTSecret:  "test-secret",
 		},
 	}
 
@@ -61,6 +62,7 @@ func newTestServer(t *testing.T, opts ...TestServerOption) *Server {
 		finalCfg = &config.Config{
 			Port:       8080,
 			AdminToken: "test-token",
+			JWTSecret:  "test-secret",
 		}
 	}
 

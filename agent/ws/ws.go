@@ -17,13 +17,19 @@ import (
 	"arcvault/agent/updater"
 )
 
+// JobCanceller allows the WS client to cancel running jobs on the runner.
+type JobCanceller interface {
+	CancelJob(jobID string) bool
+}
+
 // Client holds the configuration for the agent WebSocket connection.
 type Client struct {
-	AgentID         string
-	CoordinatorURL  string   // http(s)://host:port (single, backward compat)
-	Coordinators    []string // list of coordinator URLs for failover
-	AuthToken       string
-	CACertFile      string
+	AgentID        string
+	CoordinatorURL string   // http(s)://host:port (single, backward compat)
+	Coordinators   []string // list of coordinator URLs for failover
+	AuthToken      string
+	CACertFile     string
+	Canceller      JobCanceller // used to cancel running jobs
 	lastSuccessfulCoordinator string // track which coordinator the agent is currently homed to
 }
 
@@ -31,6 +37,7 @@ type inboundMsg struct {
 	Type    string `json:"type"`
 	Version string `json:"version"`
 	URL     string `json:"url"`
+	JobID   string `json:"job_id"`
 }
 
 type progressMsg struct {
@@ -118,6 +125,8 @@ func (c *Client) run(url string) error {
 			go c.handleUpdateCommand(conn, msg)
 		} else if msg.Type == "rollback_command" {
 			go c.handleRollbackCommand(conn)
+		} else if msg.Type == "cancel_command" {
+			go c.handleCancelCommand(msg)
 		}
 	}
 }
@@ -170,6 +179,19 @@ func (c *Client) handleRollbackCommand(conn *websocket.Conn) {
 	if err := updater.Rollback(exePath, send); err != nil {
 		log.Printf("Agent WS: rollback failed: %v", err)
 		send("error", 0)
+	}
+}
+
+func (c *Client) handleCancelCommand(msg inboundMsg) {
+	log.Printf("Agent WS: received cancel_command for job %s", msg.JobID)
+	if c.Canceller == nil {
+		log.Printf("Agent WS: no canceller set, cannot cancel job %s", msg.JobID)
+		return
+	}
+	if ok := c.Canceller.CancelJob(msg.JobID); ok {
+		log.Printf("Agent WS: cancelled job %s", msg.JobID)
+	} else {
+		log.Printf("Agent WS: job %s not found or already finished", msg.JobID)
 	}
 }
 
