@@ -1,0 +1,24 @@
+{
+  "sources": [
+    "C:\\Users\\Documents",
+    "C:\\Users\\Pictures"
+  ],
+  "destination": "D:\\Backups",
+  "options": {
+    "include_empty_dirs": true,
+    "verbose": true,
+    "report_extras": true,
+    "retries": 3,
+    "wait_seconds": 5,
+    "threads": 16,
+    "copy_symlinks": false,
+    "remove_system_hidden": true
+  },
+  "source_credentials": null,
+  "destination_credentials": {
+    "username": "backup_user",
+    "password": "secure_password_123",
+    "domain": "WORKGROUP"
+  }
+}
+

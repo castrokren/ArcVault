@@ -1,0 +1,34 @@
+{
+  "_comment": "Conservative/Reliable backup - Maximum retry attempts for unreliable connections",
+  "_description": "Configuration for backing up over slow or unreliable networks",
+  
+  "sources": [
+    "C:\\CriticalData"
+  ],
+  "destination": "\\\\RemoteNAS\\Backups",
+  
+  "options": {
+    "include_empty_dirs": true,
+    "verbose": true,
+    "report_extras": true,
+    "retries": 50,
+    "wait_seconds": 30,
+    "threads": 4,
+    "copy_symlinks": false,
+    "remove_system_hidden": true
+  },
+  
+  "destination_credentials": {
+    "username": "backup_service",
+    "password": "secure_password",
+    "domain": "COMPANY"
+  },
+  
+  "_notes": [
+    "High retry count (50) for unreliable connections",
+    "Longer wait time (30s) between retries",
+    "Lower thread count (4) to avoid overwhelming the network",
+    "Best for: Backups over VPN, slow networks, or unreliable connections"
+  ]
+}
+

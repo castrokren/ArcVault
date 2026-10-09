@@ -1,0 +1,39 @@
+# Virtual environments
+.venv/
+.venv_*/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Build output / binaries
+build/
+dist/
+*.exe
+*.pkg
+*.iso
+*.dmg
+*.zip
+
+# Secrets and local config
+.env
+*.env
+!env.templates/*.env
+!**/env.templates/*.env
+*.pem
+*.key
+*.pfx
+**/keys/
+service_config.json
+agents.json
+
+# Logs / scratch
+*.log
+gui_error.txt
+gui_output.txt
+*.backup

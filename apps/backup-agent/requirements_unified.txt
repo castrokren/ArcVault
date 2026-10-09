@@ -1,0 +1,19 @@
+# ArcVault Unified Application Requirements
+
+# GUI
+PyQt5>=5.15.0
+
+# Windows Service
+pywin32>=300
+
+# Cryptography
+cryptography>=3.4.8
+
+# Agent/API
+fastapi>=0.68.0
+uvicorn[standard]>=0.15.0
+PyJWT>=2.0.0
+
+# Build
+pyinstaller>=5.0.0
+

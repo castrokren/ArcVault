@@ -1,0 +1,21 @@
+{
+  "_comment": "Simple local backup - Single source to local destination",
+  "_description": "Basic backup configuration for backing up one folder to a local drive",
+  
+  "sources": [
+    "C:\\Users\\YourUsername\\Documents"
+  ],
+  "destination": "D:\\Backups\\Documents",
+  
+  "options": {
+    "include_empty_dirs": true,
+    "verbose": true,
+    "report_extras": true,
+    "retries": 3,
+    "wait_seconds": 5,
+    "threads": 12,
+    "copy_symlinks": false,
+    "remove_system_hidden": true
+  }
+}
+

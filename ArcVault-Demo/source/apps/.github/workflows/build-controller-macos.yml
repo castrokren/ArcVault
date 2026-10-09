@@ -1,0 +1,40 @@
+name: Build macOS Controller
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'apps/backup-control/**'
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build controller (macOS)
+        shell: bash
+        run: |
+          bash apps/backup-control/scripts/build_controller_macos.sh
+
+      - name: Package artifact (zip)
+        shell: bash
+        run: |
+          mkdir -p dist
+          cd dist
+          # Zip the single-file binary for consistent artifact delivery
+          zip -9 robobackup-controller-macos.zip robobackup-controller
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: robobackup-controller-macos
+          path: dist/robobackup-controller-macos.zip
+
+

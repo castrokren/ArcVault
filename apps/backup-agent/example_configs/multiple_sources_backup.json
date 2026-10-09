@@ -1,0 +1,24 @@
+{
+  "_comment": "Multiple sources backup - Back up multiple folders to one destination",
+  "_description": "Configuration for backing up multiple important folders (Documents, Pictures, Projects)",
+  
+  "sources": [
+    "C:\\Users\\YourUsername\\Documents",
+    "C:\\Users\\YourUsername\\Pictures",
+    "C:\\Users\\YourUsername\\Projects",
+    "C:\\Data\\ImportantFiles"
+  ],
+  "destination": "E:\\Backups\\AllData",
+  
+  "options": {
+    "include_empty_dirs": true,
+    "verbose": true,
+    "report_extras": true,
+    "retries": 5,
+    "wait_seconds": 10,
+    "threads": 16,
+    "copy_symlinks": false,
+    "remove_system_hidden": true
+  }
+}
+

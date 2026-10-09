@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  arcvault-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: arcvault-server
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data/keys:/app/keys
+      - ./data/logs:/app/logs
+      - ./data/config:/app/config
+    environment:
+      - CONTROLLER_PORT=8501
+      - CONTROLLER_ADDRESS=0.0.0.0
+      - STREAMLIT_HEADLESS=1
+      - AGENT_VERIFY_SSL=false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Add a reverse proxy for HTTPS
+  nginx:
+    image: nginx:alpine
+    container_name: arcvault-nginx
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./data/keys:/etc/nginx/ssl:ro
+    depends_on:
+      - arcvault-server
+    restart: unless-stopped
+    profiles:
+      - with-nginx
+
+volumes:
+  keys:
+  logs:
+  config:

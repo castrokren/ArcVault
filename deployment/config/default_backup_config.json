@@ -1,0 +1,30 @@
+{
+  "backup_jobs": [
+    {
+      "name": "Example Local Backup",
+      "enabled": false,
+      "sources": [
+        "C:\\Users\\Public\\Documents"
+      ],
+      "destination": "D:\\Backups\\Documents",
+      "schedule": {
+        "type": "daily",
+        "time": "02:00"
+      },
+      "options": {
+        "compression": true,
+        "encryption": false,
+        "verify": true,
+        "retain_days": 30
+      }
+    }
+  ],
+  "global_settings": {
+    "max_concurrent_jobs": 2,
+    "log_retention_days": 90,
+    "notification_email": "",
+    "smtp_server": "",
+    "backup_log_directory": "#backup_logs"
+  }
+}
+

@@ -1,0 +1,28 @@
+{
+  "_comment": "Network share backup - Backup to a network location with credentials",
+  "_description": "Backup configuration for network shares (NAS, file servers)",
+  
+  "sources": [
+    "C:\\Users\\YourUsername\\Documents",
+    "C:\\Projects"
+  ],
+  "destination": "\\\\SERVER\\Backups\\MyComputer",
+  
+  "options": {
+    "include_empty_dirs": true,
+    "verbose": true,
+    "report_extras": true,
+    "retries": 10,
+    "wait_seconds": 15,
+    "threads": 8,
+    "copy_symlinks": false,
+    "remove_system_hidden": true
+  },
+  
+  "destination_credentials": {
+    "username": "backup_user",
+    "password": "your_password_here",
+    "domain": "WORKGROUP"
+  }
+}
+

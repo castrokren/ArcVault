@@ -1,0 +1,8 @@
+{
+  "_comment": "Minimal backup - Simplest possible configuration with all defaults",
+  "_description": "Bare minimum configuration required for a backup job",
+  
+  "sources": ["C:\\Data"],
+  "destination": "D:\\Backup"
+}
+

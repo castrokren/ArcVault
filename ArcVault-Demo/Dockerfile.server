@@ -1,0 +1,47 @@
+# ArcVault Server Docker Container
+# Cross-platform backup controller deployment
+
+FROM python:3.11-slim
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV CONTROLLER_PORT=8501
+ENV CONTROLLER_ADDRESS=0.0.0.0
+ENV STREAMLIT_HEADLESS=1
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app directory
+WORKDIR /app
+
+# Copy requirements and install Python dependencies
+COPY apps/backup-control/pyproject.toml /app/
+RUN pip install --no-cache-dir -e .
+
+# Copy application code
+COPY apps/backup-control/controller/ /app/controller/
+
+# Create directories for configuration and data
+RUN mkdir -p /app/keys /app/logs /app/config
+
+# Copy configuration templates
+COPY env.templates/ /app/config/
+
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash arcvault
+RUN chown -R arcvault:arcvault /app
+USER arcvault
+
+# Expose ports
+EXPOSE 8501
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8501/ || exit 1
+
+# Default command
+CMD ["python", "-m", "streamlit", "run", "controller/app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]

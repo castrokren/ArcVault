@@ -1,0 +1,12 @@
+{
+  "host": "0.0.0.0",
+  "port": 8443,
+  "log_level": "info",
+  "require_jwt": true,
+  "jwt_public_key_path": "C:\\ProgramData\\ArcVault\\keys\\jwt_public.pem",
+  "jwt_issuer": "arcvault-controller",
+  "ssl_enabled": true,
+  "ssl_cert_path": "C:\\ProgramData\\ArcVault\\keys\\server.crt",
+  "ssl_key_path": "C:\\ProgramData\\ArcVault\\keys\\server.key"
+}
+

@@ -1,0 +1,68 @@
+#!/bin/bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DOCKER_DIR="$SCRIPT_DIR/docker"
+
+if [[ ! -d "$DOCKER_DIR" ]]; then
+  echo "ArcVault control scripts not found. Expected $DOCKER_DIR" >&2
+  exit 1
+fi
+
+COMMAND="${1:-help}"
+shift || true
+
+function usage() {
+  cat <<'EOF'
+ArcVault Control CLI
+
+Usage:
+  arcvaultctl start          # Start ArcVault Docker stack
+  arcvaultctl stop           # Stop stack
+  arcvaultctl restart        # Restart stack
+  arcvaultctl update         # Pull latest images and restart
+  arcvaultctl status         # Show health information
+  arcvaultctl logs           # Tail docker compose logs
+  arcvaultctl logs --follow  # Follow logs
+  arcvaultctl open           # Open web UI in browser
+  arcvaultctl install-docker # Download and install Docker Desktop
+  arcvaultctl help           # Show this message
+EOF
+}
+
+case "$COMMAND" in
+  start)
+    "$DOCKER_DIR/start.sh"
+    ;;
+  stop)
+    "$DOCKER_DIR/stop.sh"
+    ;;
+  restart)
+    "$DOCKER_DIR/restart.sh"
+    ;;
+  update)
+    "$DOCKER_DIR/update.sh"
+    ;;
+  status)
+    "$DOCKER_DIR/status.sh"
+    ;;
+  logs)
+    source "$DOCKER_DIR/common.sh"
+    compose logs "$@"
+    ;;
+  open)
+    open "http://localhost:8501"
+    ;;
+  install-docker)
+    "$SCRIPT_DIR/install_docker.sh"
+    ;;
+  help|--help|-h)
+    usage
+    ;;
+  *)
+    echo "Unknown command: $COMMAND" >&2
+    usage
+    exit 1
+    ;;
+esac
+

@@ -1,0 +1,29 @@
+{
+  "_comment": "High performance backup - Optimized for speed with maximum threads",
+  "_description": "Configuration for large backups where speed is critical",
+  
+  "sources": [
+    "D:\\ProjectData",
+    "D:\\Archives"
+  ],
+  "destination": "E:\\FastBackup",
+  
+  "options": {
+    "include_empty_dirs": true,
+    "verbose": false,
+    "report_extras": false,
+    "retries": 2,
+    "wait_seconds": 3,
+    "threads": 128,
+    "copy_symlinks": false,
+    "remove_system_hidden": true
+  },
+  
+  "_notes": [
+    "Using maximum threads (128) for best performance",
+    "Verbose and report_extras disabled to reduce overhead",
+    "Lower retry count for faster failure detection",
+    "Best for: Large file transfers on fast storage (SSD to SSD)"
+  ]
+}
+
